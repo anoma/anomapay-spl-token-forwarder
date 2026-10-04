@@ -1,0 +1,53 @@
+[package]
+name = "anomapay-spl-token-forwarder-integration-test"
+description = "Integration and e2e tests of the AnomaPay SPL token forwarder on the Solana protocol adapter's harness."
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/anoma/anomapay-spl-token-forwarder"
+publish = false
+
+# Its own workspace, as the adapter's harness is: surfpool-sdk pins Solana
+# crates that would lower the versions the program builds against if it
+# shared the program's lockfile.
+[workspace]
+
+[features]
+default = ["local"]
+local = ["anoma-pa-solana-integration-test/local"]
+e2e = ["anoma-pa-solana-integration-test/e2e"]
+
+[dependencies]
+# The adapter's harness: pa-testkit's environments for the Solana adapter.
+anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "2a845c28e041c412fc68b493b3d3c2077153330d", default-features = false }
+# The revisions the harness pins.
+anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "2c702fd5f773bcca1f30b42fca4ea62afaa2bc27" }
+anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "af955de04d2213412d5da5cdd8ac268ebe5e5093", default-features = false, features = [
+  "fixtures",
+] }
+anomapay-spl-token-forwarder-client = { path = "../client" }
+anoma-rm-risc0 = { version = "=2.0.0-rc.6", default-features = false, features = ["transaction"] }
+anoma-rm-risc0-gadgets = "=2.0.0-rc.6"
+# The AnomaPay transfer resource whose logic ref (1f90852b) the forwarder
+# serves, on devnet too: another build has another logic ref, which the
+# deployed forwarder refuses.
+transfer_library = { git = "https://github.com/anoma/anomapay-solana-resource", rev = "34d7d6ea6f9dead231b70e20281c2c4689fc1357" }
+transfer_witness = { git = "https://github.com/anoma/anomapay-solana-resource", rev = "34d7d6ea6f9dead231b70e20281c2c4689fc1357" }
+anyhow = "1.0"
+futures = "0.3"
+k256 = "0.13"
+rand_chacha = "0.3"
+risc0-zkvm = { version = "3.0.3", default-features = false }
+solana-ed25519-program = "3"
+solana-instruction = "3"
+solana-keypair = "3.1"
+solana-program-pack = "3"
+solana-rpc-client = "4"
+solana-signer = "3"
+solana-system-interface = { version = "3.2", features = ["bincode"] }
+spl-associated-token-account-interface = "2"
+spl-token-interface = "3"
+surfpool-sdk = "=1.6.0"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
