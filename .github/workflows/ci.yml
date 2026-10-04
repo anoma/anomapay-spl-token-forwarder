@@ -102,8 +102,8 @@ jobs:
       - name: Install Anchor CLI
         run: cargo install --git https://github.com/otter-sec/anchor --rev "${{ env.ANCHOR_REV }}" --locked anchor-cli
 
-      - name: Production build and its IDL check
-        run: ./scripts/ops.sh build-release
+      - name: Production build, its IDL check, and the operator scripts' type check
+        run: ./scripts/ops.sh typecheck
 
   # The forwarder's tests on the adapter's harness, locally. Their e2e cases
   # need devnet and the proving queue (dev.sh integration-test --e2e).

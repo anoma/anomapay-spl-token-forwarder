@@ -3,3 +3,6 @@ node_modules/
 # Program keypairs: each operator names their own paths here (env/README.md).
 env/*.keys.env
 .DS_Store
+.anchor
+# Devnet wallet (a private key)
+scripts/devnet-wallet.json
