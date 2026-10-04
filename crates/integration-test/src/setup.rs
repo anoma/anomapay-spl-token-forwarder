@@ -4,10 +4,13 @@
 use std::sync::Arc;
 
 use anoma_pa_solana_integration_test::envs::common::environment::Environment;
+use anoma_pa_solana_integration_test::forwarders::CallAccounts;
 use anoma_pa_solana_integration_test::state::actors::default_signer;
 use anoma_pa_solana_integration_test::state::pa::pa_program;
-use anoma_pa_testkit::environment::Prover;
+use anoma_pa_testkit::environment::{CommitmentTree as _, Prover};
 use anoma_pa_testkit::transaction::Transaction;
+use anoma_pa_testkit::{execute_tx, prove_actions};
+use anoma_rm_risc0::resource::Resource;
 use anomapay_spl_token_forwarder_client::{
     INSTRUCTIONS_SYSVAR_ID, create_ata_idempotent_ix, derive_associated_token_address,
     derive_forwarder_config_pda, derive_forwarder_escrow_authority, initialize_ix,
@@ -18,7 +21,8 @@ use solana_program_pack::Pack;
 use solana_signer::Signer;
 use surfpool_sdk::Pubkey;
 
-use crate::submitter::SplTokenForwarder;
+use crate::fixtures::{self, ShieldedOwner, WrapAuthorization, WrapTerms};
+use crate::submitter::{Rewritten, SplTokenForwarder};
 
 /// The forwarder build the local tests load: the deterministic build at the
 /// local addresses (`dev.sh test-program`).
@@ -138,12 +142,45 @@ where
     P: Prover<Transaction = Transaction>,
 {
     let payer = default_signer(env)?.pubkey();
-    let rpc = env.protocol_adapter.rpc.clone();
     let (escrow_authority, _) = derive_forwarder_escrow_authority(&program);
+    let mint = create_mint(env, &program).await?;
+    let user = Keypair::new();
+    fund(env, &program, &mint, &user, USER_TOKENS).await?;
 
+    let submitter = Arc::new(SplTokenForwarder::new(program, payer));
+    env.protocol_adapter
+        .forwarders
+        .register(program, submitter.clone());
+    env.protocol_adapter
+        .extend_lookup_table(vec![
+            program,
+            derive_forwarder_config_pda(&program).0,
+            anoma_pa_solana_client::derive_event_authority_pda(&program).0,
+            escrow_authority,
+            spl_token_interface::id(),
+            INSTRUCTIONS_SYSVAR_ID,
+            derive_associated_token_address(&escrow_authority, &mint),
+        ])
+        .await?;
+
+    Ok(Forwarder {
+        submitter,
+        program,
+        mint,
+        user,
+    })
+}
+
+/// A new mint of 6 decimals whose authority is the adapter's payer, and the
+/// forwarder `program`'s escrow account for it.
+pub async fn create_mint<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::Result<Pubkey> {
+    let payer = env.protocol_adapter.payer.pubkey();
+    let (escrow_authority, _) = derive_forwarder_escrow_authority(program);
     let mint = Keypair::new();
     let space = spl_token_interface::state::Mint::LEN;
-    let rent = rpc
+    let rent = env
+        .protocol_adapter
+        .rpc
         .get_minimum_balance_for_rent_exemption(space)
         .await
         .context("failed to read the mint's rent")?;
@@ -170,69 +207,200 @@ where
     )
     .await
     .context("failed to create the mint and its escrow")?;
-
-    let user = Keypair::new();
-    let user_ata = derive_associated_token_address(&user.pubkey(), &mint.pubkey());
-    env.send(
-        &[
-            create_ata_idempotent_ix(&payer, &user.pubkey(), &mint.pubkey()),
-            spl_token_interface::instruction::mint_to(
-                &token_program,
-                &mint.pubkey(),
-                &user_ata,
-                &payer,
-                &[],
-                USER_TOKENS,
-            )?,
-            spl_token_interface::instruction::approve(
-                &token_program,
-                &user_ata,
-                &escrow_authority,
-                &user.pubkey(),
-                &[],
-                USER_TOKENS,
-            )?,
-        ],
-        &[&user],
-    )
-    .await
-    .context("failed to fund the user")?;
-
-    let submitter = Arc::new(SplTokenForwarder::new(program, payer));
-    env.protocol_adapter
-        .forwarders
-        .register(program, submitter.clone());
-    env.protocol_adapter
-        .extend_lookup_table(vec![
-            program,
-            derive_forwarder_config_pda(&program).0,
-            anoma_pa_solana_client::derive_event_authority_pda(&program).0,
-            escrow_authority,
-            token_program,
-            INSTRUCTIONS_SYSVAR_ID,
-            derive_associated_token_address(&escrow_authority, &mint.pubkey()),
-        ])
-        .await?;
-
-    Ok(Forwarder {
-        submitter,
-        program,
-        mint: mint.pubkey(),
-        user,
-    })
+    Ok(mint.pubkey())
 }
 
-/// The token balance of `owner`'s account for `mint`.
-pub async fn balance<P>(
+/// `owner`'s token account for `mint`, created if it does not exist.
+pub async fn token_account<P>(
     env: &Environment<P>,
     owner: &Pubkey,
     mint: &Pubkey,
-) -> anyhow::Result<u64> {
-    let account = derive_associated_token_address(owner, mint);
+) -> anyhow::Result<Pubkey> {
+    let payer = env.protocol_adapter.payer.pubkey();
+    env.send(&[create_ata_idempotent_ix(&payer, owner, mint)], &[])
+        .await
+        .with_context(|| format!("failed to create {owner}'s token account for {mint}"))?;
+    Ok(derive_associated_token_address(owner, mint))
+}
+
+/// Mints `amount` of `mint`, whose authority is the adapter's payer, to the
+/// token account `account`.
+pub async fn mint_to<P>(
+    env: &Environment<P>,
+    mint: &Pubkey,
+    account: &Pubkey,
+    amount: u64,
+) -> anyhow::Result<()> {
+    let payer = env.protocol_adapter.payer.pubkey();
+    env.send(
+        &[spl_token_interface::instruction::mint_to(
+            &spl_token_interface::id(),
+            mint,
+            account,
+            &payer,
+            &[],
+            amount,
+        )?],
+        &[],
+    )
+    .await
+    .with_context(|| format!("failed to mint {amount} of {mint} to {account}"))?;
+    Ok(())
+}
+
+/// Gives `owner` `amount` of `mint` in its token account and has `owner`
+/// approve the forwarder `program`'s escrow authority to move them: what a
+/// wrap from `owner` needs. Returns the token account.
+pub async fn fund<P>(
+    env: &Environment<P>,
+    program: &Pubkey,
+    mint: &Pubkey,
+    owner: &Keypair,
+    amount: u64,
+) -> anyhow::Result<Pubkey> {
+    let (escrow_authority, _) = derive_forwarder_escrow_authority(program);
+    let account = token_account(env, &owner.pubkey(), mint).await?;
+    mint_to(env, mint, &account, amount).await?;
+    env.send(
+        &[spl_token_interface::instruction::approve(
+            &spl_token_interface::id(),
+            &account,
+            &escrow_authority,
+            &owner.pubkey(),
+            &[],
+            amount,
+        )?],
+        &[owner],
+    )
+    .await
+    .with_context(|| format!("{} failed to approve the escrow authority", owner.pubkey()))?;
+    Ok(account)
+}
+
+/// A wrap, proven, whose authorization the submitter holds: the
+/// transaction, the shielded resource it creates, and what the user signed.
+pub struct ProvenWrap {
+    pub tx: Transaction,
+    pub created: Resource,
+    pub authorization: WrapAuthorization,
+}
+
+impl Forwarder {
+    /// A wrap of `amount` from the user into a resource `owner` holds, under
+    /// the forwarder nonce `nonce`, proven on `env`. `seed` makes its
+    /// resources distinct from every other wrap's.
+    pub async fn prove_wrap<P>(
+        &self,
+        env: &Environment<P>,
+        owner: &ShieldedOwner,
+        amount: u64,
+        nonce: u64,
+        seed: &str,
+    ) -> anyhow::Result<ProvenWrap>
+    where
+        P: Prover<Transaction = Transaction>,
+    {
+        let wrap = fixtures::wrap(
+            self.program,
+            self.mint,
+            &self.user,
+            owner,
+            WrapTerms {
+                amount,
+                nonce,
+                // The submitter puts the ed25519 instruction first.
+                ed25519_ix_index: 0,
+            },
+            seed,
+        )?;
+        self.submitter
+            .authorize(self.user.pubkey(), nonce, wrap.authorization.clone());
+        Ok(ProvenWrap {
+            tx: prove_actions(env, &[wrap.witnesses]).await?,
+            created: wrap.created,
+            authorization: wrap.authorization,
+        })
+    }
+
+    /// `prove_wrap`, settled: the resource the wrap creates.
+    pub async fn wrap<P>(
+        &self,
+        env: &mut Environment<P>,
+        owner: &ShieldedOwner,
+        amount: u64,
+        nonce: u64,
+        seed: &str,
+    ) -> anyhow::Result<Resource>
+    where
+        P: Prover<Transaction = Transaction>,
+    {
+        let wrap = self.prove_wrap(env, owner, amount, nonce, seed).await?;
+        execute_tx(env, wrap.tx).await?;
+        Ok(wrap.created)
+    }
+
+    /// An unwrap of `wrapped`, a resource `owner` holds in the adapter's
+    /// commitment tree, to `recipient`'s token account, proven on `env`.
+    pub async fn prove_unwrap<P>(
+        &self,
+        env: &Environment<P>,
+        wrapped: Resource,
+        owner: &ShieldedOwner,
+        recipient: Pubkey,
+    ) -> anyhow::Result<Transaction>
+    where
+        P: Prover<Transaction = Transaction>,
+    {
+        let path = env
+            .protocol_adapter
+            .commitment_tree
+            .path_to(wrapped.commitment())?;
+        let unwrap = fixtures::unwrap(self.program, self.mint, wrapped, owner, recipient, path)?;
+        prove_actions(env, &[unwrap]).await
+    }
+
+    /// Has `env`'s adapter pass this forwarder's calls what `rewrite` makes
+    /// of the submitter's accounts and instructions, until `restore`.
+    pub fn rewrite<P>(
+        &self,
+        env: &mut Environment<P>,
+        rewrite: impl Fn(&mut CallAccounts) + Send + Sync + 'static,
+    ) {
+        env.protocol_adapter.forwarders.register(
+            self.program,
+            Arc::new(Rewritten {
+                submitter: self.submitter.clone(),
+                rewrite,
+            }),
+        );
+    }
+
+    /// Has `env`'s adapter pass this forwarder's calls the submitter's
+    /// accounts again.
+    pub fn restore<P>(&self, env: &mut Environment<P>) {
+        env.protocol_adapter
+            .forwarders
+            .register(self.program, self.submitter.clone());
+    }
+
+    /// The user's token account for the mint.
+    pub fn user_account(&self) -> Pubkey {
+        derive_associated_token_address(&self.user.pubkey(), &self.mint)
+    }
+
+    /// The escrow's token account for the mint.
+    pub fn escrow_account(&self) -> Pubkey {
+        let (escrow_authority, _) = derive_forwarder_escrow_authority(&self.program);
+        derive_associated_token_address(&escrow_authority, &self.mint)
+    }
+}
+
+/// The token balance of the token account `account`.
+pub async fn balance<P>(env: &Environment<P>, account: &Pubkey) -> anyhow::Result<u64> {
     let amount = env
         .protocol_adapter
         .rpc
-        .get_token_account_balance(&account)
+        .get_token_account_balance(account)
         .await
         .with_context(|| format!("failed to read the token account {account}"))?
         .amount;

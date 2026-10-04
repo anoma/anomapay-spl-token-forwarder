@@ -2,7 +2,7 @@
 //! harness's `Forwarder` for this program.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use anoma_pa_solana_client::external_call::SolanaExternalCall;
 use anoma_pa_solana_integration_test::forwarders::{CallAccounts, Forwarder};
@@ -111,6 +111,28 @@ impl Forwarder for SplTokenForwarder {
                     })
                 }
             }
+        })
+    }
+}
+
+/// A submitter passing the forwarder what `rewrite` makes of the accounts and
+/// instructions `SplTokenForwarder` supplies: another account in a segment,
+/// an instruction dropped, reordered or added.
+pub struct Rewritten<F> {
+    pub submitter: Arc<SplTokenForwarder>,
+    pub rewrite: F,
+}
+
+impl<F: Fn(&mut CallAccounts) + Send + Sync> Forwarder for Rewritten<F> {
+    fn call_accounts<'a>(
+        &'a self,
+        rpc: &'a RpcClient,
+        call: &'a SolanaExternalCall,
+    ) -> BoxFuture<'a, anyhow::Result<CallAccounts>> {
+        Box::pin(async move {
+            let mut accounts = self.submitter.call_accounts(rpc, call).await?;
+            (self.rewrite)(&mut accounts);
+            Ok(accounts)
         })
     }
 }
