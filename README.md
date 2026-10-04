@@ -10,9 +10,13 @@ The adapter calls the forwarder through the external calls a settled transaction
 |---|---|
 | `programs/spl-token-forwarder/` | The Anchor program and its Rust unit tests |
 | `crates/client/` | `anomapay-spl-token-forwarder-client`: the instructions it takes, the CPI segments a settlement passes it, its wire formats (the wrap authorization message, the wrap and unwrap inputs), its events, its IDL |
+| `crates/integration-test/` | The forwarder's integration tests on the adapter's harness, and the test programs they load |
 | `env/` | The forwarder's address per cluster, and the adapter's it is built against ([env/README.md](env/README.md)) |
 | `fixtures/` | The wrap authorization message every client must serialize alike |
-| `scripts/` | `dev.sh` (enters the Nix shell) and `ops.sh` (the commands) |
+| `scripts/` | `dev.sh` (enters the Nix shell), `ops.sh` (the commands) and the operator scripts (TypeScript) |
+| `client/` | The operator scripts' TypeScript instruction builders, PDAs and cluster helpers |
+| `idl/` | The adapter's IDL, for the seeds the operator scripts derive ([idl/README.md](idl/README.md)) |
+| `docs/` | [OPERATIONS.md](docs/OPERATIONS.md) (deploying and operating the forwarder) and [DEVNET_DEPLOYMENT.md](docs/DEVNET_DEPLOYMENT.md) (the devnet record) |
 
 The program builds against the adapter's program crate, pinned by revision in `Cargo.toml`: it reads the adapter's state account to check that the adapter is paused before an emergency call, and uses the upgrade helpers the adapter shares with its forwarders.
 
@@ -28,3 +32,11 @@ Everything runs in the repository's Nix dev shell, which pins the Rust, Solana a
 | `./scripts/dev.sh build-dev` | Development build (the `dev-config-version` instruction enabled) |
 | `./scripts/dev.sh build-release` | Production build; checks its IDL is the development IDL minus the dev-only instruction |
 | `./scripts/dev.sh verify-build` | The deterministic solana-verify build |
+| `./scripts/dev.sh integration-test [--e2e]` | The integration tests on a local runtime; with `--e2e`, their cases on a fork of devnet with real proofs |
+| `./scripts/dev.sh test-program [--check]` | Write (or check) the deterministic production and development builds the integration tests load |
+| `./scripts/dev.sh typecheck` | Type-check and format-check the operator scripts against the production build |
+| `./scripts/dev.sh script-test` | Run the operator scripts against a local runtime |
+
+## Operations
+
+Deploying, initializing, upgrading and operating the forwarder on a cluster go through `./scripts/dev.sh <command> --cluster <localnet\|devnet\|mainnet>`: `deploy`, `upgrade`, `forwarder <init\|reinitialize\|emergency-withdraw>`, `lookup-table`, `idl-publish`, `status`, `balance`. [docs/OPERATIONS.md](docs/OPERATIONS.md) is the procedure set.
