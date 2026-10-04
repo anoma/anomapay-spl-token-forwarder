@@ -1210,20 +1210,7 @@ dependencies = [
 [[package]]
 name = "anoma-pa-solana-client"
 version = "0.4.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=6fa81a51cf4fde3e65260a2f0c7c1cf4bc4a8287#6fa81a51cf4fde3e65260a2f0c7c1cf4bc4a8287"
-dependencies = [
- "base64 0.22.1",
- "bincode",
- "hkdf",
- "hmac 0.12.1",
- "serde",
- "sha2 0.10.9",
-]
-
-[[package]]
-name = "anoma-pa-solana-client"
-version = "0.4.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=8e215443494c96f0b915ef235fe181a046a973f1#8e215443494c96f0b915ef235fe181a046a973f1"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=4b1758b5b3037533ebbfccbec3e376d028323f3b#4b1758b5b3037533ebbfccbec3e376d028323f3b"
 dependencies = [
  "anoma-rm-risc0",
  "base64 0.22.1",
@@ -1242,16 +1229,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "anoma-pa-solana-client"
+version = "0.4.0"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=6fa81a51cf4fde3e65260a2f0c7c1cf4bc4a8287#6fa81a51cf4fde3e65260a2f0c7c1cf4bc4a8287"
+dependencies = [
+ "base64 0.22.1",
+ "bincode",
+ "hkdf",
+ "hmac 0.12.1",
+ "serde",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "anoma-pa-solana-integration-test"
 version = "0.1.0"
-source = "git+https://github.com/anoma/solana-protocol-adapter?rev=c0ed71a4eaa282c4a6daa894e3ee8337186affff#c0ed71a4eaa282c4a6daa894e3ee8337186affff"
+source = "git+https://github.com/anoma/solana-protocol-adapter?rev=080052e0a2ba923fb43833b033b7b112c1da449d#080052e0a2ba923fb43833b033b7b112c1da449d"
 dependencies = [
- "anoma-pa-solana-client 0.4.0 (git+https://github.com/anoma/anoma-pa-solana-client?rev=8e215443494c96f0b915ef235fe181a046a973f1)",
+ "anoma-pa-solana-client 0.4.0 (git+https://github.com/anoma/anoma-pa-solana-client?rev=4b1758b5b3037533ebbfccbec3e376d028323f3b)",
  "anoma-pa-testkit",
  "anoma-risc0-kind-tables",
  "anoma-rm-risc0",
  "anyhow",
  "base64 0.22.1",
+ "bincode",
  "bs58",
  "dotenvy",
  "futures 0.3.34",
@@ -1259,9 +1260,12 @@ dependencies = [
  "serde_json",
  "solana-address-lookup-table-interface 3.1.0",
  "solana-commitment-config",
+ "solana-hash 4.5.0",
  "solana-instruction 3.4.1",
  "solana-keypair",
+ "solana-loader-v3-interface 7.0.0",
  "solana-message 4.4.1",
+ "solana-packet",
  "solana-rpc-client",
  "solana-rpc-client-types",
  "solana-signature",
@@ -1370,7 +1374,7 @@ dependencies = [
 name = "anomapay-spl-token-forwarder-client"
 version = "0.1.0"
 dependencies = [
- "anoma-pa-solana-client 0.4.0 (git+https://github.com/anoma/anoma-pa-solana-client?rev=8e215443494c96f0b915ef235fe181a046a973f1)",
+ "anoma-pa-solana-client 0.4.0 (git+https://github.com/anoma/anoma-pa-solana-client?rev=4b1758b5b3037533ebbfccbec3e376d028323f3b)",
  "base64 0.22.1",
  "sha2 0.10.9",
  "solana-instruction 3.4.1",
@@ -1384,7 +1388,7 @@ dependencies = [
 name = "anomapay-spl-token-forwarder-integration-test"
 version = "0.1.0"
 dependencies = [
- "anoma-pa-solana-client 0.4.0 (git+https://github.com/anoma/anoma-pa-solana-client?rev=8e215443494c96f0b915ef235fe181a046a973f1)",
+ "anoma-pa-solana-client 0.4.0 (git+https://github.com/anoma/anoma-pa-solana-client?rev=4b1758b5b3037533ebbfccbec3e376d028323f3b)",
  "anoma-pa-solana-integration-test",
  "anoma-pa-testkit",
  "anoma-rm-risc0",
@@ -1399,6 +1403,7 @@ dependencies = [
  "solana-ed25519-program",
  "solana-instruction 3.4.1",
  "solana-keypair",
+ "solana-loader-v3-interface 7.0.0",
  "solana-packet",
  "solana-program-pack 3.1.0",
  "solana-rpc-client",

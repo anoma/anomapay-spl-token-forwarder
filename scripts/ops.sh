@@ -24,16 +24,38 @@ Usage: ./scripts/ops.sh <command>
                  --e2e, their e2e cases on a fork of devnet (DEVNET_RPC_URL,
                  QUEUE_BASE_URL, QUEUE_AUTH_TOKEN, read by the harness)
   test-program [--check]
-                 Write the deterministic build to the integration tests'
-                 programs/, the binary they load; with --check, fail when the
-                 committed binary is not, byte for byte, the fresh build
+                 Write the deterministic production and development builds
+                 to the integration tests' programs/, the binaries they load;
+                 with --check, fail when a committed binary is not, byte for
+                 byte, the fresh build
 USAGE
   exit 1
 }
 
-# The binary the integration tests load, as the adapter's harness ships its
-# programs: the deterministic build at the local addresses.
+# The binaries the integration tests load, as the adapter's harness ships its
+# programs: the deterministic builds at the local addresses, production and
+# development (the dev features' instructions, which some tests use).
 TEST_PROGRAM="${PROJECT_DIR}/crates/integration-test/programs/${PROGRAM_NAME}.so"
+TEST_PROGRAM_DEV="${PROJECT_DIR}/crates/integration-test/programs/${PROGRAM_NAME}_dev.so"
+
+# Write the fresh build in target/deploy to the test program $1; with
+# --check ($2), fail instead when $1 is not, byte for byte, the fresh build.
+write_test_program() {
+  local committed="$1"
+  if [[ "${2:-}" != "--check" ]]; then
+    mkdir -p "$(dirname "$committed")"
+    cp "$PROGRAM_SO" "$committed"
+    echo "Wrote ${committed} ($(solana-verify get-executable-hash "$committed"))"
+  elif [[ ! -f "$committed" ]]; then
+    echo "❌ ${committed} is missing; write it with ./scripts/dev.sh test-program." >&2
+    return 1
+  elif cmp -s "$PROGRAM_SO" "$committed"; then
+    echo "✅ ${committed} is the deterministic build"
+  else
+    echo "❌ ${committed} is not the deterministic build; rewrite it with ./scripts/dev.sh test-program." >&2
+    return 1
+  fi
+}
 
 cd "$PROJECT_DIR"
 load_program_ids localnet
@@ -81,28 +103,16 @@ case "${1:-}" in
     esac
     ;;
   test-program)
-    deterministic_build
     case "${2:-}" in
-      "")
-        mkdir -p "$(dirname "$TEST_PROGRAM")"
-        cp "$PROGRAM_SO" "$TEST_PROGRAM"
-        echo "Wrote ${TEST_PROGRAM} ($(solana-verify get-executable-hash "$TEST_PROGRAM"))"
-        ;;
-      --check)
-        if [[ ! -f "$TEST_PROGRAM" ]]; then
-          echo "❌ ${TEST_PROGRAM} is missing; write it with ./scripts/dev.sh test-program." >&2
-          exit 1
-        elif cmp -s "$PROGRAM_SO" "$TEST_PROGRAM"; then
-          echo "✅ the committed test program is the deterministic build"
-        else
-          echo "❌ the committed test program is not the deterministic build; rewrite it with ./scripts/dev.sh test-program." >&2
-          exit 1
-        fi
-        ;;
-      *)
-        usage
-        ;;
+      "" | --check) ;;
+      *) usage ;;
     esac
+    failed=0
+    deterministic_build
+    write_test_program "$TEST_PROGRAM" "${2:-}" || failed=1
+    deterministic_build --features "$DEV_FEATURES"
+    write_test_program "$TEST_PROGRAM_DEV" "${2:-}" || failed=1
+    exit "$failed"
     ;;
   *)
     usage

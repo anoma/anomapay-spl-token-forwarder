@@ -165,9 +165,11 @@ assert_release_idl_lacks_dev_only() {
 }
 
 # The deterministic build of the forwarder at the loaded addresses, into
-# target/deploy. solana-verify builds in a container from the repository
-# alone, passing its trailing arguments to `cargo build`; the addresses go in
-# as cargo [env] configuration, which a remote verification repeats.
+# target/deploy, with any further `cargo build` arguments given (the
+# development build's features). solana-verify builds in a container from the
+# repository alone, passing its trailing arguments to `cargo build`; the
+# addresses go in as cargo [env] configuration, which a remote verification
+# repeats.
 deterministic_build() {
   # A missing solana-verify fails the substitution ("command not found") and
   # the comparison both.
@@ -178,5 +180,5 @@ deterministic_build() {
   fi
   checked_sbf_build solana-verify build --library-name "$PROGRAM_NAME" --arch "$SBPF_ARCH" -- \
     --config "env.FORWARDER_PROGRAM_ID=\"${FORWARDER_PROGRAM_ID}\"" \
-    --config "env.PROTOCOL_ADAPTER_PROGRAM_ID=\"${PROTOCOL_ADAPTER_PROGRAM_ID}\""
+    --config "env.PROTOCOL_ADAPTER_PROGRAM_ID=\"${PROTOCOL_ADAPTER_PROGRAM_ID}\"" "$@"
 }

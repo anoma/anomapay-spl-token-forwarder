@@ -4,9 +4,8 @@
 use std::sync::Arc;
 
 use anoma_pa_solana_integration_test::envs::common::environment::Environment;
+use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::forwarders::CallAccounts;
-use anoma_pa_solana_integration_test::state::actors::default_signer;
-use anoma_pa_solana_integration_test::state::pa::pa_program;
 use anoma_pa_testkit::environment::{CommitmentTree as _, Prover};
 use anoma_pa_testkit::transaction::Transaction;
 use anoma_pa_testkit::{execute_tx, prove_actions};
@@ -17,6 +16,7 @@ use anomapay_spl_token_forwarder_client::{
 };
 use anyhow::Context;
 use solana_keypair::Keypair;
+use solana_loader_v3_interface::state::UpgradeableLoaderState;
 use solana_program_pack::Pack;
 use solana_signer::Signer;
 use surfpool_sdk::Pubkey;
@@ -24,9 +24,10 @@ use surfpool_sdk::Pubkey;
 use crate::fixtures::{self, ShieldedOwner, WrapAuthorization, WrapTerms};
 use crate::submitter::{Rewritten, SplTokenForwarder};
 
-/// The forwarder build the local tests load: the deterministic build at the
-/// local addresses (`dev.sh test-program`).
-const FORWARDER_SO: &[u8] = include_bytes!("../programs/spl_token_forwarder.so");
+/// The forwarder builds the local tests load: the deterministic builds at
+/// the local addresses (`dev.sh test-program`), production and development.
+pub const FORWARDER_SO: &[u8] = include_bytes!("../programs/spl_token_forwarder.so");
+const FORWARDER_DEV_SO: &[u8] = include_bytes!("../programs/spl_token_forwarder_dev.so");
 const LOCALNET: &str = include_str!("../../../env/localnet.env");
 #[cfg(feature = "e2e")]
 const DEVNET: &str = include_str!("../../../env/devnet.env");
@@ -63,22 +64,45 @@ pub struct LocalForwarder {
     pub committee: Keypair,
 }
 
+/// Which build of the forwarder a local environment deploys.
+#[derive(Clone, Copy)]
+pub enum Build {
+    Production,
+    /// With the development features' instructions
+    /// (`dev_set_config_version`).
+    Development,
+}
+
+/// The local environment with the forwarder `build` deployed, its upgrade
+/// authority the adapter's payer, and not initialized; and the forwarder's
+/// address.
+pub async fn deployed(build: Build) -> anyhow::Result<(LocalEnv, Pubkey)> {
+    let env = LocalEnv::setup_bare().await?;
+    let program = forwarder_address(LOCALNET)?;
+    let so = match build {
+        Build::Production => FORWARDER_SO,
+        Build::Development => FORWARDER_DEV_SO,
+    };
+    env.deploy_program(program, so, env.protocol_adapter.payer.pubkey())?;
+    Ok((env, program))
+}
+
 /// The local environment with the forwarder deployed and initialized for the
 /// adapter and the transfer resource's logic ref.
-pub async fn local() -> anyhow::Result<(
-    anoma_pa_solana_integration_test::envs::local::Environment,
-    LocalForwarder,
-)> {
-    let mut env = anoma_pa_solana_integration_test::envs::local::Environment::setup_bare().await?;
-    let program = forwarder_address(LOCALNET)?;
-    let payer = default_signer(&env)?;
-    env.deploy_program(program, FORWARDER_SO, payer.pubkey())?;
+pub async fn local() -> anyhow::Result<(LocalEnv, LocalForwarder)> {
+    local_with(Build::Production).await
+}
+
+/// `local`, with the forwarder `build`.
+pub async fn local_with(build: Build) -> anyhow::Result<(LocalEnv, LocalForwarder)> {
+    let (mut env, program) = deployed(build).await?;
+    let payer = env.protocol_adapter.payer.pubkey();
     let (owner, committee) = (Keypair::new(), Keypair::new());
     env.send(
         &[initialize_ix(
             &program,
-            &payer.pubkey(),
-            &pa_program(&env)?,
+            &payer,
+            &env.protocol_adapter.program,
             crate::logic::logic_ref().into(),
             &committee.pubkey(),
             &owner.pubkey(),
@@ -117,7 +141,7 @@ pub async fn e2e() -> anyhow::Result<(
             .await
             .with_context(|| format!("the forwarder {program} has no config {config_address}"))?,
     )?;
-    let pa = pa_program(&env)?;
+    let pa = env.protocol_adapter.program;
     anyhow::ensure!(
         config.protocol_adapter == pa.to_bytes(),
         "the devnet forwarder serves the adapter {}, not {pa}",
@@ -141,7 +165,7 @@ async fn serve<P>(env: &mut Environment<P>, program: Pubkey) -> anyhow::Result<F
 where
     P: Prover<Transaction = Transaction>,
 {
-    let payer = default_signer(env)?.pubkey();
+    let payer = env.protocol_adapter.payer.pubkey();
     let (escrow_authority, _) = derive_forwarder_escrow_authority(&program);
     let mint = create_mint(env, &program).await?;
     let user = Keypair::new();
@@ -275,6 +299,46 @@ pub async fn fund<P>(
     .await
     .with_context(|| format!("{} failed to approve the escrow authority", owner.pubkey()))?;
     Ok(account)
+}
+
+/// Sends `lamports` from the adapter's payer to `to`: what a signer that
+/// pays for an account needs.
+pub async fn give_sol<P>(env: &Environment<P>, to: &Pubkey, lamports: u64) -> anyhow::Result<()> {
+    let payer = env.protocol_adapter.payer.pubkey();
+    env.send(
+        &[solana_system_interface::instruction::transfer(
+            &payer, to, lamports,
+        )],
+        &[],
+    )
+    .await
+    .with_context(|| format!("failed to send {lamports} lamports to {to}"))?;
+    Ok(())
+}
+
+/// The upgrade authority the loader records for `program`; None once the
+/// program is final.
+pub async fn upgrade_authority<P>(
+    env: &Environment<P>,
+    program: &Pubkey,
+) -> anyhow::Result<Option<Pubkey>> {
+    let program_data = anoma_pa_solana_client::derive_program_data_address(program);
+    let data = env
+        .protocol_adapter
+        .rpc
+        .get_account_data(&program_data)
+        .await
+        .with_context(|| format!("{program} has no program data {program_data}"))?;
+    let metadata = UpgradeableLoaderState::size_of_programdata_metadata();
+    match bincode::deserialize(&data[..metadata])
+        .with_context(|| format!("failed to decode the program data of {program}"))?
+    {
+        UpgradeableLoaderState::ProgramData {
+            upgrade_authority_address,
+            ..
+        } => Ok(upgrade_authority_address),
+        state => anyhow::bail!("{program_data} holds {state:?}, not program data"),
+    }
 }
 
 /// A wrap, proven, whose authorization the submitter holds: the
