@@ -3,6 +3,7 @@
 //! authorization message, the wrap and unwrap inputs) and its events. The
 //! adapter's own bindings are anoma-pa-solana-client's.
 
+pub mod accounts;
 pub mod constants;
 pub mod events;
 pub mod input;
@@ -17,6 +18,9 @@ pub mod pda;
 #[cfg(feature = "solana")]
 pub mod program_ids;
 
+pub use accounts::{
+    decode_config, decode_nonce_bitmap, AccountDecodeError, ConfigAccount, NonceBitmapAccount,
+};
 pub use constants::*;
 pub use events::{
     decode_forwarder_event_instruction, EmergencyCallerSetEvent, EmergencyWithdrawEvent,
@@ -33,7 +37,7 @@ pub use ata::create_ata_idempotent_ix;
 #[cfg(feature = "solana")]
 pub use forwarder::{
     build_unwrap_forwarder_accounts, build_wrap_forwarder_accounts, init_nonce_bitmap_ix,
-    initialize_ix, nonce_word_index, NONCES_PER_WORD,
+    initialize_ix, nonce_word_index,
 };
 #[cfg(feature = "solana")]
 pub use pda::{

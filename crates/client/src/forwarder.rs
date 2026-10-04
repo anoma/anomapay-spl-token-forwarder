@@ -12,15 +12,13 @@ use anoma_pa_solana_client::{
     derive_upgrade_authority_pda,
 };
 
-use crate::constants::{FORWARDER_UNWRAP_NUM_ACCOUNTS, FORWARDER_WRAP_NUM_ACCOUNTS};
+use crate::constants::{
+    FORWARDER_UNWRAP_NUM_ACCOUNTS, FORWARDER_WRAP_NUM_ACCOUNTS, NONCES_PER_WORD,
+};
 use crate::pda::{
     derive_associated_token_address, derive_forwarder_config_pda,
     derive_forwarder_escrow_authority, derive_nonce_bitmap_pda,
 };
-
-/// Nonces per nonce-bitmap account. The bitmap for `nonce` is the one for
-/// word `nonce / NONCES_PER_WORD`.
-pub const NONCES_PER_WORD: u64 = 256;
 
 /// The nonce-bitmap word a wrap nonce falls in.
 pub fn nonce_word_index(nonce: u64) -> u64 {
