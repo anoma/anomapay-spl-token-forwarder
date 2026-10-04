@@ -61,6 +61,89 @@ fn pad_to_32(input: &[u8]) -> [u8; 32] {
     out
 }
 
+/// A forwarder call's instruction data, decoded: what a submitter reads from
+/// the call a proof commits to supply its accounts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ForwarderInput {
+    Wrap(WrapInput),
+    Unwrap(UnwrapInput),
+}
+
+/// A wrap's input: the forwarder escrows `amount` of `token_mint` from
+/// `user`'s token account, authorized by the user's ed25519 signature, which
+/// the settlement transaction carries at `ed25519_ix_index`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WrapInput {
+    pub token_mint: [u8; 32],
+    pub amount: u64,
+    pub user: [u8; 32],
+    pub nonce: u64,
+    pub deadline: i64,
+    pub action_tree_root: [u8; 32],
+    pub ed25519_ix_index: u8,
+}
+
+/// An unwrap's input: the forwarder releases `amount` of `token_mint` from
+/// escrow to `recipient`'s token account.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UnwrapInput {
+    pub token_mint: [u8; 32],
+    pub amount: u64,
+    pub recipient: [u8; 32],
+}
+
+/// The instruction data is not a wrap's or an unwrap's.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InputError {
+    /// The op byte is neither `OP_WRAP` nor `OP_UNWRAP`, or there is none.
+    UnknownOp(Option<u8>),
+    /// The input after the op byte has the wrong length for its op.
+    Length { op: u8, len: usize },
+}
+
+impl core::fmt::Display for InputError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            InputError::UnknownOp(Some(op)) => write!(f, "unknown forwarder op {op}"),
+            InputError::UnknownOp(None) => write!(f, "empty forwarder instruction data"),
+            InputError::Length { op, len } => {
+                write!(f, "forwarder op {op} with a {len}-byte input")
+            }
+        }
+    }
+}
+
+impl std::error::Error for InputError {}
+
+/// Decode a forwarder call's instruction data, as the forwarder parses it.
+pub fn decode_forwarder_input(data: &[u8]) -> Result<ForwarderInput, InputError> {
+    let (&op, input) = data.split_first().ok_or(InputError::UnknownOp(None))?;
+    let length = InputError::Length {
+        op,
+        len: input.len(),
+    };
+    let field32 = |at: usize| -> [u8; 32] { input[at..at + 32].try_into().expect("32 bytes") };
+    let field8 = |at: usize| -> [u8; 8] { input[at..at + 8].try_into().expect("8 bytes") };
+    match op {
+        OP_WRAP if input.len() == 121 => Ok(ForwarderInput::Wrap(WrapInput {
+            token_mint: field32(0),
+            amount: u64::from_le_bytes(field8(32)),
+            user: field32(40),
+            nonce: u64::from_le_bytes(field8(72)),
+            deadline: i64::from_le_bytes(field8(80)),
+            action_tree_root: field32(88),
+            ed25519_ix_index: input[120],
+        })),
+        OP_UNWRAP if input.len() == 72 => Ok(ForwarderInput::Unwrap(UnwrapInput {
+            token_mint: field32(0),
+            amount: u64::from_le_bytes(field8(32)),
+            recipient: field32(40),
+        })),
+        OP_WRAP | OP_UNWRAP => Err(length),
+        op => Err(InputError::UnknownOp(Some(op))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,5 +190,46 @@ mod tests {
         let bytes = encode_unwrap_forwarder_input(&[1u8; 32], 100, &[2u8; 32]);
         assert_eq!(bytes.len(), 73);
         assert_eq!(bytes[0], OP_UNWRAP);
+    }
+
+    #[test]
+    fn the_decoder_reads_what_the_encoders_write() {
+        let wrap = encode_wrap_forwarder_input(&[1; 32], 42, &[2; 32], 7, -5, &[3; 32], 2);
+        assert_eq!(
+            decode_forwarder_input(&wrap),
+            Ok(ForwarderInput::Wrap(WrapInput {
+                token_mint: [1; 32],
+                amount: 42,
+                user: [2; 32],
+                nonce: 7,
+                deadline: -5,
+                action_tree_root: [3; 32],
+                ed25519_ix_index: 2,
+            }))
+        );
+        let unwrap = encode_unwrap_forwarder_input(&[1; 32], 100, &[4; 32]);
+        assert_eq!(
+            decode_forwarder_input(&unwrap),
+            Ok(ForwarderInput::Unwrap(UnwrapInput {
+                token_mint: [1; 32],
+                amount: 100,
+                recipient: [4; 32],
+            }))
+        );
+        assert_eq!(
+            decode_forwarder_input(&wrap[..121]),
+            Err(InputError::Length {
+                op: OP_WRAP,
+                len: 120
+            })
+        );
+        assert_eq!(
+            decode_forwarder_input(&[9]),
+            Err(InputError::UnknownOp(Some(9)))
+        );
+        assert_eq!(
+            decode_forwarder_input(&[]),
+            Err(InputError::UnknownOp(None))
+        );
     }
 }

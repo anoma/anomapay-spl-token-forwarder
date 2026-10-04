@@ -22,7 +22,10 @@ pub use events::{
     decode_forwarder_event_instruction, EmergencyCallerSetEvent, EmergencyWithdrawEvent,
     ForwarderEvent, InitializedEvent, UnwrappedEvent, WrappedEvent,
 };
-pub use input::{encode_unwrap_forwarder_input, encode_wrap_forwarder_input, OP_UNWRAP, OP_WRAP};
+pub use input::{
+    decode_forwarder_input, encode_unwrap_forwarder_input, encode_wrap_forwarder_input,
+    ForwarderInput, InputError, UnwrapInput, WrapInput, OP_UNWRAP, OP_WRAP,
+};
 pub use wrap_message::{sha256, WrapMessage, WRAP_MESSAGE_LEN};
 
 #[cfg(feature = "solana")]
@@ -30,7 +33,7 @@ pub use ata::create_ata_idempotent_ix;
 #[cfg(feature = "solana")]
 pub use forwarder::{
     build_unwrap_forwarder_accounts, build_wrap_forwarder_accounts, init_nonce_bitmap_ix,
-    nonce_word_index, NONCES_PER_WORD,
+    initialize_ix, nonce_word_index, NONCES_PER_WORD,
 };
 #[cfg(feature = "solana")]
 pub use pda::{
