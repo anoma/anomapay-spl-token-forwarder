@@ -19,7 +19,7 @@ e2e = ["anoma-pa-solana-integration-test/e2e"]
 
 [dependencies]
 # The adapter's harness: pa-testkit's environments for the Solana adapter.
-anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "080052e0a2ba923fb43833b033b7b112c1da449d", default-features = false }
+anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "69c682e39a2a98c810f8d73b90fb2fa495013111", default-features = false }
 # The revisions the harness pins.
 anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "4b1758b5b3037533ebbfccbec3e376d028323f3b" }
 anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "af955de04d2213412d5da5cdd8ac268ebe5e5093", default-features = false, features = [
@@ -53,5 +53,13 @@ spl-token-interface = "3"
 surfpool-sdk = "=1.6.0"
 
 [dev-dependencies]
+# The kind tables the harness pins.
+anoma-risc0-kind-tables = { git = "https://github.com/anoma/risc0-kind-tables", rev = "919c7787259eca02b8cedb079a639ad31e04ae51", features = [
+  "arm",
+] }
+base64 = "0.22"
+serde_json = "1.0"
+solana-signature = "3"
+solana-transaction = "4"
 solana-packet = "4"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }

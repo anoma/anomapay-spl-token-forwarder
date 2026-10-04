@@ -3,6 +3,7 @@
 //! `init_nonce_bitmap` instruction. Ordering is owned by the forwarder program;
 //! integrators must use these builders rather than hand-rolling the slice.
 
+use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 use solana_sdk_ids::{bpf_loader_upgradeable, system_program, sysvar};
@@ -140,33 +141,41 @@ pub fn renounce_ownership_ix(forwarder_program: &Pubkey, owner: &Pubkey) -> Inst
     }
 }
 
-/// Build the forwarder's `upgrade`: the owner replaces the program's code
-/// with the loader buffer `buffer`, whose authority is the owner; the
-/// buffer's rent goes to `spill`.
-pub fn upgrade_ix(
+/// The compute-unit limit an upgrade asks for: the most a transaction may
+/// have (Agave's `MAX_COMPUTE_UNIT_LIMIT`). The upgrade hashes the whole
+/// buffer, so its cost grows with the program's code.
+pub const UPGRADE_COMPUTE_UNIT_LIMIT: u32 = 1_400_000;
+
+/// Build the forwarder's `upgrade`, after the compute budget it needs: the
+/// owner replaces the program's code with the loader buffer `buffer`, whose
+/// authority is the owner; the buffer's rent goes to `spill`.
+pub fn upgrade_ixs(
     forwarder_program: &Pubkey,
     owner: &Pubkey,
     buffer: &Pubkey,
     spill: &Pubkey,
-) -> Instruction {
-    Instruction {
-        program_id: *forwarder_program,
-        accounts: vec![
-            AccountMeta::new_readonly(*owner, true),
-            AccountMeta::new_readonly(derive_forwarder_config_pda(forwarder_program).0, false),
-            AccountMeta::new(derive_program_data_address(forwarder_program), false),
-            AccountMeta::new(*forwarder_program, false),
-            AccountMeta::new(*buffer, false),
-            AccountMeta::new(*spill, false),
-            AccountMeta::new_readonly(derive_upgrade_authority_pda(forwarder_program).0, false),
-            AccountMeta::new_readonly(sysvar::rent::id(), false),
-            AccountMeta::new_readonly(sysvar::clock::id(), false),
-            AccountMeta::new_readonly(bpf_loader_upgradeable::id(), false),
-            AccountMeta::new_readonly(derive_event_authority_pda(forwarder_program).0, false),
-            AccountMeta::new_readonly(*forwarder_program, false),
-        ],
-        data: anchor_instruction_disc("upgrade").to_vec(),
-    }
+) -> [Instruction; 2] {
+    [
+        ComputeBudgetInstruction::set_compute_unit_limit(UPGRADE_COMPUTE_UNIT_LIMIT),
+        Instruction {
+            program_id: *forwarder_program,
+            accounts: vec![
+                AccountMeta::new_readonly(*owner, true),
+                AccountMeta::new_readonly(derive_forwarder_config_pda(forwarder_program).0, false),
+                AccountMeta::new(derive_program_data_address(forwarder_program), false),
+                AccountMeta::new(*forwarder_program, false),
+                AccountMeta::new(*buffer, false),
+                AccountMeta::new(*spill, false),
+                AccountMeta::new_readonly(derive_upgrade_authority_pda(forwarder_program).0, false),
+                AccountMeta::new_readonly(sysvar::rent::id(), false),
+                AccountMeta::new_readonly(sysvar::clock::id(), false),
+                AccountMeta::new_readonly(bpf_loader_upgradeable::id(), false),
+                AccountMeta::new_readonly(derive_event_authority_pda(forwarder_program).0, false),
+                AccountMeta::new_readonly(*forwarder_program, false),
+            ],
+            data: anchor_instruction_disc("upgrade").to_vec(),
+        },
+    ]
 }
 
 /// Build the forwarder's `version`, whose return data is the program's
@@ -632,14 +641,18 @@ mod tests {
     }
 
     #[test]
-    fn upgrade_matches_the_forwarders_idl() {
+    fn upgrade_sets_its_compute_budget_and_matches_the_forwarders_idl() {
         let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
         let (owner, buffer, spill) = (
             Pubkey::new_unique(),
             Pubkey::new_unique(),
             Pubkey::new_unique(),
         );
-        let ix = upgrade_ix(&forwarder, &owner, &buffer, &spill);
+        let [budget, ix] = upgrade_ixs(&forwarder, &owner, &buffer, &spill);
+        assert_eq!(
+            budget,
+            ComputeBudgetInstruction::set_compute_unit_limit(UPGRADE_COMPUTE_UNIT_LIMIT)
+        );
         let by_name = assert_matches_the_forwarders_idl(&ix, "upgrade", &[]);
         assert_eq!(by_name("authority"), owner);
         assert_eq!(by_name("buffer"), buffer);

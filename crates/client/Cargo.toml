@@ -16,6 +16,7 @@ sha2 = "0.10"
 
 # Solana SDK deps, used only by the instruction, PDA and program-id builders;
 # the versions the programs build with (Anchor 1.2).
+solana-compute-budget-interface = { version = "3", optional = true }
 solana-instruction = { version = "3", optional = true }
 solana-pubkey = { version = "3", optional = true }
 solana-sdk-ids = { version = "3", optional = true }
@@ -31,6 +32,7 @@ default = ["solana"]
 # The instruction builders, CPI segments, PDA derivation and program ids.
 solana = [
   "anoma-pa-solana-client/solana",
+  "dep:solana-compute-budget-interface",
   "dep:solana-instruction",
   "dep:solana-pubkey",
   "dep:solana-sdk-ids",

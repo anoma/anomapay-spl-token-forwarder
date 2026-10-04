@@ -3,6 +3,7 @@
 
 use anoma_pa_testkit::witness::ActionWitnesses;
 use anoma_rm_risc0::Digest;
+use anoma_rm_risc0::compliance::KindTableEntry;
 use anoma_rm_risc0::merkle_path::MerklePath;
 use anoma_rm_risc0::nullifier_key::NullifierKey;
 use anoma_rm_risc0::resource::Resource;
@@ -67,14 +68,19 @@ fn discovery_pk() -> AffinePoint {
     generate_public_key(SecretKey::new(scalar("anomapay-spl-token-forwarder/discovery")).inner())
 }
 
-/// The compliance facts of every action: commitment randomness drawn from
-/// `seed`, and the kind table loaded for proving (the empty table locally;
-/// the deployment's in e2e).
-fn compliance(seed: &str) -> ComplianceParams {
+/// The compliance facts of an action: commitment randomness drawn from
+/// `seed`, and the kind table it is proven against.
+fn compliance(seed: &str, kind_table: Vec<KindTableEntry>) -> ComplianceParams {
     ComplianceParams {
         rcv: scalar(&format!("{seed}/rcv")).to_bytes().to_vec(),
-        kind_table: anoma_rm_risc0::constants::kind_table().to_vec(),
+        kind_table,
     }
+}
+
+/// The kind table loaded for proving: the empty table locally, the
+/// deployment's in e2e.
+pub fn loaded_kind_table() -> Vec<KindTableEntry> {
+    anoma_rm_risc0::constants::kind_table().to_vec()
 }
 
 fn witnesses(action: TransferAction) -> ActionWitnesses {
@@ -118,14 +124,16 @@ pub struct WrapTerms {
 }
 
 /// A wrap through the forwarder `forwarder` of `terms.amount` of `mint`,
-/// from `user`'s token account into a resource `owner` holds. `seed` makes
-/// the action's resources distinct from every other test's.
+/// from `user`'s token account into a resource `owner` holds, proven against
+/// `kind_table`. `seed` makes the action's resources distinct from every
+/// other test's.
 pub fn wrap(
     forwarder: Pubkey,
     mint: Pubkey,
     user: &Keypair,
     owner: &ShieldedOwner,
     terms: WrapTerms,
+    kind_table: Vec<KindTableEntry>,
     seed: &str,
 ) -> anyhow::Result<WrapData> {
     let wrap = action::wrap(
@@ -158,7 +166,7 @@ pub fn wrap(
         .action(
             auth,
             &discovery_pk(),
-            compliance(seed),
+            compliance(seed, kind_table),
             &mut ChaCha20Rng::from_seed(label_hash(&format!("{seed}/rng"))),
         )
         .map_err(|e| anyhow::anyhow!("{e:?}"))
@@ -203,7 +211,11 @@ pub fn unwrap(
         .context("failed to compute the unwrap's action tree root")?;
     let auth_sig = owner.auth_sk.sign(AUTH_SIGNATURE_DOMAIN, root.as_bytes());
     let action = unwrap
-        .action(auth_sig, path, compliance(&format!("unwrap/{}", root)))
+        .action(
+            auth_sig,
+            path,
+            compliance(&format!("unwrap/{}", root), loaded_kind_table()),
+        )
         .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to build the unwrap's witnesses")?;
     Ok(witnesses(action))

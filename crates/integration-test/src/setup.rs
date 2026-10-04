@@ -375,6 +375,7 @@ impl Forwarder {
                 // The submitter puts the ed25519 instruction first.
                 ed25519_ix_index: 0,
             },
+            fixtures::loaded_kind_table(),
             seed,
         )?;
         self.submitter
