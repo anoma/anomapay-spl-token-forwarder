@@ -16,7 +16,7 @@ The adapter calls the forwarder through the external calls a settled transaction
 | `scripts/` | `dev.sh` (enters the Nix shell), `ops.sh` (the commands) and the operator scripts (TypeScript) |
 | `client/` | The operator scripts' TypeScript instruction builders, PDAs and cluster helpers |
 | `idl/` | The adapter's IDL, for the seeds the operator scripts derive ([idl/README.md](idl/README.md)) |
-| `docs/` | [OPERATIONS.md](docs/OPERATIONS.md) (deploying and operating the forwarder) and [DEVNET_DEPLOYMENT.md](docs/DEVNET_DEPLOYMENT.md) (the devnet record) |
+| `docs/` | [OPERATIONS.md](docs/OPERATIONS.md) (deploying and operating the forwarder), [INTEGRATION.md](docs/INTEGRATION.md) (its events and call segments) and [DEVNET_DEPLOYMENT.md](docs/DEVNET_DEPLOYMENT.md) (the devnet record) |
 
 The program builds against the adapter's program crate, pinned by revision in `Cargo.toml`: it reads the adapter's state account to check that the adapter is paused before an emergency call, and uses the upgrade helpers the adapter shares with its forwarders.
 
