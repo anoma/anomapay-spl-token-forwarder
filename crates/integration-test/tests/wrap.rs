@@ -5,10 +5,7 @@
 use anoma_pa_solana_client::events::{PaEvent, decode_event_instruction};
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::executed::Executed;
-use anoma_pa_solana_integration_test::forwarders::CallAccounts;
 use anoma_pa_solana_integration_test::test_forwarder;
-use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
-use anoma_pa_testkit::execute_tx;
 use anoma_pa_testkit::transaction::Transaction;
 use anomapay_spl_token_forwarder_client::{
     ForwarderEvent, build_wrap_forwarder_accounts, decode_forwarder_event_instruction,
@@ -17,8 +14,9 @@ use anomapay_spl_token_forwarder_client::{
 };
 use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
+use anomapay_spl_token_forwarder_integration_test::refusal::{balances, refuses};
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, Forwarder, LocalForwarder, balance, create_mint, fund, token_account,
+    self, Forwarder, LocalForwarder, create_mint, fund, token_account,
 };
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -41,38 +39,6 @@ const NONCE_BITMAP: usize = 8;
 async fn local() -> anyhow::Result<(LocalEnv, LocalForwarder, ShieldedOwner)> {
     let (env, local) = setup::local().await?;
     Ok((env, local, ShieldedOwner::seeded("wrap/owner")))
-}
-
-async fn balances(env: &LocalEnv, accounts: &[Pubkey]) -> anyhow::Result<Vec<u64>> {
-    let mut amounts = Vec::with_capacity(accounts.len());
-    for account in accounts {
-        amounts.push(balance(env, account).await?);
-    }
-    Ok(amounts)
-}
-
-/// Settling `tx` with what `rewrite` makes of the submitter's accounts fails
-/// with `error`, the log line naming the forwarder's refusal, and the token
-/// accounts `unmoved` hold what they held before.
-async fn refuses(
-    env: &mut LocalEnv,
-    forwarder: &Forwarder,
-    tx: Transaction,
-    rewrite: impl Fn(&mut CallAccounts) + Send + Sync + 'static,
-    error: &'static str,
-    unmoved: &[Pubkey],
-) -> anyhow::Result<()> {
-    let before = balances(env, unmoved).await?;
-    forwarder.rewrite(env, rewrite);
-    let settled = execute_tx(env, tx).await;
-    forwarder.restore(env);
-    expect_integration_panic(Needle::Static(error))(settled)?;
-    let after = balances(env, unmoved).await?;
-    anyhow::ensure!(
-        after == before,
-        "tokens moved: {unmoved:?} held {before:?}, now {after:?}"
-    );
-    Ok(())
 }
 
 /// The first wrap of the user: the submitter passes the user's signature

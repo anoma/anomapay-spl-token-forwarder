@@ -5,5 +5,6 @@
 
 pub mod fixtures;
 pub mod logic;
+pub mod refusal;
 pub mod setup;
 pub mod submitter;
