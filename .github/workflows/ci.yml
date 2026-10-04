@@ -74,7 +74,7 @@ jobs:
   anchor-build:
     name: Anchor Build
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
@@ -88,6 +88,10 @@ jobs:
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            crates/integration-test
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -104,6 +108,9 @@ jobs:
 
       - name: Production build, its IDL check, and the operator scripts' type check
         run: ./scripts/ops.sh typecheck
+
+      - name: The operator scripts against a local runtime
+        run: ./scripts/ops.sh script-test
 
   # The forwarder's tests on the adapter's harness, locally. Their e2e cases
   # need devnet and the proving queue (dev.sh integration-test --e2e).

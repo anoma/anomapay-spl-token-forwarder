@@ -195,11 +195,9 @@ where
     })
 }
 
-/// A new mint of 6 decimals whose authority is the adapter's payer, and the
-/// forwarder `program`'s escrow account for it.
-pub async fn create_mint<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::Result<Pubkey> {
+/// A new mint of 6 decimals whose authority is the adapter's payer.
+pub async fn new_mint<P>(env: &Environment<P>) -> anyhow::Result<Pubkey> {
     let payer = env.protocol_adapter.payer.pubkey();
-    let (escrow_authority, _) = derive_forwarder_escrow_authority(program);
     let mint = Keypair::new();
     let space = spl_token_interface::state::Mint::LEN;
     let rent = env
@@ -225,13 +223,22 @@ pub async fn create_mint<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::R
                 None,
                 6,
             )?,
-            create_ata_idempotent_ix(&payer, &escrow_authority, &mint.pubkey()),
         ],
         &[&mint],
     )
     .await
-    .context("failed to create the mint and its escrow")?;
+    .context("failed to create the mint")?;
     Ok(mint.pubkey())
+}
+
+/// `new_mint`, and the forwarder `program`'s escrow account for it.
+pub async fn create_mint<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::Result<Pubkey> {
+    let mint = new_mint(env).await?;
+    let (escrow_authority, _) = derive_forwarder_escrow_authority(program);
+    token_account(env, &escrow_authority, &mint)
+        .await
+        .context("failed to create the mint's escrow")?;
+    Ok(mint)
 }
 
 /// `owner`'s token account for `mint`, created if it does not exist.

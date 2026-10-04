@@ -31,6 +31,10 @@ Development:
                  byte, the fresh build
   typecheck      Type-check and format-check the operator scripts against the
                  production build's types
+  script-test    Run the operator scripts against the harness's local runtime
+                 (crates/integration-test/tests/operator_scripts.rs), after
+                 installing their dependencies and building the types they
+                 import
 
 Cluster operations (--cluster required):
   deploy         First-time deploy of the production build. On localnet the
@@ -66,6 +70,8 @@ Flags:
   --url <rpc>      The cluster's RPC endpoint. devnet and mainnet have no
                    default: pass --url or set DEVNET_RPC_URL / MAINNET_RPC_URL
                    (the operator's RPC provider, never the public endpoint)
+                   The scripts confirm over its websocket at the RPC port plus
+                   one; set ANCHOR_WS_URL when the endpoint's is elsewhere.
   --prebuilt       deploy/upgrade: ship the existing target/deploy artifact
                    (verify-build's) without rebuilding
   --e2e            integration-test: the e2e cases
@@ -569,7 +575,7 @@ case "$COMMAND" in
     cargo clippy -p spl-token-forwarder --features cpi --all-targets -- -D warnings
     # The client's wire formats and event decoders without the Solana SDK.
     cargo clippy -p anomapay-spl-token-forwarder-client --no-default-features --all-targets -- -D warnings
-    (cd crates/integration-test && cargo clippy --all-targets --features e2e -- -D warnings)
+    (cd crates/integration-test && cargo clippy --all-targets --features e2e,scripts -- -D warnings)
     ;;
   unit-test)
     require_cmd cargo
@@ -603,6 +609,13 @@ case "$COMMAND" in
     deterministic_build --features "$DEV_FEATURES"
     write_test_program "$TEST_PROGRAM_DEV" || failed=1
     exit "$failed"
+    ;;
+  script-test)
+    require_cmd cargo
+    require_cmd yarn
+    ensure_node_modules
+    build_release
+    (cd crates/integration-test && cargo test --features scripts --test operator_scripts)
     ;;
   typecheck)
     require_cmd yarn

@@ -28,10 +28,14 @@ export type IdlWriter = "upgrade authority" | "metadata authority";
 
 /**
  * A Program Metadata client over `rpcUrl`, signing and paying with the
- * keypair file `walletPath`. Kit's RPC confirms at `confirmed`.
+ * keypair file `walletPath`. Kit's RPC confirms at `confirmed`, over the
+ * websocket `rpcSubscriptionsUrl`, or the one kit derives from `rpcUrl`.
  */
-export function programMetadataClient(rpcUrl: string, walletPath: string) {
-  return createClient().use(signerFromFile(walletPath)).use(solanaRpc({ rpcUrl })).use(programMetadataProgram());
+export function programMetadataClient(rpcUrl: string, walletPath: string, rpcSubscriptionsUrl?: string) {
+  return createClient()
+    .use(signerFromFile(walletPath))
+    .use(solanaRpc({ rpcUrl, rpcSubscriptionsUrl }))
+    .use(programMetadataProgram());
 }
 
 /** `program`'s canonical IDL account and its ProgramData account. */
@@ -45,15 +49,21 @@ export async function canonicalIdlAccount(client: Awaited<ReturnType<typeof prog
 
 /**
  * Write the IDL JSON at `idlPath` to its program's canonical IDL account,
- * signing and paying with the keypair file `walletPath` over `rpcUrl`. The
+ * signing and paying with the keypair file `walletPath` over `rpcUrl` (and
+ * its websocket `rpcSubscriptionsUrl`, when it is not the derived one). The
  * upgrade authority creates the account or updates it; once it exists, its
  * explicit authority updates it too. Any other signer is refused before a
  * transaction is sent. The cluster must then serve exactly that document.
  */
-export async function publishIdl(rpcUrl: string, walletPath: string, idlPath: string): Promise<IdlWriter> {
+export async function publishIdl(
+  rpcUrl: string,
+  walletPath: string,
+  idlPath: string,
+  rpcSubscriptionsUrl?: string,
+): Promise<IdlWriter> {
   const content = readFileSync(idlPath, "utf8");
   const program = address(JSON.parse(content).address as string);
-  const client = await programMetadataClient(rpcUrl, walletPath);
+  const client = await programMetadataClient(rpcUrl, walletPath, rpcSubscriptionsUrl);
   const wallet = client.identity.address;
   const { metadata, upgradeAuthority, programData } = await canonicalIdlAccount(client, program);
   const account = await fetchMaybeMetadata(client.rpc, metadata);

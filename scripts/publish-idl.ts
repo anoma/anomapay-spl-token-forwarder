@@ -9,6 +9,7 @@ async function main() {
     requireEnv("ANCHOR_PROVIDER_URL", "the RPC endpoint"),
     requireEnv("ANCHOR_WALLET", "the signing keypair file"),
     idlPath,
+    process.env.ANCHOR_WS_URL,
   );
   console.log(`✅ ${idlPath} written as the ${writer}; the cluster serves it.`);
 }
