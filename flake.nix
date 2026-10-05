@@ -184,8 +184,6 @@ EOF
           };
         in
         {
-          packages.default = solanaToolchain;
-
           devShells.default = pkgs.mkShell {
             packages = [
               solanaToolchain
@@ -201,8 +199,6 @@ EOF
               pkgs.protobuf
               pkgs.podman
               pkgs.git
-              pkgs.curl
-              pkgs.jq
               pkgs.gnugrep
               pkgs.gnused
               pkgs.gawk
@@ -285,11 +281,6 @@ EOF
               if [ ! -f "$HOME/.config/solana/id.json" ]; then
                 echo "Generating Solana keypair at ~/.config/solana/id.json"
                 solana-keygen new --no-bip39-passphrase -o "$HOME/.config/solana/id.json"
-              fi
-
-              if ! solana config set --url localhost >/dev/null; then
-                echo "ERROR: 'solana config set --url localhost' failed; see the message above." >&2
-                exit 1
               fi
             '';
           };

@@ -5,7 +5,7 @@
  *
  *   ./scripts/dev.sh lookup-table --cluster <c> [--wallet <path>]
  *
- * The key set is `forwarderLookupKeys` (client/lookupTable.ts); see
+ * The key set is `forwarderSettlementLookupKeys` (ts/src/forwarder.ts); see
  * docs/OPERATIONS.md, "The settlement lookup table". The wallet pays and must
  * be the table's authority.
  *
@@ -19,7 +19,8 @@ import * as anchor from "@anchor-lang/core";
 import { confirmedProvider } from "../client/provider";
 import { Program } from "@anchor-lang/core";
 import { SplTokenForwarder } from "../target/types/spl_token_forwarder";
-import { extendLookupTable, forwarderLookupKeys } from "../client/lookupTable";
+import { extendLookupTable } from "../client/lookupTable";
+import { forwarderSettlementLookupKeys } from "../ts/src/forwarder";
 import { pubkeyList, requirePubkey } from "./cli-utils";
 
 async function main() {
@@ -31,7 +32,7 @@ async function main() {
   const mints = pubkeyList("STF_TOKEN_MINTS");
   const address = requirePubkey("PA_LOOKUP_TABLE", "the deployment's settlement lookup table, as a base58 pubkey");
 
-  const keys = forwarderLookupKeys(forwarder.programId, mints);
+  const keys = forwarderSettlementLookupKeys(forwarder.programId, mints);
   const { table, added, signature } = await extendLookupTable(provider.connection, wallet.payer, keys, address);
 
   console.log(`settlement lookup table: ${table.key.toBase58()} (authority ${wallet.publicKey.toBase58()})`);

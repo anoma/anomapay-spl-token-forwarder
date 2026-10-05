@@ -10,8 +10,6 @@ pub mod input;
 pub mod wrap_message;
 
 #[cfg(feature = "solana")]
-pub mod ata;
-#[cfg(feature = "solana")]
 pub mod forwarder;
 #[cfg(feature = "solana")]
 pub mod pda;
@@ -33,19 +31,16 @@ pub use input::{
 pub use wrap_message::{sha256, WrapMessage, WRAP_MESSAGE_LEN};
 
 #[cfg(feature = "solana")]
-pub use ata::create_ata_idempotent_ix;
-#[cfg(feature = "solana")]
 pub use forwarder::{
     build_unwrap_forwarder_accounts, build_wrap_forwarder_accounts, close_config_ix,
-    close_escrow_ix, close_nonce_bitmaps_batch_ix, forward_emergency_call_ix, init_nonce_bitmap_ix,
-    initialize_ix, nonce_word_index, reinitialize_ix, renounce_ownership_ix,
-    set_emergency_caller_ix, transfer_ownership_ix, upgrade_ixs, version_ix,
-    UPGRADE_COMPUTE_UNIT_LIMIT,
+    close_escrow_ix, close_nonce_bitmaps_batch_ix, forward_emergency_call_ix,
+    forwarder_settlement_lookup_keys, init_nonce_bitmap_ix, initialize_ix, nonce_word_index,
+    reinitialize_ix, renounce_ownership_ix, set_emergency_caller_ix, transfer_ownership_ix,
+    upgrade_ixs, version_ix, UPGRADE_COMPUTE_UNIT_LIMIT,
 };
 #[cfg(feature = "solana")]
 pub use pda::{
-    derive_associated_token_address, derive_forwarder_config_pda,
-    derive_forwarder_escrow_authority, derive_nonce_bitmap_pda,
+    derive_forwarder_config_pda, derive_forwarder_escrow_authority, derive_nonce_bitmap_pda,
 };
 #[cfg(feature = "solana")]
 pub use program_ids::*;

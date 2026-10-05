@@ -44,9 +44,9 @@ import { Program } from "@anchor-lang/core";
 import { PublicKey } from "@solana/web3.js";
 import { getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 import { SplTokenForwarder } from "../target/types/spl_token_forwarder";
-import { emergencyWithdraw, escrowAccounts, initializeForwarder, reinitializeForwarder } from "../client/instructions";
+import { emergencyWithdraw, initializeForwarder, reinitializeForwarder } from "../client/instructions";
 import { derivePaStatePda } from "../client/pda";
-import { deriveForwarderConfigPda } from "../ts/src/pda";
+import { deriveForwarderConfigPda, deriveForwarderEscrowAuthority } from "../ts/src/pda";
 import { fail, requireHexBytes, requirePubkey, requireRawAmount } from "./cli-utils";
 
 const provider = confirmedProvider();
@@ -110,7 +110,7 @@ async function init() {
 
   if (process.env.STF_TOKEN_MINT) {
     const mint = requireMint();
-    const { escrowAuthority } = escrowAccounts(forwarder.programId, mint);
+    const [escrowAuthority] = deriveForwarderEscrowAuthority(forwarder.programId);
     const escrowAta = await getOrCreateAssociatedTokenAccount(connection, wallet.payer, mint, escrowAuthority, true);
     console.log(
       `✅ Escrow for ${mint.toBase58()}: authority ${escrowAuthority.toBase58()}, ATA ${escrowAta.address.toBase58()}`,
@@ -138,16 +138,9 @@ async function withdraw() {
   const recipient = requirePubkey("STF_RECIPIENT", "the owner of the receiving token account");
   const amount = requireRawAmount("STF_AMOUNT", "the amount to withdraw, in the token's raw units");
   await requireConfig();
-  const { escrowAta } = escrowAccounts(forwarder.programId, mint);
   const recipientAta = (await getOrCreateAssociatedTokenAccount(connection, wallet.payer, mint, recipient)).address;
 
-  await emergencyWithdraw(
-    forwarder,
-    paState,
-    wallet.publicKey,
-    { mint, amount, recipient },
-    { escrowAta, recipientAta },
-  ).rpc();
+  await emergencyWithdraw(forwarder, paState, wallet.publicKey, { mint, amount, recipient }).rpc();
   console.log(`✅ Withdrew ${amount} raw units of ${mint.toBase58()} to ${recipientAta.toBase58()}`);
 }
 

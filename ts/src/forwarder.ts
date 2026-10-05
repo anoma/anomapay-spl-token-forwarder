@@ -3,7 +3,7 @@
 // `init_nonce_bitmap` instruction. Ordering is owned by the forwarder program;
 // integrators must use these builders rather than hand-rolling the slice.
 
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import {
   type AccountMeta,
   SYSVAR_INSTRUCTIONS_PUBKEY,
@@ -12,10 +12,8 @@ import {
   type PublicKey,
 } from "@solana/web3.js";
 
-import { FORWARDER_UNWRAP_NUM_ACCOUNTS, FORWARDER_WRAP_NUM_ACCOUNTS } from "./constants.js";
 import { anchorDiscriminator } from "./discriminator.js";
 import {
-  deriveAssociatedTokenAddress,
   deriveEventAuthorityPda,
   deriveForwarderConfigPda,
   deriveForwarderEscrowAuthority,
@@ -81,11 +79,30 @@ function forwarderSegmentHead(forwarderProgram: PublicKey): AccountMeta[] {
 }
 
 /**
- * Build the wrap forwarder CPI segment.
- *
- * Order: `[forwarder_program, config, ix_sysvar, event_authority,
- * forwarder_program, user_ata, escrow_ata, escrow_authority,
- * nonce_bitmap_pda, token_program]`.
+ * The accounts of a release from `tokenMint`'s escrow to `recipient`'s token
+ * account, in the order the forwarder reads them: the escrow's token account,
+ * the recipient's, the escrow authority and the token program. They end an
+ * unwrap segment and are `forward_emergency_call`'s remaining accounts.
+ */
+export function escrowReleaseAccounts(
+  forwarderProgram: PublicKey,
+  recipient: PublicKey,
+  tokenMint: PublicKey,
+): AccountMeta[] {
+  const [escrowAuthority] = deriveForwarderEscrowAuthority(forwarderProgram);
+  return [
+    { pubkey: getAssociatedTokenAddressSync(tokenMint, escrowAuthority, true), isSigner: false, isWritable: true },
+    { pubkey: getAssociatedTokenAddressSync(tokenMint, recipient, true), isSigner: false, isWritable: true },
+    { pubkey: escrowAuthority, isSigner: false, isWritable: false },
+    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+  ];
+}
+
+/**
+ * Build the wrap forwarder CPI segment: `[forwarder_program, config,
+ * ix_sysvar, event_authority, forwarder_program, user_ata, escrow_ata,
+ * escrow_authority, nonce_bitmap_pda, token_program]`. The nonce bitmap must
+ * already exist (`initNonceBitmapIx`).
  */
 export function buildWrapForwarderAccounts(
   forwarderProgram: PublicKey,
@@ -95,42 +112,48 @@ export function buildWrapForwarderAccounts(
 ): AccountMeta[] {
   const [escrowAuthority] = deriveForwarderEscrowAuthority(forwarderProgram);
   const [nonceBitmapPda] = deriveNonceBitmapPda(forwarderProgram, user, nonceWordIndex(nonce));
-  const accounts: AccountMeta[] = [
+  return [
     ...forwarderSegmentHead(forwarderProgram),
-    { pubkey: deriveAssociatedTokenAddress(user, tokenMint), isSigner: false, isWritable: true },
-    { pubkey: deriveAssociatedTokenAddress(escrowAuthority, tokenMint), isSigner: false, isWritable: true },
+    { pubkey: getAssociatedTokenAddressSync(tokenMint, user, true), isSigner: false, isWritable: true },
+    { pubkey: getAssociatedTokenAddressSync(tokenMint, escrowAuthority, true), isSigner: false, isWritable: true },
     { pubkey: escrowAuthority, isSigner: false, isWritable: false },
     { pubkey: nonceBitmapPda, isSigner: false, isWritable: true },
     { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
   ];
-  if (accounts.length !== FORWARDER_WRAP_NUM_ACCOUNTS) {
-    throw new Error(`wrap segment has ${accounts.length} accounts, expected ${FORWARDER_WRAP_NUM_ACCOUNTS}`);
-  }
-  return accounts;
 }
 
 /**
- * Build the unwrap forwarder CPI segment.
- *
- * Order: `[forwarder_program, config, ix_sysvar, event_authority,
- * forwarder_program, escrow_ata, recipient_ata, escrow_authority,
- * token_program]`.
+ * Build the unwrap forwarder CPI segment: `[forwarder_program, config,
+ * ix_sysvar, event_authority, forwarder_program, escrow_ata, recipient_ata,
+ * escrow_authority, token_program]`.
  */
 export function buildUnwrapForwarderAccounts(
   forwarderProgram: PublicKey,
   recipient: PublicKey,
   tokenMint: PublicKey,
 ): AccountMeta[] {
-  const [escrowAuthority] = deriveForwarderEscrowAuthority(forwarderProgram);
-  const accounts: AccountMeta[] = [
+  return [
     ...forwarderSegmentHead(forwarderProgram),
-    { pubkey: deriveAssociatedTokenAddress(escrowAuthority, tokenMint), isSigner: false, isWritable: true },
-    { pubkey: deriveAssociatedTokenAddress(recipient, tokenMint), isSigner: false, isWritable: true },
-    { pubkey: escrowAuthority, isSigner: false, isWritable: false },
-    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ...escrowReleaseAccounts(forwarderProgram, recipient, tokenMint),
   ];
-  if (accounts.length !== FORWARDER_UNWRAP_NUM_ACCOUNTS) {
-    throw new Error(`unwrap segment has ${accounts.length} accounts, expected ${FORWARDER_UNWRAP_NUM_ACCOUNTS}`);
-  }
-  return accounts;
+}
+
+/**
+ * The accounts every settlement that calls the forwarder carries for it and
+ * that are the same for every call: the ones a deployment's settlement lookup
+ * table holds for it. Each mint in `mints` adds its escrow's token account; the
+ * user's and the recipient's token accounts and the user's nonce bitmap differ
+ * per settlement.
+ */
+export function forwarderSettlementLookupKeys(forwarderProgram: PublicKey, mints: PublicKey[]): PublicKey[] {
+  const [escrowAuthority] = deriveForwarderEscrowAuthority(forwarderProgram);
+  return [
+    forwarderProgram,
+    deriveForwarderConfigPda(forwarderProgram)[0],
+    SYSVAR_INSTRUCTIONS_PUBKEY,
+    deriveEventAuthorityPda(forwarderProgram)[0],
+    escrowAuthority,
+    TOKEN_PROGRAM_ID,
+    ...mints.map((mint) => getAssociatedTokenAddressSync(mint, escrowAuthority, true)),
+  ];
 }

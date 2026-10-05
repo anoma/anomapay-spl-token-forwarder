@@ -51,11 +51,8 @@ pub fn run_script<P>(
         std::process::id(),
         wallet.pubkey()
     ));
-    std::fs::write(
-        &wallet_file,
-        serde_json::to_string(&wallet.to_bytes().to_vec())?,
-    )
-    .with_context(|| format!("failed to write {}", wallet_file.display()))?;
+    solana_keypair::write_keypair_file(wallet, &wallet_file)
+        .map_err(|e| anyhow::anyhow!("failed to write {}: {e}", wallet_file.display()))?;
     let output: std::io::Result<Output> = std::process::Command::new("npx")
         .args(["ts-node", "-P", "tsconfig.json"])
         .arg(format!("scripts/{script}"))

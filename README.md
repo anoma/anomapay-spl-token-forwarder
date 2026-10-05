@@ -16,7 +16,6 @@ The adapter calls the forwarder through the external calls a settled transaction
 | `fixtures/` | The wrap authorization message every client must serialize alike |
 | `scripts/` | `dev.sh` (enters the Nix shell), `ops.sh` (the commands) and the operator scripts (TypeScript) |
 | `client/` | The operator scripts' TypeScript instruction builders, PDAs and cluster helpers |
-| `idl/` | The adapter's IDL, for the seeds the operator scripts derive ([idl/README.md](idl/README.md)) |
 | `docs/` | [OPERATIONS.md](docs/OPERATIONS.md) (deploying and operating the forwarder), [INTEGRATION.md](docs/INTEGRATION.md) (its events and call segments) and [DEVNET_DEPLOYMENT.md](docs/DEVNET_DEPLOYMENT.md) (the devnet record) |
 
 The program builds against the adapter's program crate, pinned by revision in `Cargo.toml`: it reads the adapter's state account to check that the adapter is paused before an emergency call, and uses the upgrade helpers the adapter shares with its forwarders.
@@ -41,4 +40,4 @@ Everything runs in the repository's Nix dev shell, which pins the Rust, Solana a
 
 ## Operations
 
-Deploying, initializing, upgrading and operating the forwarder on a cluster go through `./scripts/dev.sh <command> --cluster <localnet\|devnet\|mainnet>`: `deploy`, `upgrade`, `forwarder <init\|reinitialize\|emergency-withdraw>`, `lookup-table`, `idl-publish`, `status`, `balance`. [docs/OPERATIONS.md](docs/OPERATIONS.md) is the procedure set.
+Deploying, initializing, upgrading and operating the forwarder on a cluster go through `./scripts/dev.sh <command> --cluster <localnet\|devnet\|mainnet>`: `deploy`, `upgrade`, `forwarder <init\|reinitialize\|emergency-withdraw>`, `lookup-table`, `idl-publish`, `status`. [docs/OPERATIONS.md](docs/OPERATIONS.md) is the procedure set.

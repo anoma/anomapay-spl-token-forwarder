@@ -4,11 +4,11 @@ use anoma_pa_solana_integration_test::envs::common::environment::Environment;
 use anoma_pa_testkit::environment::Prover;
 use anoma_pa_testkit::execute_tx;
 use anoma_pa_testkit::transaction::Transaction;
-use anomapay_spl_token_forwarder_client::derive_associated_token_address;
 use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
 use anomapay_spl_token_forwarder_integration_test::setup::{self, Forwarder, balance};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
+use spl_associated_token_account_interface::address::get_associated_token_address;
 
 /// 100 tokens at the mint's 6 decimals.
 const AMOUNT: u64 = 100_000_000;
@@ -39,7 +39,7 @@ where
         .prove_unwrap(env, wrapped, &owner, recipient)
         .await?;
     execute_tx(env, tx).await?;
-    let recipient_account = derive_associated_token_address(&recipient, &forwarder.mint);
+    let recipient_account = get_associated_token_address(&recipient, &forwarder.mint);
     anyhow::ensure!(balance(env, &recipient_account).await? == AMOUNT);
     anyhow::ensure!(balance(env, &escrow).await? == escrow_before);
     Ok(())

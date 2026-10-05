@@ -4,10 +4,9 @@
  * builder; callers add signers and send.
  */
 import { Program } from "@anchor-lang/core";
-import { AccountMeta, ComputeBudgetProgram, PublicKey } from "@solana/web3.js";
-import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { ComputeBudgetProgram, PublicKey } from "@solana/web3.js";
 import { SplTokenForwarder } from "../target/types/spl_token_forwarder";
-import { deriveForwarderEscrowAuthority } from "../ts/src/pda";
+import { escrowReleaseAccounts } from "../ts/src/forwarder";
 
 /**
  * The most compute units a transaction may use. `upgrade` runs under it,
@@ -27,33 +26,6 @@ export function encodeUnwrapInput(tokenMint: PublicKey, amount: bigint, recipien
   operand.writeBigUInt64LE(amount, 32);
   recipient.toBuffer().copy(operand, 40);
   return operand;
-}
-
-/** A mint's escrow: the forwarder's escrow authority and its associated token account for the mint. */
-export function escrowAccounts(
-  forwarderProgramId: PublicKey,
-  mint: PublicKey,
-): { escrowAuthority: PublicKey; escrowAta: PublicKey } {
-  const [escrowAuthority] = deriveForwarderEscrowAuthority(forwarderProgramId);
-  return { escrowAuthority, escrowAta: getAssociatedTokenAddressSync(mint, escrowAuthority, true) };
-}
-
-/**
- * The accounts of an escrow release, in the order the program reads them:
- * the unwrap's remaining accounts after the segment head, and the whole of
- * forward_emergency_call's.
- */
-export function escrowTransferAccounts(
-  escrowAta: PublicKey,
-  recipientAta: PublicKey,
-  escrowAuthority: PublicKey,
-): AccountMeta[] {
-  return [
-    { pubkey: escrowAta, isSigner: false, isWritable: true },
-    { pubkey: recipientAta, isSigner: false, isWritable: true },
-    { pubkey: escrowAuthority, isSigner: false, isWritable: false },
-    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-  ];
 }
 
 /**
@@ -100,22 +72,19 @@ export function upgradeForwarder(
     .preInstructions([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_COMPUTE_UNIT_LIMIT })]);
 }
 
-/** `forward_emergency_call` by `caller`; callers add signers and send. */
+/**
+ * `forward_emergency_call` by `caller`: `withdrawal.amount` of
+ * `withdrawal.mint` from escrow to `withdrawal.recipient`'s token account,
+ * which must exist. Callers add signers and send.
+ */
 export function emergencyWithdraw(
   forwarder: Program<SplTokenForwarder>,
   paState: PublicKey,
   caller: PublicKey,
   withdrawal: { mint: PublicKey; amount: bigint; recipient: PublicKey },
-  accounts: { escrowAta: PublicKey; recipientAta: PublicKey },
 ) {
   return forwarder.methods
     .forwardEmergencyCall(encodeUnwrapInput(withdrawal.mint, withdrawal.amount, withdrawal.recipient))
     .accountsPartial({ caller, paState })
-    .remainingAccounts(
-      escrowTransferAccounts(
-        accounts.escrowAta,
-        accounts.recipientAta,
-        deriveForwarderEscrowAuthority(forwarder.programId)[0],
-      ),
-    );
+    .remainingAccounts(escrowReleaseAccounts(forwarder.programId, withdrawal.recipient, withdrawal.mint));
 }

@@ -1,6 +1,8 @@
 //! The forwarder's instruction data: the op byte and the wrap or unwrap
 //! input, which a resource's external call carries as its instruction data.
 
+use anoma_pa_solana_client::cursor::{Cursor, Truncated};
+
 /// Op byte prepended to `WrapInput`-shaped instruction data.
 pub const OP_WRAP: u8 = 0;
 
@@ -18,22 +20,22 @@ pub const OP_UNWRAP: u8 = 1;
 ///
 /// `deadline` is signed i64 to match the forwarder's `WrapInput::deadline: i64`.
 pub fn encode_wrap_forwarder_input(
-    token_mint: &[u8],
+    token_mint: &[u8; 32],
     amount: u64,
-    user: &[u8],
+    user: &[u8; 32],
     nonce: u64,
     deadline: i64,
-    action_tree_root: &[u8],
+    action_tree_root: &[u8; 32],
     ed25519_ix_index: u8,
 ) -> Vec<u8> {
     let mut buf = Vec::with_capacity(122);
     buf.push(OP_WRAP);
-    buf.extend_from_slice(&pad_to_32(token_mint));
+    buf.extend_from_slice(token_mint);
     buf.extend_from_slice(&amount.to_le_bytes());
-    buf.extend_from_slice(&pad_to_32(user));
+    buf.extend_from_slice(user);
     buf.extend_from_slice(&nonce.to_le_bytes());
     buf.extend_from_slice(&deadline.to_le_bytes());
-    buf.extend_from_slice(&pad_to_32(action_tree_root));
+    buf.extend_from_slice(action_tree_root);
     buf.push(ed25519_ix_index);
     buf
 }
@@ -41,24 +43,17 @@ pub fn encode_wrap_forwarder_input(
 /// Build the 73-byte forwarder instruction data for an unwrap.
 ///
 /// Layout: `op(1) + token_mint(32) + amount_le(8) + recipient(32)`.
-pub fn encode_unwrap_forwarder_input(token_mint: &[u8], amount: u64, recipient: &[u8]) -> Vec<u8> {
+pub fn encode_unwrap_forwarder_input(
+    token_mint: &[u8; 32],
+    amount: u64,
+    recipient: &[u8; 32],
+) -> Vec<u8> {
     let mut buf = Vec::with_capacity(73);
     buf.push(OP_UNWRAP);
-    buf.extend_from_slice(&pad_to_32(token_mint));
+    buf.extend_from_slice(token_mint);
     buf.extend_from_slice(&amount.to_le_bytes());
-    buf.extend_from_slice(&pad_to_32(recipient));
+    buf.extend_from_slice(recipient);
     buf
-}
-
-fn pad_to_32(input: &[u8]) -> [u8; 32] {
-    assert!(
-        input.len() <= 32,
-        "input too long for 32-byte field: {} bytes",
-        input.len()
-    );
-    let mut out = [0u8; 32];
-    out[..input.len()].copy_from_slice(input);
-    out
 }
 
 /// A forwarder call's instruction data, decoded: what a submitter reads from
@@ -115,31 +110,42 @@ impl core::fmt::Display for InputError {
 
 impl std::error::Error for InputError {}
 
+fn read_wrap(input: &mut Cursor) -> Result<WrapInput, Truncated> {
+    Ok(WrapInput {
+        token_mint: input.array_32("token_mint")?,
+        amount: input.u64_le("amount")?,
+        user: input.array_32("user")?,
+        nonce: input.u64_le("nonce")?,
+        // The i64's little-endian bytes, read as a u64 and reinterpreted.
+        deadline: input.u64_le("deadline")? as i64,
+        action_tree_root: input.array_32("action_tree_root")?,
+        ed25519_ix_index: input.u8("ed25519_ix_index")?,
+    })
+}
+
+fn read_unwrap(input: &mut Cursor) -> Result<UnwrapInput, Truncated> {
+    Ok(UnwrapInput {
+        token_mint: input.array_32("token_mint")?,
+        amount: input.u64_le("amount")?,
+        recipient: input.array_32("recipient")?,
+    })
+}
+
 /// Decode a forwarder call's instruction data, as the forwarder parses it.
 pub fn decode_forwarder_input(data: &[u8]) -> Result<ForwarderInput, InputError> {
     let (&op, input) = data.split_first().ok_or(InputError::UnknownOp(None))?;
-    let length = InputError::Length {
-        op,
-        len: input.len(),
-    };
-    let field32 = |at: usize| -> [u8; 32] { input[at..at + 32].try_into().expect("32 bytes") };
-    let field8 = |at: usize| -> [u8; 8] { input[at..at + 8].try_into().expect("8 bytes") };
+    let mut cursor = Cursor::new(input, 0);
     match op {
-        OP_WRAP if input.len() == 121 => Ok(ForwarderInput::Wrap(WrapInput {
-            token_mint: field32(0),
-            amount: u64::from_le_bytes(field8(32)),
-            user: field32(40),
-            nonce: u64::from_le_bytes(field8(72)),
-            deadline: i64::from_le_bytes(field8(80)),
-            action_tree_root: field32(88),
-            ed25519_ix_index: input[120],
-        })),
-        OP_UNWRAP if input.len() == 72 => Ok(ForwarderInput::Unwrap(UnwrapInput {
-            token_mint: field32(0),
-            amount: u64::from_le_bytes(field8(32)),
-            recipient: field32(40),
-        })),
-        OP_WRAP | OP_UNWRAP => Err(length),
+        OP_WRAP if input.len() == 121 => Ok(ForwarderInput::Wrap(
+            read_wrap(&mut cursor).expect("a 121-byte input holds every wrap field"),
+        )),
+        OP_UNWRAP if input.len() == 72 => Ok(ForwarderInput::Unwrap(
+            read_unwrap(&mut cursor).expect("a 72-byte input holds every unwrap field"),
+        )),
+        OP_WRAP | OP_UNWRAP => Err(InputError::Length {
+            op,
+            len: input.len(),
+        }),
         op => Err(InputError::UnknownOp(Some(op))),
     }
 }

@@ -2,24 +2,24 @@
 //! once it is paused, naming the emergency caller, who withdraws from
 //! escrow, and the teardown that reclaims the forwarder's rent.
 
-use anoma_pa_solana_client::{anchor_account_disc, derive_pa_state_pda, pause_ix};
+use anoma_pa_solana_client::{anchor_account_disc, derive_pa_state_pda};
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
 use anomapay_spl_token_forwarder_client::{
-    UnwrapInput, close_config_ix, close_escrow_ix, close_nonce_bitmaps_batch_ix, decode_config,
-    derive_associated_token_address, derive_forwarder_config_pda,
-    derive_forwarder_escrow_authority, derive_nonce_bitmap_pda, forward_emergency_call_ix,
-    init_nonce_bitmap_ix, set_emergency_caller_ix,
+    UnwrapInput, close_config_ix, close_escrow_ix, close_nonce_bitmaps_batch_ix,
+    derive_forwarder_config_pda, derive_forwarder_escrow_authority, derive_nonce_bitmap_pda,
+    forward_emergency_call_ix, init_nonce_bitmap_ix, set_emergency_caller_ix,
 };
 use anomapay_spl_token_forwarder_integration_test::refusal::balances;
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, LocalForwarder, balance, create_mint, fund, mint_to, token_account,
+    self, LocalForwarder, balance, config, create_mint, fund, mint_to, pause, token_account,
 };
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
 use solana_rpc_client_types::config::RpcProgramAccountsConfig;
 use solana_rpc_client_types::filter::{Memcmp, RpcFilterType};
 use solana_signer::Signer;
+use spl_associated_token_account_interface::address::get_associated_token_address;
 use surfpool_sdk::Pubkey;
 
 /// What a test escrows of a fresh mint: 500 tokens at 6 decimals.
@@ -69,7 +69,7 @@ async fn funded_escrow(
     let program = local.forwarder.program;
     let mint = create_mint(env, &program).await?;
     let (escrow_authority, _) = derive_forwarder_escrow_authority(&program);
-    let escrow = derive_associated_token_address(&escrow_authority, &mint);
+    let escrow = get_associated_token_address(&escrow_authority, &mint);
     mint_to(env, &mint, &escrow, ESCROWED).await?;
     let recipient_account = token_account(env, recipient, &mint).await?;
     Ok((mint, escrow, recipient_account))
@@ -78,14 +78,7 @@ async fn funded_escrow(
 /// The local environment with the adapter paused by its owner.
 async fn paused() -> anyhow::Result<(LocalEnv, LocalForwarder)> {
     let (env, local) = setup::local().await?;
-    env.send(
-        &[pause_ix(
-            &env.protocol_adapter.program,
-            &env.protocol_adapter.payer.pubkey(),
-        )],
-        &[],
-    )
-    .await?;
+    pause(&env).await?;
     Ok((env, local))
 }
 
@@ -275,8 +268,7 @@ async fn the_committee_sets_the_emergency_caller_once_the_adapter_is_paused() ->
     let (env, local) = paused().await?;
     let caller = Keypair::new().pubkey();
     set_emergency_caller(&env, &local, &caller).await?;
-    let (config, _) = derive_forwarder_config_pda(&local.forwarder.program);
-    let config = decode_config(&env.protocol_adapter.rpc.get_account_data(&config).await?)?;
+    let config = config(&env, &local.forwarder.program).await?;
     anyhow::ensure!(
         config.emergency_caller == caller.to_bytes(),
         "the config names {} the emergency caller, not {caller}",
@@ -475,8 +467,7 @@ async fn closes_every_nonce_bitmap_and_refunds_their_rent() -> anyhow::Result<()
         &[],
     )
     .await?;
-    env.send(&[pause_ix(&env.protocol_adapter.program, &payer)], &[])
-        .await?;
+    pause(&env).await?;
     let bitmaps = nonce_bitmaps(&env, &program).await?;
     anyhow::ensure!(
         bitmaps.len() == users.len()
@@ -554,7 +545,7 @@ async fn close_escrow_closes_an_empty_escrow() -> anyhow::Result<()> {
     let committee = local.committee.pubkey();
     let mint = create_mint(&env, &program).await?;
     let (escrow_authority, _) = derive_forwarder_escrow_authority(&program);
-    let escrow = derive_associated_token_address(&escrow_authority, &mint);
+    let escrow = get_associated_token_address(&escrow_authority, &mint);
     let recipient_account = token_account(&env, &committee, &mint).await?;
     anyhow::ensure!(balance(&env, &escrow).await? == 0, "the escrow is empty");
     env.send(

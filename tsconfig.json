@@ -12,7 +12,10 @@
   "include": ["client/**/*.ts", "scripts/**/*.ts"],
   "ts-node": {
     // The operator scripts run as CommonJS; the bindings package (`ts/`)
-    // they import from is an ES module package, compiled here as CommonJS.
-    "moduleTypes": { "ts/src/**/*": "cjs" }
+    // they import from is an ES module package, compiled here as CommonJS,
+    // whose imports name their modules' `.js` outputs, which the resolver
+    // maps back to the `.ts` sources.
+    "moduleTypes": { "ts/src/**/*": "cjs" },
+    "experimentalResolver": true
   }
 }

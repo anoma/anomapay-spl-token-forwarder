@@ -2,32 +2,21 @@
 //! on a cluster does what it says there. Run with `ops.sh script-test`, which
 //! installs the scripts' dependencies and builds the types they import.
 
-use anoma_pa_solana_client::{
-    derive_event_authority_pda, derive_pa_state_pda, derive_upgrade_authority_pda, pause_ix,
-};
-use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
+use anoma_pa_solana_client::{derive_pa_state_pda, derive_upgrade_authority_pda};
 use anomapay_spl_token_forwarder_client::{
-    CONFIG_VERSION, ConfigAccount, INSTRUCTIONS_SYSVAR_ID, decode_config,
-    derive_associated_token_address, derive_forwarder_config_pda,
-    derive_forwarder_escrow_authority, set_emergency_caller_ix, sha256,
+    CONFIG_VERSION, ConfigAccount, derive_forwarder_escrow_authority,
+    forwarder_settlement_lookup_keys, set_emergency_caller_ix,
 };
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::scripts::{hex, run_script};
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, Build, FORWARDER_SO, LocalForwarder, balance, give_sol, mint_to, new_mint,
-    upgrade_authority,
+    self, Build, FORWARDER_SO, LocalForwarder, balance, config, dev_set_config_version_ix,
+    executable_hash, give_sol, mint_to, new_mint, pause, upgrade_authority,
 };
-use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
+use spl_associated_token_account_interface::address::get_associated_token_address;
 use surfpool_sdk::Pubkey;
-
-async fn config(env: &LocalEnv, program: &Pubkey) -> anyhow::Result<ConfigAccount> {
-    let (config, _) = derive_forwarder_config_pda(program);
-    Ok(decode_config(
-        &env.protocol_adapter.rpc.get_account_data(&config).await?,
-    )?)
-}
 
 /// The variables `forwarder init` reads: the transfer logic, `committee`
 /// and `owner`.
@@ -80,7 +69,7 @@ async fn init_initializes_a_deployed_forwarder_as_requested() -> anyhow::Result<
         "the upgrade authority is {authority:?}, not the program's PDA {pda}"
     );
     let (escrow_authority, _) = derive_forwarder_escrow_authority(&program);
-    let escrow = derive_associated_token_address(&escrow_authority, &mint);
+    let escrow = get_associated_token_address(&escrow_authority, &mint);
     anyhow::ensure!(
         balance(&env, &escrow).await? == 0,
         "the mint's escrow account {escrow} is not created"
@@ -140,22 +129,6 @@ async fn init_refuses_an_existing_config_that_differs_from_the_request() -> anyh
     Ok(())
 }
 
-/// The development build's `dev_set_config_version`: the owner puts the
-/// config at `version`, as an earlier build would have left it.
-fn dev_set_config_version_ix(program: &Pubkey, owner: &Pubkey, version: u64) -> Instruction {
-    let mut data =
-        anoma_pa_solana_client::anchor_instruction_disc("dev_set_config_version").to_vec();
-    data.extend_from_slice(&version.to_le_bytes());
-    Instruction {
-        program_id: *program,
-        accounts: vec![
-            AccountMeta::new_readonly(*owner, true),
-            AccountMeta::new(derive_forwarder_config_pda(program).0, false),
-        ],
-        data,
-    }
-}
-
 /// After an upgrade to a build that raises CONFIG_VERSION, the owner rotates
 /// the logic ref.
 #[tokio::test(flavor = "multi_thread")]
@@ -172,7 +145,7 @@ async fn reinitialize_rotates_the_logic_ref() -> anyhow::Result<()> {
     )
     .await?;
     // The owner signs and pays as the script's wallet.
-    give_sol(&env, &owner.pubkey(), 1_000_000_000).await?;
+    give_sol(&env, &owner.pubkey(), 1_000_000_000)?;
     let rotated = Keypair::new().pubkey().to_bytes();
     let ran = run_script(
         &env,
@@ -203,11 +176,9 @@ async fn emergency_withdraw_moves_escrowed_tokens_to_the_recipient() -> anyhow::
         committee,
         ..
     } = &local;
-    let payer = env.protocol_adapter.payer.pubkey();
     let (pa_state, _) = derive_pa_state_pda(&env.protocol_adapter.program);
     let caller = Keypair::new();
-    env.send(&[pause_ix(&env.protocol_adapter.program, &payer)], &[])
-        .await?;
+    pause(&env).await?;
     env.send(
         &[set_emergency_caller_ix(
             &forwarder.program,
@@ -221,7 +192,7 @@ async fn emergency_withdraw_moves_escrowed_tokens_to_the_recipient() -> anyhow::
     let escrow = forwarder.escrow_account();
     mint_to(&env, &forwarder.mint, &escrow, 1_000).await?;
     // The caller signs and pays, for the recipient's token account too.
-    give_sol(&env, &caller.pubkey(), 1_000_000_000).await?;
+    give_sol(&env, &caller.pubkey(), 1_000_000_000)?;
 
     let recipient = Keypair::new().pubkey();
     let ran = run_script(
@@ -239,7 +210,7 @@ async fn emergency_withdraw_moves_escrowed_tokens_to_the_recipient() -> anyhow::
         ran.success && ran.stdout.contains("✅ Withdrew 400"),
         "{ran}"
     );
-    let recipient_account = derive_associated_token_address(&recipient, &forwarder.mint);
+    let recipient_account = get_associated_token_address(&recipient, &forwarder.mint);
     anyhow::ensure!(
         balance(&env, &escrow).await? == 600 && balance(&env, &recipient_account).await? == 400,
         "the withdrawal did not move 400 from escrow to the recipient"
@@ -272,16 +243,7 @@ async fn lookup_table_adds_the_forwarders_accounts_to_the_deployments_table() ->
         solana_address_lookup_table_interface::state::AddressLookupTable::deserialize(&data)?
             .addresses
             .to_vec();
-    let (escrow_authority, _) = derive_forwarder_escrow_authority(&program);
-    for key in [
-        program,
-        derive_forwarder_config_pda(&program).0,
-        INSTRUCTIONS_SYSVAR_ID,
-        derive_event_authority_pda(&program).0,
-        escrow_authority,
-        spl_token_interface::id(),
-        derive_associated_token_address(&escrow_authority, &mint),
-    ] {
+    for key in forwarder_settlement_lookup_keys(&program, &[mint]) {
         anyhow::ensure!(stored.contains(&key), "the table lacks {key}: {ran}");
     }
     Ok(())
@@ -325,7 +287,7 @@ async fn upgrade_takes_the_path_the_upgrade_authority_leaves_and_installs_the_ow
     let ran = run_script(&env, owner, "upgrade-program.ts", &["path"], &[])?;
     anyhow::ensure!(ran.success && ran.stdout.trim() == "program", "{ran}");
 
-    give_sol(&env, &owner.pubkey(), 1_000_000_000).await?;
+    give_sol(&env, &owner.pubkey(), 1_000_000_000)?;
     let buffer = env.write_buffer(FORWARDER_SO, owner.pubkey()).await?;
     let ran = run_script(
         &env,
@@ -334,11 +296,7 @@ async fn upgrade_takes_the_path_the_upgrade_authority_leaves_and_installs_the_ow
         &["upgrade", &buffer.to_string()],
         &[],
     )?;
-    let end = FORWARDER_SO
-        .iter()
-        .rposition(|&b| b != 0)
-        .map_or(0, |i| i + 1);
-    let expected = hex(&sha256(&FORWARDER_SO[..end]));
+    let expected = hex(&executable_hash(FORWARDER_SO));
     anyhow::ensure!(
         ran.success && ran.stdout.contains(&format!("upgraded to {expected}")),
         "{ran}"

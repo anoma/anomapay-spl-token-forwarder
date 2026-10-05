@@ -5,17 +5,15 @@
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::executed::Executed;
 use anoma_rm_risc0::resource::Resource;
-use anomapay_spl_token_forwarder_client::{
-    ForwarderEvent, decode_forwarder_event_instruction, derive_associated_token_address,
-    derive_forwarder_escrow_authority,
-};
+use anomapay_spl_token_forwarder_client::{ForwarderEvent, derive_forwarder_escrow_authority};
 use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
 use anomapay_spl_token_forwarder_integration_test::refusal::{balances, refuses};
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, LocalForwarder, balance, create_mint, fund, mint_to, token_account,
+    self, LocalForwarder, balance, create_mint, events, fund, mint_to, token_account,
 };
 use solana_keypair::Keypair;
 use solana_signer::Signer;
+use spl_associated_token_account_interface::address::get_associated_token_address;
 
 /// 100 tokens at the mint's 6 decimals: what the wrap escrows and the unwrap
 /// releases.
@@ -52,18 +50,17 @@ async fn settles_an_unwrap_the_recipient_receives_the_tokens_from_escrow() -> an
         .await?;
     let signature = env.protocol_adapter.settle(tx).await?;
 
-    let recipient_account = derive_associated_token_address(&recipient, &forwarder.mint);
+    let recipient_account = get_associated_token_address(&recipient, &forwarder.mint);
     anyhow::ensure!(
         balances(&env, &[escrow, recipient_account]).await? == [escrow_before - AMOUNT, AMOUNT],
         "the unwrap moves {AMOUNT} from the escrow's account to the recipient's"
     );
 
     // Mirrors ERC20Forwarder's `Unwrapped` event, a CPI event like `Wrapped`.
-    let executed = Executed::read(&env.protocol_adapter.rpc, &signature).await?;
-    let events: Vec<_> = executed
-        .cpi_events(&forwarder.program)
-        .map(decode_forwarder_event_instruction)
-        .collect::<Result<_, _>>()?;
+    let events = events(
+        &Executed::read(&env.protocol_adapter.rpc, &signature).await?,
+        &forwarder.program,
+    )?;
     let [ForwarderEvent::Unwrapped(event)] = &events[..] else {
         anyhow::bail!("the settlement emits {events:?}, not one Unwrapped event");
     };
@@ -137,7 +134,7 @@ async fn refuses_an_unwrap_that_draws_another_mints_escrow() -> anyhow::Result<(
     let recipient = Keypair::new().pubkey();
     let other_mint = create_mint(&env, &forwarder.program).await?;
     let (escrow_authority, _) = derive_forwarder_escrow_authority(&forwarder.program);
-    let escrow_other = derive_associated_token_address(&escrow_authority, &other_mint);
+    let escrow_other = get_associated_token_address(&escrow_authority, &other_mint);
     mint_to(&env, &other_mint, &escrow_other, AMOUNT).await?;
     let recipient_other = token_account(&env, &recipient, &other_mint).await?;
     let tx = forwarder

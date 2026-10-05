@@ -4,7 +4,6 @@
 //! functions: same inputs always produce the same `(Pubkey, bump)` pair.
 
 use solana_pubkey::Pubkey;
-use spl_associated_token_account_interface::address::get_associated_token_address;
 
 /// Derive the forwarder's global config PDA. Seed: `["config"]`.
 pub fn derive_forwarder_config_pda(forwarder_program: &Pubkey) -> (Pubkey, u8) {
@@ -35,12 +34,6 @@ pub fn derive_nonce_bitmap_pda(
     )
 }
 
-/// The SPL Associated Token Account address for a wallet and mint, from the
-/// SPL client library (the ids and seed order are the library's, not ours).
-pub fn derive_associated_token_address(wallet: &Pubkey, token_mint: &Pubkey) -> Pubkey {
-    get_associated_token_address(wallet, token_mint)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -48,9 +41,8 @@ mod tests {
 
     #[test]
     fn forwarder_escrow_authority_matches_the_devnet_forwarder() {
-        // Independent pin: the escrow authority the adapter repo's
-        // settlement lookup table derived for the V2 forwarder
-        // (client/pda.ts deriveEscrowAuthority, seed "escrow").
+        // Independent pin: the devnet forwarder's escrow authority, as
+        // docs/DEVNET_DEPLOYMENT.md records it.
         let (authority, bump) = derive_forwarder_escrow_authority(&FORWARDER_PROGRAM_ID);
         assert_eq!(
             authority.to_string(),

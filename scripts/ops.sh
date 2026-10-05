@@ -57,9 +57,8 @@ Cluster operations (--cluster required):
                  Program Metadata IDL account; signer must be the upgrade
                  authority to create it, the upgrade authority or its
                  authority to update it)
-  status         Show whether the forwarder is deployed and initialized, and
-                 the wallet's balance
-  balance        Show the wallet's address and balance
+  status         Show the wallet's address and balance, and whether the
+                 forwarder is deployed and initialized
 
 Flags:
   --cluster <c>    localnet, devnet or mainnet. The addresses come from
@@ -79,7 +78,8 @@ Flags:
   --e2e            integration-test: the e2e cases
   --check          test-program: compare instead of writing
 
-Forwarder initialization parameters (required by deploy and forwarder init):
+Forwarder initialization parameters (required by forwarder init and a
+localnet deploy, which initializes):
   STF_LOGIC_REF        32-byte hex logic ref the forwarder serves
   STF_EMERGENCY_COMMITTEE
                        base58 pubkey of the emergency committee
@@ -185,7 +185,6 @@ ensure_node_modules() {
 
 RPC_URL=""
 EXPLORER_QS=""
-PRINT_EXPLORER=false
 WALLET=""
 
 resolve_cluster() {
@@ -199,12 +198,10 @@ resolve_cluster() {
     devnet)
       RPC_URL="${DEVNET_RPC_URL:-}"
       EXPLORER_QS="?cluster=devnet"
-      PRINT_EXPLORER=true
       default_wallet="${PROJECT_DIR}/scripts/devnet-wallet.json"
       ;;
     mainnet)
       RPC_URL="${MAINNET_RPC_URL:-}"
-      PRINT_EXPLORER=true
       ;;
     "")
       echo "❌ Missing --cluster <localnet|devnet|mainnet>" >&2
@@ -293,9 +290,11 @@ require_forwarder_deployed() {
   fi
 }
 
+# The explorer link of <address> on devnet and mainnet; the explorer does not
+# see localnet.
 print_explorer_link() {
   local address="$1"
-  if [[ "$PRINT_EXPLORER" == "true" ]]; then
+  if [[ "$CLUSTER" != "localnet" ]]; then
     echo "  https://explorer.solana.com/address/${address}${EXPLORER_QS}"
   fi
 }
@@ -430,9 +429,14 @@ require_forwarder_init_params() {
   fi
 }
 
-init_forwarder() {
-  echo "Initializing SPL token forwarder (idempotent)..."
-  run_ts scripts/forwarder.ts init
+# The checks every operator script's command makes, then the production
+# build whose types the script imports, then scripts/<script> with <args>.
+run_operator_script() {
+  require_cmd yarn
+  require_forwarder_deployed
+  ensure_node_modules
+  build_release
+  run_ts "scripts/$1" "${@:2}"
 }
 
 # ---------- cluster commands ----------
@@ -440,7 +444,11 @@ init_forwarder() {
 cmd_deploy() {
   require_cmd anchor
   require_cmd yarn
-  require_forwarder_init_params
+  # A localnet deploy initializes the forwarder (below): check its parameters
+  # before deploying.
+  if [[ "$CLUSTER" == "localnet" ]]; then
+    require_forwarder_init_params
+  fi
   if ! is_deployed "$FORWARDER_PROGRAM_ID"; then
     program_keypair >/dev/null
   fi
@@ -455,7 +463,8 @@ cmd_deploy() {
   # initialization waits until the deployer has given that account to the
   # owner, by hand (docs/OPERATIONS.md).
   if [[ "$CLUSTER" == "localnet" ]]; then
-    init_forwarder
+    echo "Initializing SPL token forwarder (idempotent)..."
+    run_ts scripts/forwarder.ts init
   else
     cmd_idl_publish
     echo "Next, by hand: give the forwarder's canonical metadata account to its owner, then run" \
@@ -491,19 +500,11 @@ cmd_upgrade() {
 }
 
 cmd_forwarder() {
-  require_cmd yarn
-  require_forwarder_deployed
-  ensure_node_modules
-  build_release
-  run_ts scripts/forwarder.ts "$ARGUMENT"
+  run_operator_script forwarder.ts "$ARGUMENT"
 }
 
 cmd_lookup_table() {
-  require_cmd yarn
-  require_forwarder_deployed
-  ensure_node_modules
-  build_release
-  run_ts scripts/lookup-table.ts
+  run_operator_script lookup-table.ts
 }
 
 # Publish the production IDL on chain as the program's canonical Program
@@ -514,11 +515,7 @@ cmd_lookup_table() {
 # by accident. The program's upgrade authority creates the account; it or the
 # account's explicit authority updates it (client/programMetadata.ts).
 cmd_idl_publish() {
-  require_cmd yarn
-  require_forwarder_deployed
-  ensure_node_modules
-  build_release
-  run_ts scripts/publish-idl.ts "$PROGRAM_IDL"
+  run_operator_script publish-idl.ts "$PROGRAM_IDL"
 }
 
 cmd_status() {
@@ -550,10 +547,6 @@ cmd_status() {
     echo "❌ solana account ${config} failed: ${out}" >&2
     exit 1
   fi
-}
-
-cmd_balance() {
-  echo "$(get_wallet_pubkey)  $(get_balance) SOL"
 }
 
 # ---------- dispatch ----------
@@ -630,7 +623,7 @@ case "$COMMAND" in
     require_cmd npm
     (cd ts && npm ci && npm run tsc && npm test)
     ;;
-  deploy | upgrade | forwarder | lookup-table | idl-publish | status | balance)
+  deploy | upgrade | forwarder | lookup-table | idl-publish | status)
     require_cmd solana
     require_cmd solana-keygen
     resolve_cluster

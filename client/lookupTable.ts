@@ -4,34 +4,9 @@ import {
   Connection,
   Keypair,
   PublicKey,
-  SYSVAR_INSTRUCTIONS_PUBKEY,
   Transaction,
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { escrowAccounts } from "./instructions";
-import { deriveEventAuthorityPda, deriveForwarderConfigPda, deriveForwarderEscrowAuthority } from "../ts/src/pda";
-
-/**
- * The accounts every settlement that calls the forwarder carries for it and
- * that are the same for every call: the ones the deployment's settlement
- * lookup table holds. The user's and the recipient's token accounts and the
- * user's nonce bitmap differ per settlement; each mint in `mints` adds its
- * escrow account.
- */
-export function forwarderLookupKeys(splTokenForwarder: PublicKey, mints: PublicKey[]): PublicKey[] {
-  const [config] = deriveForwarderConfigPda(splTokenForwarder);
-  const [eventAuthority] = deriveEventAuthorityPda(splTokenForwarder);
-  return [
-    splTokenForwarder,
-    config,
-    SYSVAR_INSTRUCTIONS_PUBKEY,
-    eventAuthority,
-    deriveForwarderEscrowAuthority(splTokenForwarder)[0],
-    TOKEN_PROGRAM_ID,
-    ...mints.map((mint) => escrowAccounts(splTokenForwarder, mint).escrowAta),
-  ];
-}
 
 /** The lookup table at `address`; a missing table is an error. */
 export async function fetchLookupTable(connection: Connection, address: PublicKey): Promise<AddressLookupTableAccount> {
@@ -53,23 +28,21 @@ export async function extendLookupTable(
   keys: PublicKey[],
   address: PublicKey,
 ): Promise<{ table: AddressLookupTableAccount; added: PublicKey[]; signature?: string }> {
-  const present = (await fetchLookupTable(connection, address)).state.addresses;
+  const table = await fetchLookupTable(connection, address);
   const added: PublicKey[] = [];
   for (const key of keys) {
-    if (!present.some((p) => p.equals(key)) && !added.some((a) => a.equals(key))) added.push(key);
+    if (!table.state.addresses.some((p) => p.equals(key)) && !added.some((a) => a.equals(key))) added.push(key);
   }
-  let signature: string | undefined;
-  if (added.length > 0) {
-    const extend = AddressLookupTableProgram.extendLookupTable({
-      lookupTable: address,
-      authority: payer.publicKey,
-      payer: payer.publicKey,
-      addresses: added,
-    });
-    signature = await sendAndConfirmTransaction(connection, new Transaction().add(extend), [payer], {
-      preflightCommitment: "confirmed",
-      commitment: "finalized",
-    });
-  }
+  if (added.length === 0) return { table, added };
+  const extend = AddressLookupTableProgram.extendLookupTable({
+    lookupTable: address,
+    authority: payer.publicKey,
+    payer: payer.publicKey,
+    addresses: added,
+  });
+  const signature = await sendAndConfirmTransaction(connection, new Transaction().add(extend), [payer], {
+    preflightCommitment: "confirmed",
+    commitment: "finalized",
+  });
   return { table: await fetchLookupTable(connection, address), added, signature };
 }

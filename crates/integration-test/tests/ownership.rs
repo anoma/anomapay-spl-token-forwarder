@@ -10,10 +10,12 @@ use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::executed::Executed;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
 use anomapay_spl_token_forwarder_client::{
-    ForwarderEvent, decode_config, decode_forwarder_event_instruction, derive_forwarder_config_pda,
-    reinitialize_ix, renounce_ownership_ix, sha256, transfer_ownership_ix, upgrade_ixs,
+    ForwarderEvent, derive_forwarder_config_pda, reinitialize_ix, renounce_ownership_ix,
+    transfer_ownership_ix, upgrade_ixs,
 };
-use anomapay_spl_token_forwarder_integration_test::setup::{self, FORWARDER_SO, LocalForwarder};
+use anomapay_spl_token_forwarder_integration_test::setup::{
+    self, FORWARDER_SO, LocalForwarder, config, events, executable_hash,
+};
 use solana_keypair::Keypair;
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
 use solana_signature::Signature;
@@ -41,19 +43,6 @@ async fn reinitialize_as(
 
 const NOT_THE_OWNER: &str =
     "AnchorError caused by account: authority. Error Code: OwnableUnauthorizedAccount.";
-
-/// The forwarder's events in the confirmed transaction `signature`.
-async fn events(
-    env: &LocalEnv,
-    local: &LocalForwarder,
-    signature: &Signature,
-) -> anyhow::Result<Vec<ForwarderEvent>> {
-    Ok(Executed::read(&env.protocol_adapter.rpc, signature)
-        .await?
-        .cpi_events(&local.forwarder.program)
-        .map(decode_forwarder_event_instruction)
-        .collect::<Result<_, _>>()?)
-}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn transfer_ownership_refuses_a_signer_that_is_not_the_owner() -> anyhow::Result<()> {
@@ -105,7 +94,10 @@ async fn transfer_ownership_moves_the_ownership_at_once_and_announces_it() -> an
             &[owner],
         )
         .await?;
-    let events = events(&env, &local, &signature).await?;
+    let events = events(
+        &Executed::read(&env.protocol_adapter.rpc, &signature).await?,
+        &local.forwarder.program,
+    )?;
     let [ForwarderEvent::OwnershipTransferred(transferred)] = &events[..] else {
         anyhow::bail!("transfer_ownership emits {events:?}, not one OwnershipTransferred");
     };
@@ -116,8 +108,7 @@ async fn transfer_ownership_moves_the_ownership_at_once_and_announces_it() -> an
         owner.pubkey(),
         successor.pubkey()
     );
-    let (config, _) = derive_forwarder_config_pda(&local.forwarder.program);
-    let config = decode_config(&env.protocol_adapter.rpc.get_account_data(&config).await?)?;
+    let config = config(&env, &local.forwarder.program).await?;
     anyhow::ensure!(
         config.owner == successor.pubkey().to_bytes(),
         "the config's owner is {}, not the successor",
@@ -146,7 +137,10 @@ async fn renounced_ownership_is_announced_and_closes_reinitialize_and_upgrade() 
             &[owner],
         )
         .await?;
-    let events = events(&env, &local, &signature).await?;
+    let events = events(
+        &Executed::read(&env.protocol_adapter.rpc, &signature).await?,
+        &local.forwarder.program,
+    )?;
     let [ForwarderEvent::OwnershipTransferred(transferred)] = &events[..] else {
         anyhow::bail!("renounce_ownership emits {events:?}, not one OwnershipTransferred");
     };
@@ -232,14 +226,6 @@ async fn upgrade_refuses_a_buffer_someone_other_than_the_owner_wrote() -> anyhow
     )
 }
 
-/// The executable hash of a program's code, as `solana-verify
-/// get-executable-hash` computes it: the sha256 of the code without its
-/// trailing zero bytes.
-fn executable_hash(code: &[u8]) -> [u8; 32] {
-    let end = code.iter().rposition(|&b| b != 0).map_or(0, |i| i + 1);
-    sha256(&code[..end])
-}
-
 // UUPS upgradeToAndCall: the owner replaces the code, announced with
 // ERC1967's Upgraded, naming the code by its executable hash. The test
 // upgrades to the build it already runs.
@@ -261,7 +247,10 @@ async fn upgrade_replaces_the_code_with_the_owners_buffer_announces_its_executab
         )
         .await?;
 
-    let events = events(&env, &local, &signature).await?;
+    let events = events(
+        &Executed::read(&env.protocol_adapter.rpc, &signature).await?,
+        &local.forwarder.program,
+    )?;
     let [ForwarderEvent::Upgraded(upgraded)] = &events[..] else {
         anyhow::bail!("upgrade emits {events:?}, not one Upgraded");
     };

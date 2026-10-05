@@ -50,6 +50,10 @@ jobs:
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            crates/integration-test
 
       - name: Run clippy
         run: ./scripts/ops.sh clippy
@@ -97,6 +101,7 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 24
+          cache: yarn
 
       - name: Install Solana CLI
         run: |
@@ -122,6 +127,8 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: ts/package-lock.json
 
       - name: Type-check and test the TypeScript bindings
         run: ./scripts/ops.sh ts-test

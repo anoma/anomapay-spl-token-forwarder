@@ -7,19 +7,17 @@ use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 use solana_sdk_ids::{bpf_loader_upgradeable, system_program, sysvar};
+use spl_associated_token_account_interface::address::get_associated_token_address;
 
 use anoma_pa_solana_client::{
     anchor_instruction_disc, derive_event_authority_pda, derive_program_data_address,
     derive_upgrade_authority_pda,
 };
 
-use crate::constants::{
-    FORWARDER_UNWRAP_NUM_ACCOUNTS, FORWARDER_WRAP_NUM_ACCOUNTS, NONCES_PER_WORD,
-};
-use crate::input::{encode_unwrap_forwarder_input, UnwrapInput};
+use crate::constants::NONCES_PER_WORD;
+use crate::input::UnwrapInput;
 use crate::pda::{
-    derive_associated_token_address, derive_forwarder_config_pda,
-    derive_forwarder_escrow_authority, derive_nonce_bitmap_pda,
+    derive_forwarder_config_pda, derive_forwarder_escrow_authority, derive_nonce_bitmap_pda,
 };
 
 /// The nonce-bitmap word a wrap nonce falls in.
@@ -222,31 +220,30 @@ pub fn forward_emergency_call_ix(
     pa_state: &Pubkey,
     withdraw: &UnwrapInput,
 ) -> Instruction {
-    let mint = Pubkey::new_from_array(withdraw.token_mint);
-    let recipient = Pubkey::new_from_array(withdraw.recipient);
-    let (escrow_authority, _) = derive_forwarder_escrow_authority(forwarder_program);
-    let input =
-        &encode_unwrap_forwarder_input(&withdraw.token_mint, withdraw.amount, &withdraw.recipient)
-            [1..];
+    let input = [
+        withdraw.token_mint.as_slice(),
+        &withdraw.amount.to_le_bytes(),
+        &withdraw.recipient,
+    ]
+    .concat();
     let mut data = anchor_instruction_disc("forward_emergency_call").to_vec();
     data.extend_from_slice(&(input.len() as u32).to_le_bytes());
-    data.extend_from_slice(input);
+    data.extend_from_slice(&input);
+    let mut accounts = vec![
+        AccountMeta::new(*caller, true),
+        AccountMeta::new_readonly(derive_forwarder_config_pda(forwarder_program).0, false),
+        AccountMeta::new_readonly(*pa_state, false),
+        AccountMeta::new_readonly(derive_event_authority_pda(forwarder_program).0, false),
+        AccountMeta::new_readonly(*forwarder_program, false),
+    ];
+    accounts.extend(escrow_release_accounts(
+        forwarder_program,
+        &Pubkey::new_from_array(withdraw.recipient),
+        &Pubkey::new_from_array(withdraw.token_mint),
+    ));
     Instruction {
         program_id: *forwarder_program,
-        accounts: vec![
-            AccountMeta::new(*caller, true),
-            AccountMeta::new_readonly(derive_forwarder_config_pda(forwarder_program).0, false),
-            AccountMeta::new_readonly(*pa_state, false),
-            AccountMeta::new_readonly(derive_event_authority_pda(forwarder_program).0, false),
-            AccountMeta::new_readonly(*forwarder_program, false),
-            AccountMeta::new(
-                derive_associated_token_address(&escrow_authority, &mint),
-                false,
-            ),
-            AccountMeta::new(derive_associated_token_address(&recipient, &mint), false),
-            AccountMeta::new_readonly(escrow_authority, false),
-            AccountMeta::new_readonly(spl_token_interface::id(), false),
-        ],
+        accounts,
         data,
     }
 }
@@ -267,10 +264,7 @@ pub fn close_escrow_ix(
         accounts: vec![
             AccountMeta::new(*committee, true),
             AccountMeta::new_readonly(derive_forwarder_config_pda(forwarder_program).0, false),
-            AccountMeta::new(
-                derive_associated_token_address(&escrow_authority, mint),
-                false,
-            ),
+            AccountMeta::new(get_associated_token_address(&escrow_authority, mint), false),
             AccountMeta::new_readonly(escrow_authority, false),
             AccountMeta::new(*recipient_ata, false),
             AccountMeta::new_readonly(*mint, false),
@@ -339,11 +333,30 @@ fn forwarder_segment_head(forwarder_program: &Pubkey) -> [AccountMeta; 5] {
     ]
 }
 
-/// Build the wrap forwarder CPI segment.
-///
-/// Order: `[forwarder_program, config, ix_sysvar, event_authority,
-/// forwarder_program, user_ata, escrow_ata, escrow_authority,
-/// nonce_bitmap_pda, token_program]`.
+/// The accounts of a release from `token_mint`'s escrow to `recipient`'s
+/// token account, in the order the forwarder reads them: the escrow's token
+/// account, the recipient's, the escrow authority and the token program.
+fn escrow_release_accounts(
+    forwarder_program: &Pubkey,
+    recipient: &Pubkey,
+    token_mint: &Pubkey,
+) -> [AccountMeta; 4] {
+    let (escrow_authority, _) = derive_forwarder_escrow_authority(forwarder_program);
+    [
+        AccountMeta::new(
+            get_associated_token_address(&escrow_authority, token_mint),
+            false,
+        ),
+        AccountMeta::new(get_associated_token_address(recipient, token_mint), false),
+        AccountMeta::new_readonly(escrow_authority, false),
+        AccountMeta::new_readonly(spl_token_interface::id(), false),
+    ]
+}
+
+/// Build the wrap forwarder CPI segment: `[forwarder_program, config,
+/// ix_sysvar, event_authority, forwarder_program, user_ata, escrow_ata,
+/// escrow_authority, nonce_bitmap_pda, token_program]`. The nonce bitmap must
+/// already exist (`init_nonce_bitmap_ix`).
 pub fn build_wrap_forwarder_accounts(
     forwarder_program: &Pubkey,
     user: &Pubkey,
@@ -351,51 +364,69 @@ pub fn build_wrap_forwarder_accounts(
     nonce: u64,
 ) -> Vec<AccountMeta> {
     let (escrow_authority, _) = derive_forwarder_escrow_authority(forwarder_program);
-    let user_ata = derive_associated_token_address(user, token_mint);
-    let escrow_ata = derive_associated_token_address(&escrow_authority, token_mint);
     let (nonce_bitmap_pda, _) =
         derive_nonce_bitmap_pda(forwarder_program, user, nonce_word_index(nonce));
-
     let mut accounts = forwarder_segment_head(forwarder_program).to_vec();
     accounts.extend([
-        AccountMeta::new(user_ata, false),                  // user ATA
-        AccountMeta::new(escrow_ata, false),                // escrow ATA
-        AccountMeta::new_readonly(escrow_authority, false), // escrow authority
-        AccountMeta::new(nonce_bitmap_pda, false),          // nonce bitmap
-        AccountMeta::new_readonly(spl_token_interface::id(), false), // token program
+        AccountMeta::new(get_associated_token_address(user, token_mint), false),
+        AccountMeta::new(
+            get_associated_token_address(&escrow_authority, token_mint),
+            false,
+        ),
+        AccountMeta::new_readonly(escrow_authority, false),
+        AccountMeta::new(nonce_bitmap_pda, false),
+        AccountMeta::new_readonly(spl_token_interface::id(), false),
     ]);
-    debug_assert_eq!(accounts.len(), FORWARDER_WRAP_NUM_ACCOUNTS as usize);
     accounts
 }
 
-/// Build the unwrap forwarder CPI segment.
-///
-/// Order: `[forwarder_program, config, ix_sysvar, event_authority,
-/// forwarder_program, escrow_ata, recipient_ata, escrow_authority,
-/// token_program]`.
+/// Build the unwrap forwarder CPI segment: `[forwarder_program, config,
+/// ix_sysvar, event_authority, forwarder_program, escrow_ata, recipient_ata,
+/// escrow_authority, token_program]`.
 pub fn build_unwrap_forwarder_accounts(
     forwarder_program: &Pubkey,
     recipient: &Pubkey,
     token_mint: &Pubkey,
 ) -> Vec<AccountMeta> {
-    let (escrow_authority, _) = derive_forwarder_escrow_authority(forwarder_program);
-    let escrow_ata = derive_associated_token_address(&escrow_authority, token_mint);
-    let recipient_ata = derive_associated_token_address(recipient, token_mint);
-
     let mut accounts = forwarder_segment_head(forwarder_program).to_vec();
-    accounts.extend([
-        AccountMeta::new(escrow_ata, false),                // escrow ATA
-        AccountMeta::new(recipient_ata, false),             // recipient ATA
-        AccountMeta::new_readonly(escrow_authority, false), // escrow authority
-        AccountMeta::new_readonly(spl_token_interface::id(), false), // token program
-    ]);
-    debug_assert_eq!(accounts.len(), FORWARDER_UNWRAP_NUM_ACCOUNTS as usize);
+    accounts.extend(escrow_release_accounts(
+        forwarder_program,
+        recipient,
+        token_mint,
+    ));
     accounts
+}
+
+/// The accounts every settlement that calls the forwarder carries for it and
+/// that are the same for every call: the ones a deployment's settlement
+/// lookup table holds for it. Each mint in `mints` adds its escrow's token
+/// account; the user's and the recipient's token accounts and the user's
+/// nonce bitmap differ per settlement.
+pub fn forwarder_settlement_lookup_keys(
+    forwarder_program: &Pubkey,
+    mints: &[Pubkey],
+) -> Vec<Pubkey> {
+    let (escrow_authority, _) = derive_forwarder_escrow_authority(forwarder_program);
+    let mut keys = vec![
+        *forwarder_program,
+        derive_forwarder_config_pda(forwarder_program).0,
+        sysvar::instructions::id(),
+        derive_event_authority_pda(forwarder_program).0,
+        escrow_authority,
+        spl_token_interface::id(),
+    ];
+    keys.extend(
+        mints
+            .iter()
+            .map(|mint| get_associated_token_address(&escrow_authority, mint)),
+    );
+    keys
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::{FORWARDER_UNWRAP_NUM_ACCOUNTS, FORWARDER_WRAP_NUM_ACCOUNTS};
     use std::str::FromStr;
 
     fn canonical_spl_token_program_id() -> Pubkey {
@@ -424,8 +455,8 @@ mod tests {
                 sysvar::instructions::id(),
                 derive_event_authority_pda(&forwarder).0,
                 forwarder,
-                derive_associated_token_address(&user, &mint),
-                derive_associated_token_address(&escrow_authority, &mint),
+                get_associated_token_address(&user, &mint),
+                get_associated_token_address(&escrow_authority, &mint),
                 escrow_authority,
                 derive_nonce_bitmap_pda(&forwarder, &user, 1).0, // nonce 300 is in word 1
                 canonical_spl_token_program_id(),
@@ -457,8 +488,8 @@ mod tests {
                 sysvar::instructions::id(),
                 derive_event_authority_pda(&forwarder).0,
                 forwarder,
-                derive_associated_token_address(&escrow_authority, &mint),
-                derive_associated_token_address(&recipient, &mint),
+                get_associated_token_address(&escrow_authority, &mint),
+                get_associated_token_address(&recipient, &mint),
                 escrow_authority,
                 canonical_spl_token_program_id(),
             ]
@@ -470,6 +501,36 @@ mod tests {
             "the escrow ATA and recipient ATA are written"
         );
         assert!(accs.iter().all(|a| !a.is_signer));
+    }
+
+    #[test]
+    fn the_lookup_keys_are_the_segments_accounts_no_user_or_recipient_changes() {
+        let forwarder = Pubkey::new_unique();
+        let (user, recipient) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let mints = [Pubkey::new_unique(), Pubkey::new_unique()];
+        let lookup = forwarder_settlement_lookup_keys(&forwarder, &mints);
+        for mint in &mints {
+            let per_settlement = [
+                get_associated_token_address(&user, mint),
+                derive_nonce_bitmap_pda(&forwarder, &user, 0).0,
+                get_associated_token_address(&recipient, mint),
+            ];
+            let segments = keys(&build_wrap_forwarder_accounts(&forwarder, &user, mint, 0))
+                .into_iter()
+                .chain(keys(&build_unwrap_forwarder_accounts(
+                    &forwarder, &recipient, mint,
+                )));
+            for key in segments {
+                assert_eq!(
+                    lookup.contains(&key),
+                    !per_settlement.contains(&key),
+                    "{key} is in the lookup keys {lookup:?} exactly when no settlement changes it"
+                );
+            }
+        }
+        // The six accounts every call shares and one escrow per mint: every
+        // fixed segment account once, nothing else.
+        assert_eq!(lookup.len(), 6 + mints.len(), "{lookup:?}");
     }
 
     #[test]
@@ -694,7 +755,7 @@ mod tests {
         assert_eq!(by_name("authority"), committee);
         assert_eq!(
             by_name("escrow_ata"),
-            derive_associated_token_address(&escrow_authority, &mint)
+            get_associated_token_address(&escrow_authority, &mint)
         );
         assert_eq!(by_name("recipient_ata"), recipient_ata);
         assert_eq!(by_name("token_mint"), mint);
@@ -748,10 +809,10 @@ mod tests {
             ix.accounts[5..].to_vec(),
             vec![
                 AccountMeta::new(
-                    derive_associated_token_address(&escrow_authority, &mint),
+                    get_associated_token_address(&escrow_authority, &mint),
                     false
                 ),
-                AccountMeta::new(derive_associated_token_address(&recipient, &mint), false),
+                AccountMeta::new(get_associated_token_address(&recipient, &mint), false),
                 AccountMeta::new_readonly(escrow_authority, false),
                 AccountMeta::new_readonly(spl_token_interface::id(), false),
             ],

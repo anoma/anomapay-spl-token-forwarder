@@ -1407,6 +1407,7 @@ dependencies = [
  "solana-program-pack 3.1.0",
  "solana-rpc-client",
  "solana-rpc-client-types",
+ "solana-sdk-ids 3.1.0",
  "solana-signature",
  "solana-signer",
  "solana-system-interface 3.2.0",

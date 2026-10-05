@@ -13,7 +13,6 @@
 // Phantom refuses raw binary input to signMessage because it could be a tx.
 
 import { sha256 } from "@noble/hashes/sha2";
-import bs58 from "bs58";
 
 import { assertSplTokenAmount } from "./amount.js";
 
@@ -22,10 +21,10 @@ export const WRAP_MESSAGE_LEN = 120;
 
 /** Inputs to construct a wrap authorization message. */
 export interface WrapMessageInput {
-  /** Forwarder program ID — base58 string or 32-byte buffer. */
-  forwarderId: string | Uint8Array;
-  /** SPL token mint — base58 string or 32-byte buffer. */
-  tokenMint: string | Uint8Array;
+  /** Forwarder program ID (32 bytes). */
+  forwarderId: Uint8Array;
+  /** SPL token mint (32 bytes). */
+  tokenMint: Uint8Array;
   /** SPL token amount (u64). */
   amount: bigint;
   /** Per-user nonce (u64). */
@@ -39,8 +38,7 @@ export interface WrapMessageInput {
 const I64_MIN = -(1n << 63n);
 const I64_MAX = (1n << 63n) - 1n;
 
-const toBytes32 = (value: string | Uint8Array, label: string): Uint8Array => {
-  const bytes = typeof value === "string" ? bs58.decode(value) : value;
+const require32Bytes = (bytes: Uint8Array, label: string): Uint8Array => {
   if (bytes.length !== 32) {
     throw new Error(`${label} must be 32 bytes; got ${bytes.length}`);
   }
@@ -50,20 +48,19 @@ const toBytes32 = (value: string | Uint8Array, label: string): Uint8Array => {
 /**
  * Build the canonical 120-byte little-endian wrap message.
  *
- * Validates `amount` (u64 range) and `deadline` (i64 range) before serializing.
+ * Validates `amount` and `nonce` (u64 range) and `deadline` (i64 range)
+ * before serializing.
  */
 export function buildWrapMessage(input: WrapMessageInput): Uint8Array<ArrayBuffer> {
   assertSplTokenAmount(input.amount, "Wrap amount");
-  if (input.nonce < 0n || input.nonce > (1n << 64n) - 1n) {
-    throw new RangeError(`wrap nonce must fit in u64; got ${input.nonce}`);
-  }
+  assertSplTokenAmount(input.nonce, "wrap nonce");
   if (input.deadline < I64_MIN || input.deadline > I64_MAX) {
     throw new RangeError(`wrap deadline must fit in i64; got ${input.deadline}`);
   }
 
-  const forwarder = toBytes32(input.forwarderId, "forwarderId");
-  const mint = toBytes32(input.tokenMint, "tokenMint");
-  const root = toBytes32(input.actionTreeRoot, "actionTreeRoot");
+  const forwarder = require32Bytes(input.forwarderId, "forwarderId");
+  const mint = require32Bytes(input.tokenMint, "tokenMint");
+  const root = require32Bytes(input.actionTreeRoot, "actionTreeRoot");
 
   const out = new Uint8Array(new ArrayBuffer(WRAP_MESSAGE_LEN));
   out.set(forwarder, 0);
@@ -77,10 +74,8 @@ export function buildWrapMessage(input: WrapMessageInput): Uint8Array<ArrayBuffe
 }
 
 /** SHA-256 of the serialized 120-byte layout. */
-export function hashWrapMessage(input: WrapMessageInput): Uint8Array<ArrayBuffer> {
-  const serialized = buildWrapMessage(input);
-  const digest = sha256(serialized);
-  return new Uint8Array(digest.buffer.slice(digest.byteOffset, digest.byteOffset + digest.byteLength)) as Uint8Array<ArrayBuffer>;
+export function hashWrapMessage(input: WrapMessageInput): Uint8Array {
+  return sha256(buildWrapMessage(input));
 }
 
 /**

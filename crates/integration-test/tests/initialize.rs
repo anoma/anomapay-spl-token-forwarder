@@ -6,23 +6,16 @@ use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::executed::Executed;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
 use anomapay_spl_token_forwarder_client::{
-    CONFIG_VERSION, ForwarderEvent, decode_config, decode_forwarder_event_instruction,
-    derive_forwarder_config_pda, initialize_ix,
+    CONFIG_VERSION, ConfigAccount, ForwarderEvent, derive_forwarder_config_pda, initialize_ix,
 };
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, Build, give_sol, upgrade_authority,
+    self, Build, config, events, give_sol, upgrade_authority,
 };
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 use surfpool_sdk::Pubkey;
-
-/// The local environment with the forwarder deployed, the adapter's payer
-/// its upgrade authority, and not initialized.
-async fn deployed() -> anyhow::Result<(LocalEnv, Pubkey)> {
-    setup::deployed(Build::Production).await
-}
 
 /// The forwarder `program`'s initialize by its upgrade authority, the
 /// adapter's payer, for the adapter and the transfer logic, with
@@ -66,10 +59,10 @@ async fn refuses(
 #[tokio::test(flavor = "multi_thread")]
 async fn refuses_an_initialize_signed_by_anyone_but_the_programs_upgrade_authority()
 -> anyhow::Result<()> {
-    let (env, program) = deployed().await?;
+    let (env, program) = setup::deployed(Build::Production).await?;
     let intruder = Keypair::new();
     // The signer pays for the config, so the intruder holds enough for it.
-    give_sol(&env, &intruder.pubkey(), 1_000_000_000).await?;
+    give_sol(&env, &intruder.pubkey(), 1_000_000_000)?;
     let ix = initialize_ix(
         &program,
         &intruder.pubkey(),
@@ -92,7 +85,7 @@ async fn refuses_an_initialize_signed_by_anyone_but_the_programs_upgrade_authori
 // the upgrade-authority check.
 #[tokio::test(flavor = "multi_thread")]
 async fn refuses_the_upgrade_authority_of_another_programs_program_data() -> anyhow::Result<()> {
-    let (env, program) = deployed().await?;
+    let (env, program) = setup::deployed(Build::Production).await?;
     let other = env.deploy_test_forwarder()?;
     let mut ix = initialize(
         &env,
@@ -120,7 +113,7 @@ async fn refuses_the_upgrade_authority_of_another_programs_program_data() -> any
 // Mirrors OwnableUpgradeable's initializer: OwnableInvalidOwner(address(0)).
 #[tokio::test(flavor = "multi_thread")]
 async fn refuses_a_zero_owner() -> anyhow::Result<()> {
-    let (env, program) = deployed().await?;
+    let (env, program) = setup::deployed(Build::Production).await?;
     let ix = initialize(&env, &program, &Keypair::new().pubkey(), &Pubkey::default());
     refuses(&env, &program, ix, &[], "Error Code: OwnableInvalidOwner.").await
 }
@@ -130,7 +123,7 @@ async fn refuses_a_zero_owner() -> anyhow::Result<()> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn refuses_a_zero_protocol_adapter() -> anyhow::Result<()> {
-    let (env, program) = deployed().await?;
+    let (env, program) = setup::deployed(Build::Production).await?;
     let ix = initialize_ix(
         &program,
         &env.protocol_adapter.payer.pubkey(),
@@ -151,7 +144,7 @@ async fn refuses_a_zero_protocol_adapter() -> anyhow::Result<()> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn refuses_a_zero_logic_ref() -> anyhow::Result<()> {
-    let (env, program) = deployed().await?;
+    let (env, program) = setup::deployed(Build::Production).await?;
     let ix = initialize_ix(
         &program,
         &env.protocol_adapter.payer.pubkey(),
@@ -172,7 +165,7 @@ async fn refuses_a_zero_logic_ref() -> anyhow::Result<()> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn refuses_a_zero_emergency_committee() -> anyhow::Result<()> {
-    let (env, program) = deployed().await?;
+    let (env, program) = setup::deployed(Build::Production).await?;
     let ix = initialize(&env, &program, &Pubkey::default(), &Keypair::new().pubkey());
     refuses(
         &env,
@@ -194,15 +187,14 @@ async fn refuses_a_zero_emergency_committee() -> anyhow::Result<()> {
 #[tokio::test(flavor = "multi_thread")]
 async fn stores_its_configuration_announces_it_and_hands_the_upgrade_authority_to_the_program()
 -> anyhow::Result<()> {
-    let (env, program) = deployed().await?;
+    let (env, program) = setup::deployed(Build::Production).await?;
     let (committee, owner) = (Keypair::new().pubkey(), Keypair::new().pubkey());
     let signature = env
         .send(&[initialize(&env, &program, &committee, &owner)], &[])
         .await?;
 
-    let (config, _) = derive_forwarder_config_pda(&program);
-    let config = decode_config(&env.protocol_adapter.rpc.get_account_data(&config).await?)?;
-    let expected = anomapay_spl_token_forwarder_client::ConfigAccount {
+    let config = config(&env, &program).await?;
+    let expected = ConfigAccount {
         protocol_adapter: env.protocol_adapter.program.to_bytes(),
         logic_ref: logic_ref().into(),
         emergency_committee: committee.to_bytes(),
@@ -222,11 +214,10 @@ async fn stores_its_configuration_announces_it_and_hands_the_upgrade_authority_t
         "the program's upgrade authority is {authority:?}, not its PDA {upgrade_pda}"
     );
 
-    let executed = Executed::read(&env.protocol_adapter.rpc, &signature).await?;
-    let events: Vec<_> = executed
-        .cpi_events(&program)
-        .map(decode_forwarder_event_instruction)
-        .collect::<Result<_, _>>()?;
+    let events = events(
+        &Executed::read(&env.protocol_adapter.rpc, &signature).await?,
+        &program,
+    )?;
     let [
         ForwarderEvent::OwnershipTransferred(transferred),
         ForwarderEvent::Initialized(initialized),

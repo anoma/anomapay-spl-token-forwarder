@@ -48,8 +48,7 @@ impl WrapMessage {
 
     /// SHA-256 of the serialized 120-byte layout.
     pub fn sha256_digest(&self) -> [u8; 32] {
-        let serialized = self.serialize();
-        sha256(&serialized)
+        sha256(&self.serialize())
     }
 
     /// Base64-encode the SHA-256 digest as UTF-8 text. This is the exact byte
@@ -60,11 +59,9 @@ impl WrapMessage {
     }
 }
 
-/// Convenience: SHA-256 over arbitrary bytes.
+/// SHA-256 over arbitrary bytes.
 pub fn sha256(bytes: &[u8]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    hasher.finalize().into()
+    Sha256::digest(bytes).into()
 }
 
 #[cfg(test)]

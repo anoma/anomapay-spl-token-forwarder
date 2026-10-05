@@ -99,14 +99,10 @@ checked_sbf_build() {
 }
 
 # The development build: the dev features on, with its IDL and TypeScript
-# types unless $1 is "noidl".
+# types.
 build_dev() {
-  local idl_flag=()
-  if [[ "${1:-}" == "noidl" ]]; then
-    idl_flag=(--no-idl)
-  fi
   echo "    Building the forwarder (development build)..."
-  checked_sbf_build anchor build --arch "$SBPF_ARCH" -p "$PROGRAM_NAME" "${idl_flag[@]}" -- --features "$DEV_FEATURES"
+  checked_sbf_build anchor build --arch "$SBPF_ARCH" -p "$PROGRAM_NAME" -- --features "$DEV_FEATURES"
 }
 
 # The production build: no dev features. Its IDL must be the development IDL

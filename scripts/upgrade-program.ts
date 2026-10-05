@@ -21,7 +21,8 @@ import { SplTokenForwarder } from "../target/types/spl_token_forwarder";
 import { upgradeForwarder } from "../client/instructions";
 import { deriveUpgradeAuthorityPda } from "../client/pda";
 import { bufferExecutableHash, deployedExecutableHash, upgradeAuthority } from "../client/upgrade";
-import { cpiEventsOfSignature } from "../client/events";
+import { forwarderEventsOfSignature } from "../client/events";
+import type { UpgradedEvent } from "../ts/src/events";
 import { fail, parsePubkey } from "./cli-utils";
 
 async function main() {
@@ -51,10 +52,10 @@ async function main() {
   console.log(`Upgrading the forwarder (${program.programId.toBase58()}) from buffer ${buffer.toBase58()}`);
   const signature = await upgradeForwarder(program, wallet, buffer, wallet).rpc({ commitment: "confirmed" });
 
-  const events = await cpiEventsOfSignature(provider.connection, program, signature);
-  const upgraded = events.find((e) => e.name === "upgraded");
-  if (!upgraded) throw new Error(`transaction ${signature} landed without upgraded`);
-  const announced = Buffer.from(upgraded.data.executableHash as number[]);
+  const events = await forwarderEventsOfSignature(provider.connection, program.programId, signature);
+  const upgraded = events.find((e): e is UpgradedEvent => e.name === "Upgraded");
+  if (!upgraded) throw new Error(`transaction ${signature} landed without Upgraded`);
+  const announced = Buffer.from(upgraded.executableHash);
   const deployed = await deployedExecutableHash(provider.connection, program.programId);
   if (!announced.equals(expected) || !deployed.equals(expected)) {
     throw new Error(

@@ -3,22 +3,28 @@
 
 use std::sync::Arc;
 
+use anoma_pa_solana_client::{anchor_instruction_disc, pause_ix};
 use anoma_pa_solana_integration_test::envs::common::environment::Environment;
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
+use anoma_pa_solana_integration_test::executed::Executed;
 use anoma_pa_solana_integration_test::forwarders::CallAccounts;
 use anoma_pa_testkit::environment::{CommitmentTree as _, Prover};
 use anoma_pa_testkit::transaction::Transaction;
 use anoma_pa_testkit::{execute_tx, prove_actions};
 use anoma_rm_risc0::resource::Resource;
 use anomapay_spl_token_forwarder_client::{
-    INSTRUCTIONS_SYSVAR_ID, create_ata_idempotent_ix, derive_associated_token_address,
-    derive_forwarder_config_pda, derive_forwarder_escrow_authority, initialize_ix,
+    ConfigAccount, ForwarderEvent, decode_config, decode_forwarder_event_instruction,
+    derive_forwarder_config_pda, derive_forwarder_escrow_authority,
+    forwarder_settlement_lookup_keys, initialize_ix, sha256,
 };
 use anyhow::Context;
+use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
 use solana_program_pack::Pack;
 use solana_signer::Signer;
+use spl_associated_token_account_interface::address::get_associated_token_address;
+use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
 use surfpool_sdk::Pubkey;
 
 use crate::fixtures::{self, ShieldedOwner, WrapAuthorization, WrapTerms};
@@ -130,17 +136,8 @@ pub async fn e2e() -> anyhow::Result<(
     Forwarder,
 )> {
     let mut env = anoma_pa_solana_integration_test::envs::e2e::Environment::setup_bare().await?;
-    use anomapay_spl_token_forwarder_client::decode_config;
-
     let program = forwarder_address(DEVNET)?;
-    let (config_address, _) = derive_forwarder_config_pda(&program);
-    let config = decode_config(
-        &env.protocol_adapter
-            .rpc
-            .get_account_data(&config_address)
-            .await
-            .with_context(|| format!("the forwarder {program} has no config {config_address}"))?,
-    )?;
+    let config = config(&env, &program).await?;
     let pa = env.protocol_adapter.program;
     anyhow::ensure!(
         config.protocol_adapter == pa.to_bytes(),
@@ -166,7 +163,6 @@ where
     P: Prover<Transaction = Transaction>,
 {
     let payer = env.protocol_adapter.payer.pubkey();
-    let (escrow_authority, _) = derive_forwarder_escrow_authority(&program);
     let mint = create_mint(env, &program).await?;
     let user = Keypair::new();
     fund(env, &program, &mint, &user, USER_TOKENS).await?;
@@ -176,15 +172,7 @@ where
         .forwarders
         .register(program, submitter.clone());
     env.protocol_adapter
-        .extend_lookup_table(vec![
-            program,
-            derive_forwarder_config_pda(&program).0,
-            anoma_pa_solana_client::derive_event_authority_pda(&program).0,
-            escrow_authority,
-            spl_token_interface::id(),
-            INSTRUCTIONS_SYSVAR_ID,
-            derive_associated_token_address(&escrow_authority, &mint),
-        ])
+        .extend_lookup_table(forwarder_settlement_lookup_keys(&program, &[mint]))
         .await?;
 
     Ok(Forwarder {
@@ -248,10 +236,18 @@ pub async fn token_account<P>(
     mint: &Pubkey,
 ) -> anyhow::Result<Pubkey> {
     let payer = env.protocol_adapter.payer.pubkey();
-    env.send(&[create_ata_idempotent_ix(&payer, owner, mint)], &[])
-        .await
-        .with_context(|| format!("failed to create {owner}'s token account for {mint}"))?;
-    Ok(derive_associated_token_address(owner, mint))
+    env.send(
+        &[create_associated_token_account_idempotent(
+            &payer,
+            owner,
+            mint,
+            &spl_token_interface::id(),
+        )],
+        &[],
+    )
+    .await
+    .with_context(|| format!("failed to create {owner}'s token account for {mint}"))?;
+    Ok(get_associated_token_address(owner, mint))
 }
 
 /// Mints `amount` of `mint`, whose authority is the adapter's payer, to the
@@ -308,19 +304,71 @@ pub async fn fund<P>(
     Ok(account)
 }
 
-/// Sends `lamports` from the adapter's payer to `to`: what a signer that
-/// pays for an account needs.
-pub async fn give_sol<P>(env: &Environment<P>, to: &Pubkey, lamports: u64) -> anyhow::Result<()> {
-    let payer = env.protocol_adapter.payer.pubkey();
+/// Sets `to`'s balance to `lamports`: what a new signer that pays for an
+/// account needs.
+pub fn give_sol<P>(env: &Environment<P>, to: &Pubkey, lamports: u64) -> anyhow::Result<()> {
+    env.surfnet
+        .cheatcodes()
+        .fund_sol(to, lamports)
+        .with_context(|| format!("failed to fund {to} with {lamports} lamports"))
+}
+
+/// Pauses `env`'s adapter, signed by its owner, the adapter's payer.
+pub async fn pause<P>(env: &Environment<P>) -> anyhow::Result<()> {
     env.send(
-        &[solana_system_interface::instruction::transfer(
-            &payer, to, lamports,
+        &[pause_ix(
+            &env.protocol_adapter.program,
+            &env.protocol_adapter.payer.pubkey(),
         )],
         &[],
     )
     .await
-    .with_context(|| format!("failed to send {lamports} lamports to {to}"))?;
+    .context("failed to pause the adapter")?;
     Ok(())
+}
+
+/// The forwarder `program`'s config on `env`.
+pub async fn config<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::Result<ConfigAccount> {
+    let (config, _) = derive_forwarder_config_pda(program);
+    let data = env
+        .protocol_adapter
+        .rpc
+        .get_account_data(&config)
+        .await
+        .with_context(|| format!("the forwarder {program} has no config {config}"))?;
+    Ok(decode_config(&data)?)
+}
+
+/// The development build's `dev_set_config_version`: the owner puts the
+/// config at `version`, as an earlier build would have left it.
+pub fn dev_set_config_version_ix(program: &Pubkey, owner: &Pubkey, version: u64) -> Instruction {
+    let mut data = anchor_instruction_disc("dev_set_config_version").to_vec();
+    data.extend_from_slice(&version.to_le_bytes());
+    Instruction {
+        program_id: *program,
+        accounts: vec![
+            AccountMeta::new_readonly(*owner, true),
+            AccountMeta::new(derive_forwarder_config_pda(program).0, false),
+        ],
+        data,
+    }
+}
+
+/// The forwarder `program`'s events in the transaction `executed`, in the
+/// order it emitted them.
+pub fn events(executed: &Executed, program: &Pubkey) -> anyhow::Result<Vec<ForwarderEvent>> {
+    Ok(executed
+        .cpi_events(program)
+        .map(decode_forwarder_event_instruction)
+        .collect::<Result<_, _>>()?)
+}
+
+/// The executable hash of a program's code, as `solana-verify
+/// get-executable-hash` computes it: the sha256 of the code without its
+/// trailing zero bytes.
+pub fn executable_hash(code: &[u8]) -> [u8; 32] {
+    let end = code.iter().rposition(|&b| b != 0).map_or(0, |i| i + 1);
+    sha256(&code[..end])
 }
 
 /// The upgrade authority the loader records for `program`; None once the
@@ -457,13 +505,13 @@ impl Forwarder {
 
     /// The user's token account for the mint.
     pub fn user_account(&self) -> Pubkey {
-        derive_associated_token_address(&self.user.pubkey(), &self.mint)
+        get_associated_token_address(&self.user.pubkey(), &self.mint)
     }
 
     /// The escrow's token account for the mint.
     pub fn escrow_account(&self) -> Pubkey {
         let (escrow_authority, _) = derive_forwarder_escrow_authority(&self.program);
-        derive_associated_token_address(&escrow_authority, &self.mint)
+        get_associated_token_address(&escrow_authority, &self.mint)
     }
 }
 

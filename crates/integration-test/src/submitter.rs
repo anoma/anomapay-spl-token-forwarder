@@ -8,12 +8,12 @@ use anoma_pa_solana_client::external_call::SolanaExternalCall;
 use anoma_pa_solana_integration_test::forwarders::{CallAccounts, Forwarder};
 use anomapay_spl_token_forwarder_client::{
     ForwarderInput, build_unwrap_forwarder_accounts, build_wrap_forwarder_accounts,
-    create_ata_idempotent_ix, decode_forwarder_input, derive_nonce_bitmap_pda,
-    init_nonce_bitmap_ix, nonce_word_index,
+    decode_forwarder_input, derive_nonce_bitmap_pda, init_nonce_bitmap_ix, nonce_word_index,
 };
 use anyhow::Context;
 use futures::future::BoxFuture;
 use solana_rpc_client::nonblocking::rpc_client::RpcClient;
+use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
 use surfpool_sdk::Pubkey;
 
 use crate::fixtures::WrapAuthorization;
@@ -107,7 +107,12 @@ impl Forwarder for SplTokenForwarder {
                         segment: build_unwrap_forwarder_accounts(&self.program, &recipient, &mint),
                         // The forwarder's transfer needs the recipient's
                         // token account to exist.
-                        preceding: vec![create_ata_idempotent_ix(&self.payer, &recipient, &mint)],
+                        preceding: vec![create_associated_token_account_idempotent(
+                            &self.payer,
+                            &recipient,
+                            &mint,
+                            &spl_token_interface::id(),
+                        )],
                     })
                 }
             }

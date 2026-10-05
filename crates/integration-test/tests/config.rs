@@ -9,42 +9,20 @@ use anoma_pa_solana_client::{
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
 use anomapay_spl_token_forwarder_client::{
-    CONFIG_VERSION, ConfigAccount, INSTRUCTIONS_SYSVAR_ID, decode_config,
-    derive_forwarder_config_pda, encode_unwrap_forwarder_input, reinitialize_ix,
+    CONFIG_VERSION, derive_forwarder_config_pda, encode_unwrap_forwarder_input, reinitialize_ix,
     set_emergency_caller_ix,
 };
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
-use anomapay_spl_token_forwarder_integration_test::setup::{self, Build, LocalForwarder};
+use anomapay_spl_token_forwarder_integration_test::setup::{
+    self, Build, LocalForwarder, config, dev_set_config_version_ix,
+};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
-use surfpool_sdk::Pubkey;
-
-async fn config(env: &LocalEnv, program: &Pubkey) -> anyhow::Result<ConfigAccount> {
-    let (config, _) = derive_forwarder_config_pda(program);
-    Ok(decode_config(
-        &env.protocol_adapter.rpc.get_account_data(&config).await?,
-    )?)
-}
 
 /// A logic ref no resource has: 32 random bytes.
 fn random_ref() -> [u8; 32] {
     Keypair::new().pubkey().to_bytes()
-}
-
-/// The development build's `dev_set_config_version`: the owner puts the
-/// config at `version`, as an earlier build would have left it.
-fn dev_set_config_version_ix(program: &Pubkey, owner: &Pubkey, version: u64) -> Instruction {
-    let mut data = anchor_instruction_disc("dev_set_config_version").to_vec();
-    data.extend_from_slice(&version.to_le_bytes());
-    Instruction {
-        program_id: *program,
-        accounts: vec![
-            AccountMeta::new_readonly(*owner, true),
-            AccountMeta::new(derive_forwarder_config_pda(program).0, false),
-        ],
-        data,
-    }
 }
 
 /// Reinitializing as `signer` fails with `error` and leaves the config as it
@@ -153,7 +131,7 @@ async fn refuses_a_forward_call_that_is_not_a_cpi_from_the_adapter() -> anyhow::
         program_id: program,
         accounts: vec![
             AccountMeta::new_readonly(derive_forwarder_config_pda(&program).0, false),
-            AccountMeta::new_readonly(INSTRUCTIONS_SYSVAR_ID, false),
+            AccountMeta::new_readonly(solana_sdk_ids::sysvar::instructions::ID, false),
             AccountMeta::new_readonly(derive_event_authority_pda(&program).0, false),
             AccountMeta::new_readonly(program, false),
         ],

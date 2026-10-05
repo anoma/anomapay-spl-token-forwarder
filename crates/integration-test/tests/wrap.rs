@@ -5,21 +5,23 @@
 use anoma_pa_solana_client::events::{PaEvent, decode_event_instruction};
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::executed::Executed;
+use anoma_pa_solana_integration_test::forwarders::CallAccounts;
 use anoma_pa_solana_integration_test::test_forwarder;
 use anoma_pa_testkit::transaction::Transaction;
 use anomapay_spl_token_forwarder_client::{
-    ForwarderEvent, build_wrap_forwarder_accounts, decode_forwarder_event_instruction,
-    decode_nonce_bitmap, derive_associated_token_address, derive_forwarder_escrow_authority,
-    derive_nonce_bitmap_pda, init_nonce_bitmap_ix, nonce_word_index,
+    ForwarderEvent, build_wrap_forwarder_accounts, decode_nonce_bitmap,
+    derive_forwarder_escrow_authority, derive_nonce_bitmap_pda, init_nonce_bitmap_ix,
+    nonce_word_index,
 };
 use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::refusal::{balances, refuses};
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, Forwarder, LocalForwarder, create_mint, fund, token_account,
+    self, Forwarder, LocalForwarder, ProvenWrap, create_mint, events, fund, token_account,
 };
 use solana_keypair::Keypair;
 use solana_signer::Signer;
+use spl_associated_token_account_interface::address::get_associated_token_address;
 use surfpool_sdk::Pubkey;
 
 /// 100 tokens at the mint's 6 decimals.
@@ -47,10 +49,28 @@ async fn first_wrap(
     env: &LocalEnv,
     forwarder: &Forwarder,
     owner: &ShieldedOwner,
-) -> anyhow::Result<setup::ProvenWrap> {
+) -> anyhow::Result<ProvenWrap> {
     forwarder
         .prove_wrap(env, owner, AMOUNT, NONCE, "wrap/first")
         .await
+}
+
+/// Settling the user's first wrap with what `rewrite`, given the forwarder
+/// and the wrap, makes of the submitter's accounts fails with `error`, and
+/// neither the user's tokens nor the escrow's move.
+async fn refuses_first_wrap<R>(
+    rewrite: impl FnOnce(&Forwarder, &ProvenWrap) -> R,
+    error: &'static str,
+) -> anyhow::Result<()>
+where
+    R: Fn(&mut CallAccounts) + Send + Sync + 'static,
+{
+    let (mut env, local, owner) = local().await?;
+    let forwarder = &local.forwarder;
+    let wrap = first_wrap(&env, forwarder, &owner).await?;
+    let rewrite = rewrite(forwarder, &wrap);
+    let unmoved = [forwarder.user_account(), forwarder.escrow_account()];
+    refuses(&mut env, forwarder, wrap.tx, rewrite, error, &unmoved).await
 }
 
 // Mirrors ERC20Forwarder.t.sol: test_wrap_pulls_funds_from_user. The first
@@ -94,10 +114,7 @@ async fn settles_a_wrap_the_escrow_receives_the_tokens_and_the_nonce_is_used() -
         "the settlement's log is not truncated: {:?}",
         executed.logs
     );
-    let wrapped: Vec<_> = executed
-        .cpi_events(&forwarder.program)
-        .map(decode_forwarder_event_instruction)
-        .collect::<Result<_, _>>()?;
+    let wrapped = events(&executed, &forwarder.program)?;
     let [ForwarderEvent::Wrapped(event)] = &wrapped[..] else {
         anyhow::bail!("the settlement emits {wrapped:?}, not one Wrapped event");
     };
@@ -212,18 +229,14 @@ async fn the_first_wrap_fits_one_packet_with_the_forwarders_fixed_accounts_looke
 // create the bitmap during the wrap; a wrap on a word without one fails.
 #[tokio::test(flavor = "multi_thread")]
 async fn refuses_a_wrap_whose_nonce_bitmap_does_not_exist() -> anyhow::Result<()> {
-    let (mut env, local, owner) = local().await?;
-    let forwarder = &local.forwarder;
-    let wrap = first_wrap(&env, forwarder, &owner).await?;
-    let program = forwarder.program;
-    let unmoved = [forwarder.user_account(), forwarder.escrow_account()];
-    refuses(
-        &mut env,
-        forwarder,
-        wrap.tx,
-        move |accounts| accounts.preceding.retain(|ix| ix.program_id != program),
+    refuses_first_wrap(
+        |forwarder, _| {
+            let program = forwarder.program;
+            move |accounts: &mut CallAccounts| {
+                accounts.preceding.retain(|ix| ix.program_id != program)
+            }
+        },
         "Error Code: NonceBitmapMissing.",
-        &unmoved,
     )
     .await
 }
@@ -292,7 +305,7 @@ async fn refuses_a_wrap_that_moves_tokens_of_another_mint() -> anyhow::Result<()
     )
     .await?;
     let (escrow_authority, _) = derive_forwarder_escrow_authority(&forwarder.program);
-    let escrow_other = derive_associated_token_address(&escrow_authority, &other_mint);
+    let escrow_other = get_associated_token_address(&escrow_authority, &other_mint);
     let wrap = first_wrap(&env, forwarder, &owner).await?;
     let unmoved = [user_other, escrow_other, forwarder.escrow_account()];
     refuses(
@@ -317,24 +330,18 @@ async fn refuses_a_wrap_that_moves_tokens_of_another_mint() -> anyhow::Result<()
 #[tokio::test(flavor = "multi_thread")]
 async fn refuses_a_wrap_authorized_by_another_keys_signature_over_the_wrap_message()
 -> anyhow::Result<()> {
-    let (mut env, local, owner) = local().await?;
-    let forwarder = &local.forwarder;
-    let wrap = first_wrap(&env, forwarder, &owner).await?;
-    let other = Keypair::new();
-    let signature = other.sign_message(&wrap.authorization.message);
-    let ed25519 = solana_ed25519_program::new_ed25519_instruction_with_signature(
-        &wrap.authorization.message,
-        &<[u8; 64]>::from(signature),
-        &other.pubkey().to_bytes(),
-    );
-    let unmoved = [forwarder.user_account(), forwarder.escrow_account()];
-    refuses(
-        &mut env,
-        forwarder,
-        wrap.tx,
-        move |accounts| accounts.preceding[0] = ed25519.clone(),
+    refuses_first_wrap(
+        |_, wrap| {
+            let other = Keypair::new();
+            let signature = other.sign_message(&wrap.authorization.message);
+            let ed25519 = solana_ed25519_program::new_ed25519_instruction_with_signature(
+                &wrap.authorization.message,
+                &<[u8; 64]>::from(signature),
+                &other.pubkey().to_bytes(),
+            );
+            move |accounts: &mut CallAccounts| accounts.preceding[0] = ed25519.clone()
+        },
         "Error Code: Ed25519PubkeyMismatch.",
-        &unmoved,
     )
     .await
 }
@@ -342,25 +349,19 @@ async fn refuses_a_wrap_authorized_by_another_keys_signature_over_the_wrap_messa
 #[tokio::test(flavor = "multi_thread")]
 async fn refuses_a_wrap_whose_authorization_is_the_users_signature_over_another_message()
 -> anyhow::Result<()> {
-    let (mut env, local, owner) = local().await?;
-    let forwarder = &local.forwarder;
-    let wrap = first_wrap(&env, forwarder, &owner).await?;
-    let mut message = wrap.authorization.message.clone();
-    message[0] ^= 1;
-    let signature = forwarder.user.sign_message(&message);
-    let ed25519 = solana_ed25519_program::new_ed25519_instruction_with_signature(
-        &message,
-        &<[u8; 64]>::from(signature),
-        &forwarder.user.pubkey().to_bytes(),
-    );
-    let unmoved = [forwarder.user_account(), forwarder.escrow_account()];
-    refuses(
-        &mut env,
-        forwarder,
-        wrap.tx,
-        move |accounts| accounts.preceding[0] = ed25519.clone(),
+    refuses_first_wrap(
+        |forwarder, wrap| {
+            let mut message = wrap.authorization.message.clone();
+            message[0] ^= 1;
+            let signature = forwarder.user.sign_message(&message);
+            let ed25519 = solana_ed25519_program::new_ed25519_instruction_with_signature(
+                &message,
+                &<[u8; 64]>::from(signature),
+                &forwarder.user.pubkey().to_bytes(),
+            );
+            move |accounts: &mut CallAccounts| accounts.preceding[0] = ed25519.clone()
+        },
         "Error Code: Ed25519MessageMismatch.",
-        &unmoved,
     )
     .await
 }
@@ -368,18 +369,10 @@ async fn refuses_a_wrap_whose_authorization_is_the_users_signature_over_another_
 #[tokio::test(flavor = "multi_thread")]
 async fn refuses_a_wrap_whose_authorization_is_not_at_the_instruction_index_its_input_names()
 -> anyhow::Result<()> {
-    let (mut env, local, owner) = local().await?;
-    let forwarder = &local.forwarder;
-    let wrap = first_wrap(&env, forwarder, &owner).await?;
-    let unmoved = [forwarder.user_account(), forwarder.escrow_account()];
-    refuses(
-        &mut env,
-        forwarder,
-        wrap.tx,
+    refuses_first_wrap(
         // [ed25519, init_nonce_bitmap] becomes [init_nonce_bitmap, ed25519].
-        |accounts| accounts.preceding.reverse(),
+        |_, _| |accounts: &mut CallAccounts| accounts.preceding.reverse(),
         "Error Code: InvalidEd25519Instruction.",
-        &unmoved,
     )
     .await
 }

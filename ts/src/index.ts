@@ -7,4 +7,3 @@ export * from "./forwarder.js";
 export * from "./amount.js";
 export * from "./wrapMessage.js";
 export * from "./events.js";
-export * from "./ed25519IxIndex.js";

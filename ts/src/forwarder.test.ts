@@ -1,5 +1,5 @@
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { Keypair, SYSVAR_INSTRUCTIONS_PUBKEY, SystemProgram } from "@solana/web3.js";
+import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { Keypair, type PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY, SystemProgram } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
 
 import forwarderIdl from "../../crates/client/idl/spl_token_forwarder.json";
@@ -7,16 +7,19 @@ import { FORWARDER_UNWRAP_NUM_ACCOUNTS, FORWARDER_WRAP_NUM_ACCOUNTS } from "./co
 import {
   buildUnwrapForwarderAccounts,
   buildWrapForwarderAccounts,
+  forwarderSettlementLookupKeys,
   initNonceBitmapIx,
   nonceWordIndex,
 } from "./forwarder.js";
 import {
-  deriveAssociatedTokenAddress,
   deriveEventAuthorityPda,
   deriveForwarderConfigPda,
   deriveForwarderEscrowAuthority,
   deriveNonceBitmapPda,
 } from "./pda.js";
+
+/** `owner`'s token account for `mint`; the owner may be a PDA. */
+const tokenAccount = (owner: PublicKey, mint: PublicKey) => getAssociatedTokenAddressSync(mint, owner, true);
 
 const forwarder = Keypair.generate().publicKey;
 const mint = Keypair.generate().publicKey;
@@ -35,8 +38,8 @@ describe("forwarder segment builders", () => {
         SYSVAR_INSTRUCTIONS_PUBKEY,
         deriveEventAuthorityPda(forwarder)[0],
         forwarder,
-        deriveAssociatedTokenAddress(user, mint),
-        deriveAssociatedTokenAddress(escrowAuthority, mint),
+        tokenAccount(user, mint),
+        tokenAccount(escrowAuthority, mint),
         escrowAuthority,
         deriveNonceBitmapPda(forwarder, user, 1n)[0], // nonce 300 is in word 1
         TOKEN_PROGRAM_ID,
@@ -59,14 +62,34 @@ describe("forwarder segment builders", () => {
         SYSVAR_INSTRUCTIONS_PUBKEY,
         deriveEventAuthorityPda(forwarder)[0],
         forwarder,
-        deriveAssociatedTokenAddress(escrowAuthority, mint),
-        deriveAssociatedTokenAddress(recipient, mint),
+        tokenAccount(escrowAuthority, mint),
+        tokenAccount(recipient, mint),
         escrowAuthority,
         TOKEN_PROGRAM_ID,
       ].map((k) => k.toBase58()),
     );
     expect(accounts.map((a) => a.isWritable)).toEqual([false, false, false, false, false, true, true, false, false]);
     expect(accounts.every((a) => !a.isSigner)).toBe(true);
+  });
+
+  it("the lookup keys are the segments' accounts no user or recipient changes", () => {
+    const user = Keypair.generate().publicKey;
+    const recipient = Keypair.generate().publicKey;
+    const mints = [Keypair.generate().publicKey, Keypair.generate().publicKey];
+    const lookup = forwarderSettlementLookupKeys(forwarder, mints).map((k) => k.toBase58());
+    for (const m of mints) {
+      const perSettlement = [tokenAccount(user, m), deriveNonceBitmapPda(forwarder, user, 0n)[0], tokenAccount(recipient, m)].map(
+        (k) => k.toBase58(),
+      );
+      const segments = [...buildWrapForwarderAccounts(forwarder, user, m, 0n), ...buildUnwrapForwarderAccounts(forwarder, recipient, m)];
+      for (const { pubkey } of segments) {
+        const key = pubkey.toBase58();
+        expect(lookup.includes(key), key).toBe(!perSettlement.includes(key));
+      }
+    }
+    // The six accounts every call shares and one escrow per mint: every fixed
+    // segment account once, nothing else.
+    expect(lookup).toHaveLength(6 + mints.length);
   });
 
   it("nonce word index covers 256 nonces per word", () => {
