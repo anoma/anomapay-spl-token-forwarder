@@ -30,10 +30,10 @@ Development:
                  with --check, fail when a committed binary is not, byte for
                  byte, the fresh build
   typecheck      Type-check and format-check the operator scripts against the
-                 production build's types
+                 production IDL's types (the program is not compiled)
   script-test    Run the operator scripts against the harness's local runtime
                  (crates/integration-test/tests/operator_scripts.rs), after
-                 installing their dependencies and building the types they
+                 installing their dependencies and generating the types they
                  import
   ts-test        Install the TypeScript bindings' (ts/) locked dependencies,
                  type-check them and run their tests
@@ -429,13 +429,13 @@ require_forwarder_init_params() {
   fi
 }
 
-# The checks every operator script's command makes, then the production
-# build whose types the script imports, then scripts/<script> with <args>.
+# The checks every operator script's command makes, then the production IDL
+# and types the script imports, then scripts/<script> with <args>.
 run_operator_script() {
   require_cmd yarn
   require_forwarder_deployed
   ensure_node_modules
-  build_release
+  release_idl
   run_ts "scripts/$1" "${@:2}"
 }
 
@@ -609,13 +609,13 @@ case "$COMMAND" in
     require_cmd cargo
     require_cmd yarn
     ensure_node_modules
-    build_release
+    release_idl
     (cd crates/integration-test && cargo test --features scripts --test operator_scripts)
     ;;
   typecheck)
     require_cmd yarn
     ensure_node_modules
-    build_release
+    release_idl
     yarn run typecheck
     yarn run lint
     ;;
