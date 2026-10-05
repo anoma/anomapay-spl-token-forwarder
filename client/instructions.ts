@@ -7,7 +7,7 @@ import { Program } from "@anchor-lang/core";
 import { AccountMeta, ComputeBudgetProgram, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { SplTokenForwarder } from "../target/types/spl_token_forwarder";
-import { deriveEscrowAuthority } from "./pda";
+import { deriveForwarderEscrowAuthority } from "../ts/src/pda";
 
 /**
  * The most compute units a transaction may use. `upgrade` runs under it,
@@ -34,7 +34,7 @@ export function escrowAccounts(
   forwarderProgramId: PublicKey,
   mint: PublicKey,
 ): { escrowAuthority: PublicKey; escrowAta: PublicKey } {
-  const escrowAuthority = deriveEscrowAuthority(forwarderProgramId);
+  const [escrowAuthority] = deriveForwarderEscrowAuthority(forwarderProgramId);
   return { escrowAuthority, escrowAta: getAssociatedTokenAddressSync(mint, escrowAuthority, true) };
 }
 
@@ -112,6 +112,10 @@ export function emergencyWithdraw(
     .forwardEmergencyCall(encodeUnwrapInput(withdrawal.mint, withdrawal.amount, withdrawal.recipient))
     .accountsPartial({ caller, paState })
     .remainingAccounts(
-      escrowTransferAccounts(accounts.escrowAta, accounts.recipientAta, deriveEscrowAuthority(forwarder.programId)),
+      escrowTransferAccounts(
+        accounts.escrowAta,
+        accounts.recipientAta,
+        deriveForwarderEscrowAuthority(forwarder.programId)[0],
+      ),
     );
 }

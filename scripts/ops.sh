@@ -35,6 +35,8 @@ Development:
                  (crates/integration-test/tests/operator_scripts.rs), after
                  installing their dependencies and building the types they
                  import
+  ts-test        Install the TypeScript bindings' (ts/) locked dependencies,
+                 type-check them and run their tests
 
 Cluster operations (--cluster required):
   deploy         First-time deploy of the production build. On localnet the
@@ -623,6 +625,10 @@ case "$COMMAND" in
     build_release
     yarn run typecheck
     yarn run lint
+    ;;
+  ts-test)
+    require_cmd npm
+    (cd ts && npm ci && npm run tsc && npm test)
     ;;
   deploy | upgrade | forwarder | lookup-table | idl-publish | status | balance)
     require_cmd solana

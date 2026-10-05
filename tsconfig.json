@@ -9,5 +9,10 @@
     "resolveJsonModule": true,
     "skipLibCheck": true
   },
-  "include": ["client/**/*.ts", "scripts/**/*.ts"]
+  "include": ["client/**/*.ts", "scripts/**/*.ts"],
+  "ts-node": {
+    // The operator scripts run as CommonJS; the bindings package (`ts/`)
+    // they import from is an ES module package, compiled here as CommonJS.
+    "moduleTypes": { "ts/src/**/*": "cjs" }
+  }
 }

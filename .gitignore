@@ -1,5 +1,6 @@
 **/target/*
 node_modules/
+ts/dist
 # Program keypairs: each operator names their own paths here (env/README.md).
 env/*.keys.env
 .DS_Store

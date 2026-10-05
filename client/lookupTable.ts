@@ -10,7 +10,7 @@ import {
 } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { escrowAccounts } from "./instructions";
-import { deriveConfigPda, deriveEscrowAuthority, deriveEventAuthorityPda } from "./pda";
+import { deriveEventAuthorityPda, deriveForwarderConfigPda, deriveForwarderEscrowAuthority } from "../ts/src/pda";
 
 /**
  * The accounts every settlement that calls the forwarder carries for it and
@@ -20,14 +20,14 @@ import { deriveConfigPda, deriveEscrowAuthority, deriveEventAuthorityPda } from 
  * escrow account.
  */
 export function forwarderLookupKeys(splTokenForwarder: PublicKey, mints: PublicKey[]): PublicKey[] {
-  const [config] = deriveConfigPda(splTokenForwarder);
+  const [config] = deriveForwarderConfigPda(splTokenForwarder);
   const [eventAuthority] = deriveEventAuthorityPda(splTokenForwarder);
   return [
     splTokenForwarder,
     config,
     SYSVAR_INSTRUCTIONS_PUBKEY,
     eventAuthority,
-    deriveEscrowAuthority(splTokenForwarder),
+    deriveForwarderEscrowAuthority(splTokenForwarder)[0],
     TOKEN_PROGRAM_ID,
     ...mints.map((mint) => escrowAccounts(splTokenForwarder, mint).escrowAta),
   ];

@@ -45,7 +45,8 @@ import { PublicKey } from "@solana/web3.js";
 import { getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 import { SplTokenForwarder } from "../target/types/spl_token_forwarder";
 import { emergencyWithdraw, escrowAccounts, initializeForwarder, reinitializeForwarder } from "../client/instructions";
-import { deriveConfigPda, derivePaStatePda } from "../client/pda";
+import { derivePaStatePda } from "../client/pda";
+import { deriveForwarderConfigPda } from "../ts/src/pda";
 import { fail, requireHexBytes, requirePubkey, requireRawAmount } from "./cli-utils";
 
 const provider = confirmedProvider();
@@ -55,7 +56,7 @@ const connection = provider.connection;
 const forwarder = anchor.workspace.SplTokenForwarder as Program<SplTokenForwarder>;
 // The adapter this build of the forwarder pairs with (env/<cluster>.env).
 const adapterProgramId = requirePubkey("PROTOCOL_ADAPTER_PROGRAM_ID", "the protocol adapter the forwarder serves");
-const [configPda] = deriveConfigPda(forwarder.programId);
+const [configPda] = deriveForwarderConfigPda(forwarder.programId);
 const [paState] = derivePaStatePda(adapterProgramId);
 
 const requireMint = () => requirePubkey("STF_TOKEN_MINT", "the mint whose escrow to operate on");

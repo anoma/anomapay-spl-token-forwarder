@@ -10,6 +10,7 @@ The adapter calls the forwarder through the external calls a settled transaction
 |---|---|
 | `programs/spl-token-forwarder/` | The Anchor program and its Rust unit tests |
 | `crates/client/` | `anomapay-spl-token-forwarder-client`: the instructions it takes, the CPI segments a settlement passes it, its wire formats (the wrap authorization message, the wrap and unwrap inputs), its events, its IDL |
+| `ts/` | `@anomaorg/anomapay-spl-token-forwarder`: the client crate's counterpart in TypeScript (the `init_nonce_bitmap` instruction, the CPI segments, the wrap authorization message, the event decoder) |
 | `crates/integration-test/` | The forwarder's integration tests on the adapter's harness, and the test programs they load |
 | `env/` | The forwarder's address per cluster, and the adapter's it is built against ([env/README.md](env/README.md)) |
 | `fixtures/` | The wrap authorization message every client must serialize alike |
@@ -36,6 +37,7 @@ Everything runs in the repository's Nix dev shell, which pins the Rust, Solana a
 | `./scripts/dev.sh test-program [--check]` | Write (or check) the deterministic production and development builds the integration tests load |
 | `./scripts/dev.sh typecheck` | Type-check and format-check the operator scripts against the production build |
 | `./scripts/dev.sh script-test` | Run the operator scripts against a local runtime |
+| `./scripts/dev.sh ts-test` | Type-check and test the TypeScript bindings (`ts/`) |
 
 ## Operations
 
