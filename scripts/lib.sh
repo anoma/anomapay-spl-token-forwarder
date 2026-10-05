@@ -9,8 +9,9 @@ PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PROGRAM_NAME="spl_token_forwarder"
 PROGRAM_SO="target/deploy/${PROGRAM_NAME}.so"
 PROGRAM_IDL="target/idl/${PROGRAM_NAME}.json"
+PROGRAM_TYPES="target/types/${PROGRAM_NAME}.ts"
 # The development build's Cargo features, and the instructions they add,
-# which the production build's IDL must lack (build_release checks it).
+# which the production IDL must lack (build_release and release_idl check it).
 DEV_FEATURES="dev-config-version"
 DEV_ONLY_IX="dev_set_config_version"
 
@@ -116,6 +117,16 @@ build_release() {
     echo "❌ release build: anchor build did not produce an IDL at ${PROGRAM_IDL}" >&2
     exit 1
   fi
+  assert_release_idl_lacks_dev_only
+}
+
+# The production IDL and the TypeScript types the operator scripts import,
+# without compiling the program: target/deploy keeps the artifact already
+# there, such as the deterministic build a --prebuilt deploy shipped.
+release_idl() {
+  echo "    Building the forwarder's production IDL and types..."
+  mkdir -p "$(dirname "$PROGRAM_IDL")" "$(dirname "$PROGRAM_TYPES")"
+  anchor idl build -p "$PROGRAM_NAME" -o "$PROGRAM_IDL" -t "$PROGRAM_TYPES"
   assert_release_idl_lacks_dev_only
 }
 

@@ -111,11 +111,23 @@ jobs:
       - name: Install Anchor CLI
         run: cargo install --git https://github.com/otter-sec/anchor --rev "${{ env.ANCHOR_REV }}" --locked anchor-cli
 
-      - name: Production build, its IDL check, and the operator scripts' type check
+      # The scripts' builds generate only the IDL and types: a deploy artifact
+      # already in target/deploy (verify-build's, which a --prebuilt deploy
+      # ships) must survive them.
+      - name: Plant a deploy artifact
+        run: |
+          mkdir -p target/deploy
+          head -c 4096 /dev/urandom > target/deploy/spl_token_forwarder.so
+          sha256sum target/deploy/spl_token_forwarder.so > "$RUNNER_TEMP/deploy-artifact.sha256"
+
+      - name: The production IDL check and the operator scripts' type check
         run: ./scripts/ops.sh typecheck
 
       - name: The operator scripts against a local runtime
         run: ./scripts/ops.sh script-test
+
+      - name: The deploy artifact is untouched
+        run: sha256sum -c "$RUNNER_TEMP/deploy-artifact.sha256"
 
   ts:
     name: TypeScript bindings
