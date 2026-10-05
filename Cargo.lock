@@ -227,7 +227,7 @@ dependencies = [
 [[package]]
 name = "anoma-pa-solana-client"
 version = "0.4.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=bb04ed226ffb314b9ff19b0b6fa6c495fa4b29ac#bb04ed226ffb314b9ff19b0b6fa6c495fa4b29ac"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=4c034a946d34ba09e5ce845fcae1c8880babe0cb#4c034a946d34ba09e5ce845fcae1c8880babe0cb"
 dependencies = [
  "bincode",
  "hkdf",
@@ -1623,7 +1623,7 @@ dependencies = [
 [[package]]
 name = "protocol-adapter"
 version = "2.0.0-rc.3"
-source = "git+https://github.com/anoma/solana-protocol-adapter?rev=4a2c15723bd77c0df2bddefb51611f23f59430f3#4a2c15723bd77c0df2bddefb51611f23f59430f3"
+source = "git+https://github.com/anoma/solana-protocol-adapter?rev=ab27899718c6962d5a85d545a05ea2be45a29bbb#ab27899718c6962d5a85d545a05ea2be45a29bbb"
 dependencies = [
  "anchor-lang",
  "anoma-rm-core",

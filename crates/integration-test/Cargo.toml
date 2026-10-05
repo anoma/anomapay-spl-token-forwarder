@@ -22,10 +22,10 @@ e2e = ["anoma-pa-solana-integration-test/e2e"]
 
 [dependencies]
 # The adapter's harness: pa-testkit's environments for the Solana adapter.
-anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "4a2c15723bd77c0df2bddefb51611f23f59430f3", default-features = false }
+anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "ab27899718c6962d5a85d545a05ea2be45a29bbb", default-features = false }
 # The revisions the harness pins.
-anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "bb04ed226ffb314b9ff19b0b6fa6c495fa4b29ac" }
-anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "cb744ec94589d7a89886203233ba28f94538471f", default-features = false, features = [
+anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "4c034a946d34ba09e5ce845fcae1c8880babe0cb" }
+anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "06d5e8e3ed275c0e4eace3aa84949d7a5cc929f4", default-features = false, features = [
   "fixtures",
 ] }
 anomapay-spl-token-forwarder-client = { path = "../client" }

@@ -9,7 +9,6 @@ use anoma_pa_solana_integration_test::forwarders::{CallAccounts, Forwarder};
 use anoma_pa_solana_integration_test::test_forwarder::{RELAY_OK, relay_input};
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
 use anoma_pa_testkit::fixtures::passthrough;
-use anoma_pa_testkit::witness::{AppData, ExpirableBlob};
 use anoma_pa_testkit::{execute_tx, prove_actions};
 use anoma_rm_risc0::utils::bytes_to_words;
 use anomapay_spl_token_forwarder_client::{
@@ -89,14 +88,12 @@ async fn refuses_a_forward_call_relayed_by_a_program_the_adapter_invokes() -> an
         }),
     );
 
-    let app_data = AppData {
-        external_payload: vec![ExpirableBlob {
-            blob: bytes_to_words(&call.encode()),
-            deletion_criterion: 0,
-        }],
-        ..AppData::default()
-    };
-    let action = passthrough::build(1, app_data, passthrough::Overrides::default())?.witnesses;
+    let action = passthrough::build(
+        1,
+        vec![bytes_to_words(&call.encode())],
+        passthrough::Overrides::default(),
+    )?
+    .witnesses;
     let tx = prove_actions(&env, &[action]).await?;
 
     let before = balances(&env, &[escrow, recipient_account]).await?;
