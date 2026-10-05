@@ -230,7 +230,7 @@
     "@solana/codecs-strings" "2.0.0-rc.1"
     "@solana/options" "2.0.0-rc.1"
 
-"@solana/codecs@8.4.0":
+"@solana/codecs@8.4.0", "@solana/codecs@^8.4.0":
   version "8.4.0"
   resolved "https://registry.yarnpkg.com/@solana/codecs/-/codecs-8.4.0.tgz#1c585954b6bc81d6bfaa35ef9339822c3648904d"
   integrity sha512-mY7CpMQ4nbecxQIyvslEw7nEreiY0QVvg+aZOPbrBjIiZxu2qj9fyhCrDXJdQlcJ+aYh1sInbR8KARpmHgJLQg==
