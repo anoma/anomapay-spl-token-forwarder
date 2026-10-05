@@ -16,7 +16,7 @@ anchor-lang = { git = "https://github.com/otter-sec/anchor", rev = "2c9747a2d31b
 # The adapter this forwarder is built against: its program crate (the state
 # layout, the upgrade helpers) and its client.
 protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "2a845c28e041c412fc68b493b3d3c2077153330d", default-features = false, features = ["no-entrypoint"] }
-anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "4b1758b5b3037533ebbfccbec3e376d028323f3b", default-features = false }
+anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "bb04ed226ffb314b9ff19b0b6fa6c495fa4b29ac", default-features = false }
 
 [profile.release]
 overflow-checks = true
