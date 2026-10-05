@@ -1,0 +1,46 @@
+{
+  "name": "@anomaorg/anomapay-spl-token-forwarder",
+  "version": "0.1.0",
+  "description": "Client bindings for the AnomaPay SPL token forwarder",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anoma/anomapay-spl-token-forwarder",
+    "directory": "ts"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": [
+    "src",
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "tsc": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.8.0",
+    "@solana/codecs": "^8.4.0",
+    "@solana/spl-token": "^0.4.0",
+    "@solana/web3.js": "^1.98.0"
+  },
+  "devDependencies": {
+    "@anchor-lang/core": "^1.2.0",
+    "typescript": "~5.9.3",
+    "vitest": "^4.0.0"
+  }
+}

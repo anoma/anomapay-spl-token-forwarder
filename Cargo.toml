@@ -1,0 +1,27 @@
+[workspace]
+members = ["programs/*", "crates/client"]
+resolver = "2"
+
+# solana-verify picks its deterministic build image from this version. Keep in
+# lockstep with flake.nix's solanaVersion and CI, and with the adapter's.
+[workspace.metadata.cli]
+solana = "4.3.0"
+
+[workspace.dependencies]
+# The adapter's pin: Anchor's v1.2.1 release PR (solana-foundation/anchor#5134),
+# whose fix #4737 lets a program with a field-less accounts struct compile with
+# `cpi`. Moves with the adapter to the published 1.2.1
+# (anoma/solana-protocol-adapter#124).
+anchor-lang = { git = "https://github.com/otter-sec/anchor", rev = "2c9747a2d31bd5e94745cee6c083577f3e6675c0" }
+# The adapter this forwarder is built against: its program crate (the state
+# layout, the upgrade helpers) and its client.
+protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "ab27899718c6962d5a85d545a05ea2be45a29bbb", default-features = false, features = ["no-entrypoint"] }
+anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "4c034a946d34ba09e5ce845fcae1c8880babe0cb", default-features = false }
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+[profile.release.build-override]
+opt-level = 3
+incremental = false

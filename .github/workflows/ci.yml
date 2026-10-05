@@ -1,0 +1,180 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # Must match flake.nix's rustToolchain (the adapter's).
+  RUST_VERSION: "1.98.1"
+  # Must match flake.nix's solanaVersion.
+  SOLANA_VERSION: "4.3.0"
+  # The Anchor commit Cargo.toml and flake.nix pin, the adapter's (no release
+  # binary exists for it, so the CLI is built from source).
+  ANCHOR_REV: "2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt
+
+      - name: Check formatting
+        run: ./scripts/ops.sh fmt
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: clippy
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            crates/integration-test
+
+      - name: Run clippy
+        run: ./scripts/ops.sh clippy
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: ./scripts/ops.sh unit-test
+
+  anchor-build:
+    name: Anchor Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            crates/integration-test
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: yarn
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v${{ env.SOLANA_VERSION }}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+
+      - name: Install Anchor CLI
+        run: cargo install --git https://github.com/otter-sec/anchor --rev "${{ env.ANCHOR_REV }}" --locked anchor-cli
+
+      - name: Production build, its IDL check, and the operator scripts' type check
+        run: ./scripts/ops.sh typecheck
+
+      - name: The operator scripts against a local runtime
+        run: ./scripts/ops.sh script-test
+
+  ts:
+    name: TypeScript bindings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ts/package-lock.json
+
+      - name: Type-check and test the TypeScript bindings
+        run: ./scripts/ops.sh ts-test
+
+  # The forwarder's tests on the adapter's harness, locally. Their e2e cases
+  # need devnet and the proving queue (dev.sh integration-test --e2e).
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/integration-test
+
+      - name: Run the integration tests
+        run: ./scripts/ops.sh integration-test
+
+  # The forwarder build the integration tests load must be the deterministic
+  # build of this commit.
+  test-program:
+    name: Test Program
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      # Caches ~/.cargo/bin, so solana-verify is built once per version.
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install solana-verify
+        run: cargo install solana-verify --version 0.5.2 --locked
+
+      - name: Check the committed test program is the deterministic build
+        run: ./scripts/ops.sh test-program --check
+

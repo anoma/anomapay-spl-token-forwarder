@@ -1,0 +1,41 @@
+[package]
+name = "anomapay-spl-token-forwarder-client"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Client bindings for the AnomaPay SPL token forwarder: instruction builders, CPI segments, wire formats, events"
+repository = "https://github.com/anoma/anomapay-spl-token-forwarder"
+
+[dependencies]
+# The adapter's client: the Anchor discriminators, the event framing and the
+# event bodies both programs emit, and the event-authority PDA.
+anoma-pa-solana-client = { workspace = true }
+# Pure deps: the wire formats and event decoders compile for any target.
+base64 = "0.22"
+sha2 = "0.10"
+
+# Solana SDK deps, used only by the instruction, PDA and program-id builders;
+# the versions the programs build with (Anchor 1.2).
+solana-compute-budget-interface = { version = "3", optional = true }
+solana-instruction = { version = "3", optional = true }
+solana-pubkey = { version = "3", optional = true }
+solana-sdk-ids = { version = "3", optional = true }
+spl-associated-token-account-interface = { version = "2", optional = true }
+spl-token-interface = { version = "3", optional = true }
+
+[dev-dependencies]
+# Reads the vendored IDL.
+serde_json = "1.0"
+
+[features]
+default = ["solana"]
+# The instruction builders, CPI segments, PDA derivation and program ids.
+solana = [
+  "anoma-pa-solana-client/solana",
+  "dep:solana-compute-budget-interface",
+  "dep:solana-instruction",
+  "dep:solana-pubkey",
+  "dep:solana-sdk-ids",
+  "dep:spl-associated-token-account-interface",
+  "dep:spl-token-interface",
+]
