@@ -5,6 +5,7 @@
 use anoma_pa_solana_client::{anchor_account_disc, derive_pa_state_pda};
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
+use anoma_pa_testkit::environment::ProtocolAdapter as _;
 use anomapay_spl_token_forwarder_client::{
     UnwrapInput, close_config_ix, close_escrow_ix, close_nonce_bitmaps_batch_ix,
     derive_forwarder_config_pda, derive_forwarder_escrow_authority, derive_nonce_bitmap_pda,
@@ -12,7 +13,7 @@ use anomapay_spl_token_forwarder_client::{
 };
 use anomapay_spl_token_forwarder_integration_test::refusal::balances;
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, LocalForwarder, balance, config, create_mint, fund, mint_to, pause, token_account,
+    self, LocalForwarder, balance, config, create_mint, fund, mint_to, token_account,
 };
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
@@ -77,8 +78,8 @@ async fn funded_escrow(
 
 /// The local environment with the adapter paused by its owner.
 async fn paused() -> anyhow::Result<(LocalEnv, LocalForwarder)> {
-    let (env, local) = setup::local().await?;
-    pause(&env).await?;
+    let (mut env, local) = setup::local().await?;
+    env.protocol_adapter.pause().await?;
     Ok((env, local))
 }
 
@@ -458,7 +459,7 @@ async fn close_nonce_bitmaps_batch_refuses_a_program_account_that_is_not_a_bitma
 
 #[tokio::test(flavor = "multi_thread")]
 async fn closes_every_nonce_bitmap_and_refunds_their_rent() -> anyhow::Result<()> {
-    let (env, local) = setup::local().await?;
+    let (mut env, local) = setup::local().await?;
     let program = local.forwarder.program;
     let payer = env.protocol_adapter.payer.pubkey();
     let users = [Keypair::new().pubkey(), Keypair::new().pubkey()];
@@ -467,7 +468,7 @@ async fn closes_every_nonce_bitmap_and_refunds_their_rent() -> anyhow::Result<()
         &[],
     )
     .await?;
-    pause(&env).await?;
+    env.protocol_adapter.pause().await?;
     let bitmaps = nonce_bitmaps(&env, &program).await?;
     anyhow::ensure!(
         bitmaps.len() == users.len()

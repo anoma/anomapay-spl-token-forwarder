@@ -3,6 +3,7 @@
 //! installs the scripts' dependencies and builds the types they import.
 
 use anoma_pa_solana_client::{derive_pa_state_pda, derive_upgrade_authority_pda};
+use anoma_pa_testkit::environment::ProtocolAdapter as _;
 use anomapay_spl_token_forwarder_client::{
     CONFIG_VERSION, ConfigAccount, derive_forwarder_escrow_authority,
     forwarder_settlement_lookup_keys, set_emergency_caller_ix,
@@ -11,7 +12,7 @@ use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::scripts::{hex, run_script};
 use anomapay_spl_token_forwarder_integration_test::setup::{
     self, Build, FORWARDER_SO, LocalForwarder, balance, config, dev_set_config_version_ix,
-    executable_hash, give_sol, mint_to, new_mint, pause, upgrade_authority,
+    executable_hash, give_sol, mint_to, new_mint, upgrade_authority,
 };
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -170,7 +171,7 @@ async fn reinitialize_rotates_the_logic_ref() -> anyhow::Result<()> {
 /// escrowed tokens to a recipient.
 #[tokio::test(flavor = "multi_thread")]
 async fn emergency_withdraw_moves_escrowed_tokens_to_the_recipient() -> anyhow::Result<()> {
-    let (env, local) = setup::local().await?;
+    let (mut env, local) = setup::local().await?;
     let LocalForwarder {
         forwarder,
         committee,
@@ -178,7 +179,7 @@ async fn emergency_withdraw_moves_escrowed_tokens_to_the_recipient() -> anyhow::
     } = &local;
     let (pa_state, _) = derive_pa_state_pda(&env.protocol_adapter.program);
     let caller = Keypair::new();
-    pause(&env).await?;
+    env.protocol_adapter.pause().await?;
     env.send(
         &[set_emergency_caller_ix(
             &forwarder.program,

@@ -3,8 +3,7 @@
 //! deployment holds, and settles once the adapter's owner installs the
 //! commitment risc0-kind-tables publishes for devnet.
 
-use anoma_pa_solana_client::set_kind_table_commitment_ix;
-use anoma_pa_testkit::environment::Refusal;
+use anoma_pa_testkit::environment::{ProtocolAdapter as _, Refusal};
 use anoma_pa_testkit::{execute_tx, prove_actions};
 use anoma_risc0_kind_tables::SolanaCluster;
 use anoma_risc0_kind_tables::table;
@@ -72,15 +71,9 @@ async fn settles_a_wrap_proven_against_the_solana_devnet_kind_table_once_the_own
         "a refused wrap moved tokens"
     );
 
-    env.send(
-        &[set_kind_table_commitment_ix(
-            &env.protocol_adapter.program,
-            &env.protocol_adapter.payer.pubkey(),
-            published.into(),
-        )],
-        &[],
-    )
-    .await?;
+    env.protocol_adapter
+        .set_kind_table_commitment(published)
+        .await?;
     execute_tx(&mut env, tx).await?;
     anyhow::ensure!(
         balances(&env, &accounts).await? == [before[0] - AMOUNT, before[1] + AMOUNT],

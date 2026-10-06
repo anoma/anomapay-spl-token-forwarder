@@ -2,7 +2,7 @@
 //! events and the nonce it uses up, and every account, signature and replay
 //! the forwarder refuses, with no tokens moved.
 
-use anoma_pa_solana_client::events::{PaEvent, decode_event_instruction};
+use anoma_pa_solana_client::events::PaEvent;
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::forwarders::CallAccounts;
 use anoma_pa_solana_integration_test::test_forwarder;
@@ -127,9 +127,7 @@ async fn settles_a_wrap_the_escrow_receives_the_tokens_and_the_nonce_is_used() -
     // Both resources carry the AnomaPay transfer logic the forwarder config
     // pins: the wrap settled under the real verifying key.
     let actions: Vec<_> = executed
-        .cpi_events(&env.protocol_adapter.program)
-        .map(decode_event_instruction)
-        .collect::<Result<Vec<_>, _>>()?
+        .adapter_events(&env.protocol_adapter.program)?
         .into_iter()
         .filter_map(|event| match event {
             PaEvent::ActionExecuted(action) => Some(action),

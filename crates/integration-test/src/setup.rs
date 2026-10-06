@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use anoma_pa_solana_client::{anchor_instruction_disc, pause_ix};
+use anoma_pa_solana_client::anchor_instruction_disc;
 use anoma_pa_solana_integration_test::envs::common::environment::Environment;
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::executed::Executed;
@@ -158,10 +158,7 @@ pub async fn e2e() -> anyhow::Result<(
 /// escrow, a user holding `USER_TOKENS` who has approved the escrow authority
 /// to move them, the submitter registered with the adapter, and the
 /// forwarder's fixed accounts in the settlement lookup table.
-async fn serve<P>(env: &mut Environment<P>, program: Pubkey) -> anyhow::Result<Forwarder>
-where
-    P: Prover,
-{
+async fn serve<P>(env: &mut Environment<P>, program: Pubkey) -> anyhow::Result<Forwarder> {
     let payer = env.protocol_adapter.payer.pubkey();
     let mint = create_mint(env, &program).await?;
     let user = Keypair::new();
@@ -311,20 +308,6 @@ pub fn give_sol<P>(env: &Environment<P>, to: &Pubkey, lamports: u64) -> anyhow::
         .cheatcodes()
         .fund_sol(to, lamports)
         .with_context(|| format!("failed to fund {to} with {lamports} lamports"))
-}
-
-/// Pauses `env`'s adapter, signed by its owner, the adapter's payer.
-pub async fn pause<P>(env: &Environment<P>) -> anyhow::Result<()> {
-    env.send(
-        &[pause_ix(
-            &env.protocol_adapter.program,
-            &env.protocol_adapter.payer.pubkey(),
-        )],
-        &[],
-    )
-    .await
-    .context("failed to pause the adapter")?;
-    Ok(())
 }
 
 /// The forwarder `program`'s config on `env`.
