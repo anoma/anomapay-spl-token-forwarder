@@ -3,7 +3,6 @@
 use anoma_pa_solana_integration_test::envs::common::environment::Environment;
 use anoma_pa_testkit::environment::Prover;
 use anoma_pa_testkit::execute_tx;
-use anoma_pa_testkit::transaction::Transaction;
 use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
 use anomapay_spl_token_forwarder_integration_test::setup::{self, Forwarder, balance};
 use solana_keypair::Keypair;
@@ -21,7 +20,7 @@ async fn wraps_then_unwraps<P>(
     forwarder: &Forwarder,
 ) -> anyhow::Result<()>
 where
-    P: Prover<Transaction = Transaction>,
+    P: Prover,
 {
     let owner = ShieldedOwner::seeded("wrap-then-unwrap/owner");
     let (user, escrow) = (forwarder.user_account(), forwarder.escrow_account());

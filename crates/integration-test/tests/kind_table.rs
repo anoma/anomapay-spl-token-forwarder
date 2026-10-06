@@ -3,9 +3,7 @@
 //! deployment holds, and settles once the adapter's owner installs the
 //! commitment risc0-kind-tables publishes for devnet.
 
-use anoma_pa_solana_client::set_kind_table_commitment_ix;
-use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
-use anoma_pa_testkit::transaction::Transaction;
+use anoma_pa_testkit::environment::{ProtocolAdapter as _, Refusal};
 use anoma_pa_testkit::{execute_tx, prove_actions};
 use anoma_risc0_kind_tables::SolanaCluster;
 use anoma_risc0_kind_tables::table;
@@ -61,24 +59,21 @@ async fn settles_a_wrap_proven_against_the_solana_devnet_kind_table_once_the_own
 
     let accounts = [forwarder.user_account(), forwarder.escrow_account()];
     let before = balances(&env, &accounts).await?;
-    expect_integration_panic(Needle::Static("Error Code: KindTableCommitmentMismatch."))(
-        // The same transaction settles below.
-        execute_tx(&mut env, Transaction::from_arm(tx.as_arm().clone())).await,
-    )?;
+    // The same transaction settles below. A proof against another kind table
+    // is an invalid aggregation proof.
+    let refusal = env.protocol_adapter.submit(tx.clone()).await?.err();
+    anyhow::ensure!(
+        refusal == Some(Refusal::InvalidAggregationProof),
+        "the adapter returned {refusal:?}, not a refusal of the proof"
+    );
     anyhow::ensure!(
         balances(&env, &accounts).await? == before,
         "a refused wrap moved tokens"
     );
 
-    env.send(
-        &[set_kind_table_commitment_ix(
-            &env.protocol_adapter.program,
-            &env.protocol_adapter.payer.pubkey(),
-            published.into(),
-        )],
-        &[],
-    )
-    .await?;
+    env.protocol_adapter
+        .set_kind_table_commitment(published)
+        .await?;
     execute_tx(&mut env, tx).await?;
     anyhow::ensure!(
         balances(&env, &accounts).await? == [before[0] - AMOUNT, before[1] + AMOUNT],

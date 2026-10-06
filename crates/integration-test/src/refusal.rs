@@ -32,7 +32,7 @@ pub async fn refuses<P>(
     unmoved: &[Pubkey],
 ) -> anyhow::Result<()>
 where
-    P: Prover<Transaction = Transaction>,
+    P: Prover,
 {
     let before = balances(env, unmoved).await?;
     forwarder.rewrite(env, rewrite);
