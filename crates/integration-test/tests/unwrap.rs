@@ -3,7 +3,6 @@
 //! with no tokens moved.
 
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
-use anoma_pa_solana_integration_test::executed::Executed;
 use anoma_rm_risc0::resource::Resource;
 use anomapay_spl_token_forwarder_client::{ForwarderEvent, derive_forwarder_escrow_authority};
 use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
@@ -48,7 +47,7 @@ async fn settles_an_unwrap_the_recipient_receives_the_tokens_from_escrow() -> an
     let tx = forwarder
         .prove_unwrap(&env, wrapped, &owner, recipient)
         .await?;
-    let signature = env.protocol_adapter.settle(tx).await?;
+    let executed = env.protocol_adapter.settled(tx).await?;
 
     let recipient_account = get_associated_token_address(&recipient, &forwarder.mint);
     anyhow::ensure!(
@@ -57,10 +56,7 @@ async fn settles_an_unwrap_the_recipient_receives_the_tokens_from_escrow() -> an
     );
 
     // Mirrors ERC20Forwarder's `Unwrapped` event, a CPI event like `Wrapped`.
-    let events = events(
-        &Executed::read(&env.protocol_adapter.rpc, &signature).await?,
-        &forwarder.program,
-    )?;
+    let events = events(&executed, &forwarder.program)?;
     let [ForwarderEvent::Unwrapped(event)] = &events[..] else {
         anyhow::bail!("the settlement emits {events:?}, not one Unwrapped event");
     };

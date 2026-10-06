@@ -4,7 +4,6 @@
 
 use anoma_pa_solana_client::events::{PaEvent, decode_event_instruction};
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
-use anoma_pa_solana_integration_test::executed::Executed;
 use anoma_pa_solana_integration_test::forwarders::CallAccounts;
 use anoma_pa_solana_integration_test::test_forwarder;
 use anoma_pa_testkit::transaction::Transaction;
@@ -98,7 +97,7 @@ async fn settles_a_wrap_the_escrow_receives_the_tokens_and_the_nonce_is_used() -
             .push(test_forwarder::log_ix(&test_forwarder, lines))
     });
     let wrap = first_wrap(&env, forwarder, &owner).await?;
-    let signature = env.protocol_adapter.settle(wrap.tx).await?;
+    let executed = env.protocol_adapter.settled(wrap.tx).await?;
     forwarder.restore(&mut env);
 
     anyhow::ensure!(
@@ -108,7 +107,6 @@ async fn settles_a_wrap_the_escrow_receives_the_tokens_and_the_nonce_is_used() -
 
     // Mirrors ERC20Forwarder's `Wrapped` event. It is a CPI event, part of
     // the transaction, so the truncated log cannot drop it.
-    let executed = Executed::read(&env.protocol_adapter.rpc, &signature).await?;
     anyhow::ensure!(
         executed.logs.iter().any(|line| line == "Log truncated"),
         "the settlement's log is not truncated: {:?}",
@@ -177,8 +175,7 @@ async fn the_first_wrap_fits_one_packet_with_the_forwarders_fixed_accounts_looke
     let (mut env, local, owner) = local().await?;
     let forwarder = &local.forwarder;
     let wrap = first_wrap(&env, forwarder, &owner).await?;
-    let signature = env.protocol_adapter.settle(wrap.tx).await?;
-    let executed = Executed::read(&env.protocol_adapter.rpc, &signature).await?;
+    let executed = env.protocol_adapter.settled(wrap.tx).await?;
 
     let size = bincode::serialize(&executed.transaction)?.len();
     let message = &executed.transaction.message;

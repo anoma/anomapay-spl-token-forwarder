@@ -8,7 +8,7 @@ use anoma_pa_solana_integration_test::envs::common::environment::Environment;
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::executed::Executed;
 use anoma_pa_solana_integration_test::forwarders::CallAccounts;
-use anoma_pa_testkit::environment::{CommitmentTree as _, Prover};
+use anoma_pa_testkit::environment::Prover;
 use anoma_pa_testkit::transaction::Transaction;
 use anoma_pa_testkit::{execute_tx, prove_actions};
 use anoma_rm_risc0::resource::Resource;
@@ -160,7 +160,7 @@ pub async fn e2e() -> anyhow::Result<(
 /// forwarder's fixed accounts in the settlement lookup table.
 async fn serve<P>(env: &mut Environment<P>, program: Pubkey) -> anyhow::Result<Forwarder>
 where
-    P: Prover<Transaction = Transaction>,
+    P: Prover,
 {
     let payer = env.protocol_adapter.payer.pubkey();
     let mint = create_mint(env, &program).await?;
@@ -417,7 +417,7 @@ impl Forwarder {
         seed: &str,
     ) -> anyhow::Result<ProvenWrap>
     where
-        P: Prover<Transaction = Transaction>,
+        P: Prover,
     {
         let wrap = fixtures::wrap(
             self.program,
@@ -452,7 +452,7 @@ impl Forwarder {
         seed: &str,
     ) -> anyhow::Result<Resource>
     where
-        P: Prover<Transaction = Transaction>,
+        P: Prover,
     {
         let wrap = self.prove_wrap(env, owner, amount, nonce, seed).await?;
         execute_tx(env, wrap.tx).await?;
@@ -469,7 +469,7 @@ impl Forwarder {
         recipient: Pubkey,
     ) -> anyhow::Result<Transaction>
     where
-        P: Prover<Transaction = Transaction>,
+        P: Prover,
     {
         let path = env
             .protocol_adapter
