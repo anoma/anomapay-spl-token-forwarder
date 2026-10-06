@@ -31,9 +31,9 @@ anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "06d5e8e
 anomapay-spl-token-forwarder-client = { path = "../client" }
 anoma-rm-risc0 = { version = "=2.0.0-rc.6", default-features = false, features = ["transaction"] }
 anoma-rm-risc0-gadgets = "=2.0.0-rc.6"
-# The AnomaPay transfer resource whose logic ref (1f90852b) the forwarder
-# serves, on devnet too: another build has another logic ref, which the
-# deployed forwarder refuses.
+# The AnomaPay transfer resource whose logic ref (ae9638a1) the forwarder
+# serves: another build has another logic ref, which a forwarder configured
+# for this one refuses.
 transfer_library = { git = "https://github.com/anoma/anomapay-solana-resource", rev = "ac4c933e6bc9e52f7f7fd53b65ba687e6bfa1f78" }
 transfer_witness = { git = "https://github.com/anoma/anomapay-solana-resource", rev = "ac4c933e6bc9e52f7f7fd53b65ba687e6bfa1f78" }
 anyhow = "1.0"
