@@ -14,9 +14,10 @@ solana = "4.3.0"
 # (anoma/solana-protocol-adapter#124).
 anchor-lang = { git = "https://github.com/otter-sec/anchor", rev = "2c9747a2d31bd5e94745cee6c083577f3e6675c0" }
 # The adapter this forwarder is built against: its program crate (the state
-# layout, the upgrade helpers) and its client.
-protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "ab27899718c6962d5a85d545a05ea2be45a29bbb", default-features = false, features = ["no-entrypoint"] }
-anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "4c034a946d34ba09e5ce845fcae1c8880babe0cb", default-features = false }
+# layout, the upgrade helpers) and its client, at the revisions the adapter's
+# integration-test harness pins, so the tests link one copy of the client.
+protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "7e723d6830ebfdf9ed8609f98593f109e3a1bac5", default-features = false, features = ["no-entrypoint"] }
+anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "8ed65a4b5f00164641c10d16661de97d47a8ecab", default-features = false }
 
 [profile.release]
 overflow-checks = true

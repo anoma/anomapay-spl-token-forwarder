@@ -22,7 +22,7 @@ e2e = ["anoma-pa-solana-integration-test/e2e"]
 
 [dependencies]
 # The adapter's harness: pa-testkit's environments for the Solana adapter.
-anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "6904030aa61ba5994d27b08b4ee496f7af5f7dc5", default-features = false }
+anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "7e723d6830ebfdf9ed8609f98593f109e3a1bac5", default-features = false }
 # The revisions the harness pins.
 anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "8ed65a4b5f00164641c10d16661de97d47a8ecab" }
 anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "32c4da76ee17382768f244a6d91f653ec26e2f9f", default-features = false, features = [
