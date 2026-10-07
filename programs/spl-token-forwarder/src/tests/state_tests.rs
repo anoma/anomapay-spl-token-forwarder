@@ -114,16 +114,6 @@ fn wrap_input_parses_the_client_encoding_and_recomputes_its_signed_message() {
     );
 }
 
-/// The return byte the resource's external call expects is the one this
-/// program returns.
-#[test]
-fn result_success_is_the_client_constant() {
-    assert_eq!(
-        crate::RESULT_SUCCESS,
-        anomapay_spl_token_forwarder_client::FORWARDER_RESULT_SUCCESS
-    );
-}
-
 /// The client library encodes the unwrap input this program parses.
 #[test]
 fn unwrap_input_parses_the_client_encoding() {
@@ -331,11 +321,13 @@ fn config_is_discriminator_four_keys_version_and_owner() {
 // =============================================================================
 
 /// A PA state account exactly as the adapter serializes it (discriminator
-/// plus the current layout), paused or not, with the given denied logic refs.
+/// plus the current layout), paused or not, with the given logic refs on
+/// both denylists.
 fn serialized_pa_state(paused: bool, denied_logic_refs: Vec<[u8; 32]>) -> Vec<u8> {
     let state = PAStateAccount {
         paused,
-        denied_logic_refs,
+        denied_consumed_logic_refs: denied_logic_refs.clone(),
+        denied_created_logic_refs: denied_logic_refs,
         ..PAStateAccount::running(
             254,
             Pubkey::new_unique(),

@@ -8,10 +8,6 @@ pub const FORWARDER_WRAP_NUM_ACCOUNTS: u8 = 10;
 /// (`build_unwrap_forwarder_accounts`).
 pub const FORWARDER_UNWRAP_NUM_ACCOUNTS: u8 = 9;
 
-/// Return data of a successful forwarder call: the one byte the SPL token
-/// forwarder returns and the resource's external call expects as output.
-pub const FORWARDER_RESULT_SUCCESS: u8 = 1;
-
 /// Nonces per nonce-bitmap account. The bitmap for `nonce` is the one for
 /// word `nonce / NONCES_PER_WORD`.
 pub const NONCES_PER_WORD: u64 = 256;
