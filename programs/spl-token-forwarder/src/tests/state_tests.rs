@@ -155,7 +155,6 @@ fn wrap_input_rejects_any_other_length() {
     assert!(WrapInput::try_from_bytes(&[0u8; WrapInput::SIZE]).is_ok());
 }
 
-/// The EVM forwarder's one `InvalidInputLength` covers both operands.
 #[test]
 fn unwrap_input_rejects_any_other_length() {
     for len in [UnwrapInput::SIZE - 1, UnwrapInput::SIZE + 1] {

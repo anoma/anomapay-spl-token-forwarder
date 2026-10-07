@@ -4,9 +4,8 @@
 
 use anoma_pa_solana_client::external_call::{OutputMode, SolanaExternalCall};
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
-use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
 use anoma_pa_testkit::fixtures::passthrough;
-use anoma_pa_testkit::{execute_tx, prove_actions};
+use anoma_pa_testkit::prove_actions;
 use anoma_rm_risc0::resource::Resource;
 use anoma_rm_risc0::utils::bytes_to_words;
 use anomapay_spl_token_forwarder_client::{
@@ -212,13 +211,13 @@ async fn refuses_an_unwrap_called_by_a_resource_of_another_logic() -> anyhow::Re
     .witnesses;
     let tx = prove_actions(&env, &[action]).await?;
 
-    let before = balances(&env, &[escrow, recipient_account]).await?;
-    expect_integration_panic(Needle::Static("Error Code: LogicRefMismatch."))(
-        execute_tx(&mut env, tx).await,
-    )?;
-    anyhow::ensure!(
-        balances(&env, &[escrow, recipient_account]).await? == before,
-        "a refused unwrap moved tokens"
-    );
-    Ok(())
+    refuses(
+        &mut env,
+        forwarder,
+        tx,
+        |_| {},
+        "Error Code: LogicRefMismatch.",
+        &[escrow, recipient_account],
+    )
+    .await
 }

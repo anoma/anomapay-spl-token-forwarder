@@ -13,9 +13,9 @@ use anoma_pa_testkit::transaction::Transaction;
 use anoma_pa_testkit::{execute_tx, prove_actions};
 use anoma_rm_risc0::resource::Resource;
 use anomapay_spl_token_forwarder_client::{
-    ConfigAccount, ForwarderEvent, decode_config, decode_forwarder_event_instruction,
-    derive_forwarder_config_pda, derive_forwarder_escrow_authority,
-    forwarder_settlement_lookup_keys, initialize_ix, sha256,
+    CONFIG_VERSION, ConfigAccount, ForwarderEvent, decode_config,
+    decode_forwarder_event_instruction, derive_forwarder_config_pda,
+    derive_forwarder_escrow_authority, forwarder_settlement_lookup_keys, initialize_ix, sha256,
 };
 use anyhow::Context;
 use solana_instruction::{AccountMeta, Instruction};
@@ -322,19 +322,26 @@ pub async fn config<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::Result
     Ok(decode_config(&data)?)
 }
 
-/// The development build's `dev_set_config_version`: the owner puts the
-/// config at `version`, as an earlier build would have left it.
-pub fn dev_set_config_version_ix(program: &Pubkey, owner: &Pubkey, version: u64) -> Instruction {
+/// `local` with the development build, whose config the owner then puts
+/// (`dev_set_config_version`) one below this build's CONFIG_VERSION, as an
+/// earlier build would have left it: the config `reinitialize` rotates once.
+pub async fn local_below_this_builds_version() -> anyhow::Result<(LocalEnv, LocalForwarder)> {
+    let (env, local) = local_with(Build::Development).await?;
+    let (program, owner) = (local.forwarder.program, local.owner.pubkey());
     let mut data = anchor_instruction_disc("dev_set_config_version").to_vec();
-    data.extend_from_slice(&version.to_le_bytes());
-    Instruction {
-        program_id: *program,
+    data.extend_from_slice(&(CONFIG_VERSION - 1).to_le_bytes());
+    let lower = Instruction {
+        program_id: program,
         accounts: vec![
-            AccountMeta::new_readonly(*owner, true),
-            AccountMeta::new(derive_forwarder_config_pda(program).0, false),
+            AccountMeta::new_readonly(owner, true),
+            AccountMeta::new(derive_forwarder_config_pda(&program).0, false),
         ],
         data,
-    }
+    };
+    env.send(&[lower], &[&local.owner])
+        .await
+        .context("failed to lower the config's version")?;
+    Ok((env, local))
 }
 
 /// The forwarder `program`'s events in the transaction `executed`, in the
