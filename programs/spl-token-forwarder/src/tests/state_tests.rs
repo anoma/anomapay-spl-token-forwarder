@@ -145,15 +145,25 @@ fn unwrap_input_round_trips_through_to_bytes() {
 
 #[test]
 fn wrap_input_rejects_any_other_length() {
-    assert!(WrapInput::try_from_bytes(&[0u8; WrapInput::SIZE - 1]).is_err());
-    assert!(WrapInput::try_from_bytes(&[0u8; WrapInput::SIZE + 1]).is_err());
+    for len in [WrapInput::SIZE - 1, WrapInput::SIZE + 1] {
+        assert_eq!(
+            WrapInput::try_from_bytes(&vec![0u8; len]).unwrap_err(),
+            crate::ErrorCode::InvalidInputLength.into(),
+            "a {len}-byte wrap input"
+        );
+    }
     assert!(WrapInput::try_from_bytes(&[0u8; WrapInput::SIZE]).is_ok());
 }
 
 #[test]
 fn unwrap_input_rejects_any_other_length() {
-    assert!(UnwrapInput::try_from_bytes(&[0u8; UnwrapInput::SIZE - 1]).is_err());
-    assert!(UnwrapInput::try_from_bytes(&[0u8; UnwrapInput::SIZE + 1]).is_err());
+    for len in [UnwrapInput::SIZE - 1, UnwrapInput::SIZE + 1] {
+        assert_eq!(
+            UnwrapInput::try_from_bytes(&vec![0u8; len]).unwrap_err(),
+            crate::ErrorCode::InvalidInputLength.into(),
+            "a {len}-byte unwrap input"
+        );
+    }
     assert!(UnwrapInput::try_from_bytes(&[0u8; UnwrapInput::SIZE]).is_ok());
 }
 

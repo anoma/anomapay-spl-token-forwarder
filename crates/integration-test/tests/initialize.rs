@@ -137,7 +137,7 @@ async fn refuses_a_zero_protocol_adapter() -> anyhow::Result<()> {
         &program,
         ix,
         &[],
-        "Error Code: ZeroAddressNotAllowed.",
+        "Error Code: ZeroProtocolAdapterNotAllowed.",
     )
     .await
 }
@@ -158,7 +158,7 @@ async fn refuses_a_zero_logic_ref() -> anyhow::Result<()> {
         &program,
         ix,
         &[],
-        "Error Code: ZeroAddressNotAllowed.",
+        "Error Code: ZeroLogicRefNotAllowed.",
     )
     .await
 }

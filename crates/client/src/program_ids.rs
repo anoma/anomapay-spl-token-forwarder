@@ -12,11 +12,7 @@ mod tests {
 
     #[test]
     fn forwarder_program_id_matches_the_vendored_idl() {
-        let idl: serde_json::Value = serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/idl/spl_token_forwarder.json"
-        )))
-        .unwrap();
+        let idl = crate::idl::idl();
         assert_eq!(
             idl["address"].as_str().unwrap(),
             FORWARDER_PROGRAM_ID.to_string()

@@ -30,12 +30,14 @@ Development:
                  with --check, fail when a committed binary is not, byte for
                  byte, the fresh build
   typecheck      Type-check and format-check the operator scripts against the
-                 production IDL's types (the program is not compiled)
+                 production IDL's types (the program is not compiled), and
+                 check the client's copy of the IDL is that IDL
   script-test    Run the operator scripts against the harness's local runtime
                  (crates/integration-test/tests/operator_scripts.rs), after
                  installing their dependencies and generating the types they
                  import
-  ts-test        Install the TypeScript bindings' (ts/) locked dependencies,
+  ts-test        Check the Rust and TypeScript bindings carry one version,
+                 install the TypeScript bindings' (ts/) locked dependencies,
                  type-check them and run their tests
 
 Cluster operations (--cluster required):
@@ -616,11 +618,24 @@ case "$COMMAND" in
     require_cmd yarn
     ensure_node_modules
     release_idl
+    # The client bindings' copy of the IDL, which their decoders are tested
+    # against, is the program's.
+    if ! cmp "$PROGRAM_IDL" crates/client/idl/spl_token_forwarder.json; then
+      echo "❌ crates/client/idl/spl_token_forwarder.json is not the program's IDL; copy $PROGRAM_IDL over it." >&2
+      exit 1
+    fi
     yarn run typecheck
     yarn run lint
     ;;
   ts-test)
     require_cmd npm
+    # The Rust and TypeScript client bindings release together, at one version.
+    crate=$(sed -n 's/^version = "\(.*\)"$/\1/p' crates/client/Cargo.toml)
+    package=$(node -p "require('./ts/package.json').version")
+    if [[ "$crate" != "$package" ]]; then
+      echo "❌ The client crate is at $crate and the TS package at $package; give both the same version." >&2
+      exit 1
+    fi
     (cd ts && npm ci && npm run tsc && npm test)
     ;;
   deploy | upgrade | forwarder | lookup-table | idl-publish | status)

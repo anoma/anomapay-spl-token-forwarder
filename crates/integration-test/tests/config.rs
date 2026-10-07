@@ -13,9 +13,7 @@ use anomapay_spl_token_forwarder_client::{
     set_emergency_caller_ix,
 };
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
-use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, Build, LocalForwarder, config, dev_set_config_version_ix,
-};
+use anomapay_spl_token_forwarder_integration_test::setup::{self, LocalForwarder, config};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -25,19 +23,20 @@ fn random_ref() -> [u8; 32] {
     Keypair::new().pubkey().to_bytes()
 }
 
-/// Reinitializing as `signer` fails with `error` and leaves the config as it
-/// was.
+/// Reinitializing to `logic_ref` as `signer` fails with `error` and leaves
+/// the config as it was.
 async fn refuses_reinitialize(
     env: &LocalEnv,
     local: &LocalForwarder,
     signer: &Keypair,
+    logic_ref: [u8; 32],
     error: &'static str,
 ) -> anyhow::Result<()> {
     let program = local.forwarder.program;
     let before = config(env, &program).await?;
     expect_integration_panic(Needle::Static(error))(
         env.send(
-            &[reinitialize_ix(&program, &signer.pubkey(), random_ref())],
+            &[reinitialize_ix(&program, &signer.pubkey(), logic_ref)],
             &[signer],
         )
         .await,
@@ -59,6 +58,7 @@ async fn reinitialize_refuses_a_signer_that_is_not_the_owner() -> anyhow::Result
         &env,
         &local,
         &Keypair::new(),
+        random_ref(),
         "AnchorError caused by account: authority. Error Code: OwnableUnauthorizedAccount.",
     )
     .await
@@ -74,6 +74,7 @@ async fn reinitialize_refuses_a_config_already_at_this_builds_version() -> anyho
         &env,
         &local,
         &local.owner,
+        random_ref(),
         "Error Code: InvalidInitialization.",
     )
     .await
@@ -85,17 +86,8 @@ async fn reinitialize_refuses_a_config_already_at_this_builds_version() -> anyho
 #[tokio::test(flavor = "multi_thread")]
 async fn reinitialize_rotates_the_logic_ref_once_for_a_config_below_this_builds_version()
 -> anyhow::Result<()> {
-    let (env, local) = setup::local_with(Build::Development).await?;
+    let (env, local) = setup::local_below_this_builds_version().await?;
     let (program, owner) = (local.forwarder.program, &local.owner);
-    env.send(
-        &[dev_set_config_version_ix(
-            &program,
-            &owner.pubkey(),
-            CONFIG_VERSION - 1,
-        )],
-        &[owner],
-    )
-    .await?;
 
     let rotated = random_ref();
     env.send(
@@ -108,7 +100,29 @@ async fn reinitialize_rotates_the_logic_ref_once_for_a_config_below_this_builds_
         after.logic_ref == rotated && after.version == CONFIG_VERSION,
         "the config is {after:?}, not rotated to {rotated:02x?} at version {CONFIG_VERSION}"
     );
-    refuses_reinitialize(&env, &local, owner, "Error Code: InvalidInitialization.").await
+    refuses_reinitialize(
+        &env,
+        &local,
+        owner,
+        random_ref(),
+        "Error Code: InvalidInitialization.",
+    )
+    .await
+}
+
+// Mirrors ForwarderBaseUpgradeable's ZeroLogicRefNotAllowed, which its
+// initializer, and so a reinitializer, raises for the zero logic ref.
+#[tokio::test(flavor = "multi_thread")]
+async fn reinitialize_refuses_the_zero_logic_ref() -> anyhow::Result<()> {
+    let (env, local) = setup::local_below_this_builds_version().await?;
+    refuses_reinitialize(
+        &env,
+        &local,
+        &local.owner,
+        [0; 32],
+        "Error Code: ZeroLogicRefNotAllowed.",
+    )
+    .await
 }
 
 // Mirrors ForwarderBase.t.sol: test_forwardCall_reverts_if_the_pa_is_not_the_caller.
@@ -137,7 +151,7 @@ async fn refuses_a_forward_call_that_is_not_a_cpi_from_the_adapter() -> anyhow::
         ],
         data,
     };
-    expect_integration_panic(Needle::Static("Error Code: UnauthorizedCaller."))(
+    expect_integration_panic(Needle::Static("Error Code: ProtocolAdapterMismatch."))(
         env.send(&[forward_call], &[]).await,
     )
 }

@@ -14,23 +14,20 @@ use anoma_pa_solana_client::events::{
 };
 use anoma_pa_solana_client::{anchor_event_disc, ANCHOR_DISCRIMINATOR_LEN};
 
-/// The forwarder escrowed `amount` of `token_mint` from `from` for the wrap
-/// with `nonce`, authorized for the action whose tree root is
-/// `action_tree_root`, as the EVM forwarder's `Wrapped`.
+/// The forwarder escrowed `amount` of the token whose mint is `token` from
+/// `from`, as the EVM forwarder's `Wrapped`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WrappedEvent {
-    pub token_mint: [u8; 32],
+    pub token: [u8; 32],
     pub from: [u8; 32],
     pub amount: u64,
-    pub nonce: u64,
-    pub action_tree_root: [u8; 32],
 }
 
-/// The forwarder released `amount` of `token_mint` to `to`, as the EVM
-/// forwarder's `Unwrapped`.
+/// The forwarder released `amount` of the token whose mint is `token` to
+/// `to`, as the EVM forwarder's `Unwrapped`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnwrappedEvent {
-    pub token_mint: [u8; 32],
+    pub token: [u8; 32],
     pub to: [u8; 32],
     pub amount: u64,
 }
@@ -84,15 +81,13 @@ fn forwarder_event_body(
 ) -> Result<ForwarderEvent, EventDecodeError> {
     Ok(if disc == anchor_event_disc("Wrapped") {
         ForwarderEvent::Wrapped(WrappedEvent {
-            token_mint: c.array_32("token_mint")?,
+            token: c.array_32("token")?,
             from: c.array_32("from")?,
             amount: c.u64_le("amount")?,
-            nonce: c.u64_le("nonce")?,
-            action_tree_root: c.array_32("action_tree_root")?,
         })
     } else if disc == anchor_event_disc("Unwrapped") {
         ForwarderEvent::Unwrapped(UnwrappedEvent {
-            token_mint: c.array_32("token_mint")?,
+            token: c.array_32("token")?,
             to: c.array_32("to")?,
             amount: c.u64_le("amount")?,
         })
@@ -137,28 +132,17 @@ mod tests {
     fn each_event_decodes_to_its_fields() {
         let cases = [
             (
-                event(
-                    "Wrapped",
-                    &[
-                        &[1; 32],
-                        &[2; 32],
-                        &7u64.to_le_bytes(),
-                        &9u64.to_le_bytes(),
-                        &[3; 32],
-                    ],
-                ),
+                event("Wrapped", &[&[1; 32], &[2; 32], &7u64.to_le_bytes()]),
                 ForwarderEvent::Wrapped(WrappedEvent {
-                    token_mint: [1; 32],
+                    token: [1; 32],
                     from: [2; 32],
                     amount: 7,
-                    nonce: 9,
-                    action_tree_root: [3; 32],
                 }),
             ),
             (
                 event("Unwrapped", &[&[1; 32], &[4; 32], &5u64.to_le_bytes()]),
                 ForwarderEvent::Unwrapped(UnwrappedEvent {
-                    token_mint: [1; 32],
+                    token: [1; 32],
                     to: [4; 32],
                     amount: 5,
                 }),
@@ -200,16 +184,23 @@ mod tests {
                 }),
             ),
         ];
-        for (data, expected) in cases {
-            assert_eq!(decode_forwarder_event_instruction(&data).unwrap(), expected);
-            assert_eq!(
-                decode_forwarder_event_instruction(&data[..data.len() - 1]).unwrap_err(),
-                EventDecodeError::Truncated {
-                    field: field_of(&expected)
-                },
-                "{expected:?} truncated"
-            );
+        for (data, expected) in &cases {
+            assert_eq!(&decode_forwarder_event_instruction(data).unwrap(), expected);
         }
+        // The cases are the IDL's events: a variant for an event the program
+        // no longer emits fails here.
+        let decoded: std::collections::BTreeSet<String> = cases
+            .iter()
+            .map(|(_, e)| format!("{e:?}").split('(').next().unwrap().to_string())
+            .collect();
+        let idl = crate::idl::idl();
+        let declared: std::collections::BTreeSet<String> = idl["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["name"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(decoded, declared, "the decoded events are not the IDL's");
         assert_eq!(
             decode_forwarder_event_instruction(&event("Paused", &[])),
             Err(EventDecodeError::UnknownDiscriminator(anchor_event_disc(
@@ -218,34 +209,40 @@ mod tests {
         );
     }
 
-    /// The last field of each event, which a body one byte short truncates.
-    fn field_of(event: &ForwarderEvent) -> &'static str {
-        match event {
-            ForwarderEvent::Wrapped(_) => "action_tree_root",
-            ForwarderEvent::Unwrapped(_) => "amount",
-            ForwarderEvent::EmergencyCallerSet(_) => "set_by",
-            ForwarderEvent::EmergencyWithdraw(_) => "caller",
-            ForwarderEvent::Initialized(_) => "version",
-            ForwarderEvent::OwnershipTransferred(_) => "new_owner",
-            ForwarderEvent::Upgraded(_) => "executable_hash",
+    /// The Borsh width of an IDL field type the forwarder's events use.
+    fn idl_width(ty: &serde_json::Value) -> usize {
+        match ty {
+            serde_json::Value::String(t) if t == "pubkey" => 32,
+            serde_json::Value::String(t) if t == "u64" => 8,
+            _ if ty["array"] == serde_json::json!(["u8", 32]) => 32,
+            _ => panic!("no width for the IDL type {ty}"),
         }
     }
 
+    /// The decoder reads every event the IDL declares field by field, in the
+    /// IDL's order and widths: a body that ends inside a field names that
+    /// field, and the whole body decodes.
     #[test]
-    fn every_event_the_idl_declares_has_a_decoder() {
-        let idl: serde_json::Value = serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/idl/spl_token_forwarder.json"
-        )))
-        .unwrap();
+    fn every_event_the_idl_declares_decodes_its_fields_in_order() {
+        let idl = crate::idl::idl();
         for e in idl["events"].as_array().unwrap() {
             let name = e["name"].as_str().unwrap();
-            assert_ne!(
-                decode_forwarder_event_instruction(&event(name, &[])),
-                Err(EventDecodeError::UnknownDiscriminator(anchor_event_disc(
-                    name
-                ))),
-                "the IDL's event {name} has no decoder"
+            let mut body = Vec::new();
+            for f in crate::idl::fields(&idl, name) {
+                let field = f["name"].as_str().unwrap();
+                let width = idl_width(&f["type"]);
+                body.resize(body.len() + width - 1, 0);
+                let decoded = decode_forwarder_event_instruction(&event(name, &[&body]));
+                assert!(
+                    matches!(decoded, Err(EventDecodeError::Truncated { field: got }) if got == field),
+                    "{name}: a body ending inside {field} decodes to {decoded:?}"
+                );
+                body.push(0);
+            }
+            assert!(
+                decode_forwarder_event_instruction(&event(name, &[&body])).is_ok(),
+                "{name}: the IDL's {}-byte body does not decode",
+                body.len()
             );
         }
     }

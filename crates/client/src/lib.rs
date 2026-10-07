@@ -44,3 +44,27 @@ pub use pda::{
 };
 #[cfg(feature = "solana")]
 pub use program_ids::*;
+
+/// The vendored IDL, which the unit tests check the hand-written items against.
+#[cfg(test)]
+mod idl {
+    pub(crate) fn idl() -> serde_json::Value {
+        serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/idl/spl_token_forwarder.json"
+        )))
+        .unwrap()
+    }
+
+    /// The fields of the IDL's type `name`.
+    pub(crate) fn fields<'a>(idl: &'a serde_json::Value, name: &str) -> &'a [serde_json::Value] {
+        idl["types"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == name)
+            .unwrap_or_else(|| panic!("the IDL declares no type {name}"))["type"]["fields"]
+            .as_array()
+            .unwrap()
+    }
+}

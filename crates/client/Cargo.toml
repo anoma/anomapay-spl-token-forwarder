@@ -1,6 +1,6 @@
 [package]
 name = "anomapay-spl-token-forwarder-client"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "Apache-2.0"
 description = "Client bindings for the AnomaPay SPL token forwarder: instruction builders, CPI segments, wire formats, events"

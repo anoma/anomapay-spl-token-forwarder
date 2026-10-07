@@ -2,7 +2,7 @@
   "address": "BsfuXpxw8oCmZXnYijyQkUYNcCnuskFZbYizmWLnpSU7",
   "metadata": {
     "name": "spl_token_forwarder",
-    "version": "2.0.0-rc.5",
+    "version": "2.0.0-rc.6",
     "spec": "0.1.0",
     "description": "SPL Token forwarder for wrap/unwrap operations with Ed25519 signature verification"
   },
@@ -899,53 +899,53 @@
     },
     {
       "code": 6001,
-      "name": "InvalidWrapInputLength",
-      "msg": "Invalid wrap input length"
+      "name": "InvalidInputLength",
+      "msg": "Invalid input length"
     },
     {
       "code": 6002,
-      "name": "InvalidUnwrapInputLength",
-      "msg": "Invalid unwrap input length - expected 72 bytes"
-    },
-    {
-      "code": 6003,
       "name": "InvalidTokenAccountData",
       "msg": "Invalid token account data - too short or malformed"
     },
     {
-      "code": 6004,
+      "code": 6003,
       "name": "InsufficientRemainingAccounts",
       "msg": "Insufficient remaining accounts - check logs for expected count"
     },
     {
-      "code": 6005,
+      "code": 6004,
       "name": "InvalidTokenProgram",
       "msg": "Invalid token program - expected SPL Token program ID"
     },
     {
-      "code": 6006,
+      "code": 6005,
       "name": "WrongTokenAccountOwner",
       "msg": "Token account owner mismatch - the account does not belong to the party the transfer names"
     },
     {
-      "code": 6007,
+      "code": 6006,
       "name": "WrongTokenAccountMint",
       "msg": "Token account mint mismatch - the account does not hold the mint the transfer names"
     },
     {
-      "code": 6008,
+      "code": 6007,
       "name": "UnknownOperation",
       "msg": "Unknown operation code"
     },
     {
+      "code": 6008,
+      "name": "ProtocolAdapterMismatch",
+      "msg": "The caller is not the protocol adapter"
+    },
+    {
       "code": 6009,
       "name": "UnauthorizedCaller",
-      "msg": "Unauthorized caller - only Protocol Adapter can call forward_call"
+      "msg": "Unauthorized caller"
     },
     {
       "code": 6010,
-      "name": "UnauthorizedLogicRef",
-      "msg": "Unauthorized logic_ref - this forwarder doesn't handle this resource type"
+      "name": "LogicRefMismatch",
+      "msg": "The calling resource's logic ref is not this forwarder's"
     },
     {
       "code": 6011,
@@ -1004,51 +1004,61 @@
     },
     {
       "code": 6022,
+      "name": "ZeroProtocolAdapterNotAllowed",
+      "msg": "Zero protocol adapter not allowed"
+    },
+    {
+      "code": 6023,
+      "name": "ZeroLogicRefNotAllowed",
+      "msg": "Zero logic ref not allowed"
+    },
+    {
+      "code": 6024,
       "name": "InvalidEscrowAuthority",
       "msg": "Invalid escrow authority"
     },
     {
-      "code": 6023,
+      "code": 6025,
       "name": "InvalidNonceBitmapPda",
       "msg": "Invalid nonce bitmap PDA - doesn't match derived address"
     },
     {
-      "code": 6024,
+      "code": 6026,
       "name": "NonceBitmapMissing",
       "msg": "Nonce bitmap account does not exist - create it with init_nonce_bitmap before the wrap"
     },
     {
-      "code": 6025,
+      "code": 6027,
       "name": "TokenTransferFailed",
       "msg": "Token transfer failed - check the SPL Token error in the logs"
     },
     {
-      "code": 6026,
+      "code": 6028,
       "name": "UnwrapToEscrow",
       "msg": "Unwrap recipient is the escrow authority - the tokens would never leave escrow"
     },
     {
-      "code": 6027,
+      "code": 6029,
       "name": "InvalidInitialization",
       "msg": "The config is already at this build's CONFIG_VERSION - rotating the logic ref takes a build that raises it"
     },
     {
-      "code": 6028,
+      "code": 6030,
       "name": "OwnableUnauthorizedAccount",
       "msg": "The signer is not the forwarder's owner"
     },
     {
-      "code": 6029,
+      "code": 6031,
       "name": "OwnableInvalidOwner",
       "msg": "The zero key cannot be the owner"
     },
     {
-      "code": 6030,
+      "code": 6032,
       "name": "InvalidUpgradeBuffer",
       "msg": "Buffer is not a loader buffer holding a program"
     },
     {
-      "code": 6031,
+      "code": 6033,
       "name": "Unauthorized",
       "msg": "Unauthorized: the signer does not hold the authority this instruction requires"
     }
@@ -1242,7 +1252,7 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "token_mint",
+            "name": "token",
             "type": "pubkey"
           },
           {
@@ -1286,7 +1296,7 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "token_mint",
+            "name": "token",
             "type": "pubkey"
           },
           {
@@ -1296,19 +1306,6 @@
           {
             "name": "amount",
             "type": "u64"
-          },
-          {
-            "name": "nonce",
-            "type": "u64"
-          },
-          {
-            "name": "action_tree_root",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
           }
         ]
       }

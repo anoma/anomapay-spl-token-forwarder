@@ -9,11 +9,10 @@ pub enum ErrorCode {
     #[msg("Invalid input data")]
     InvalidInput,
 
-    #[msg("Invalid wrap input length")]
-    InvalidWrapInputLength,
-
-    #[msg("Invalid unwrap input length - expected 72 bytes")]
-    InvalidUnwrapInputLength,
+    /// The EVM forwarder's `InvalidInputLength`: a wrap or unwrap operand of
+    /// the wrong length.
+    #[msg("Invalid input length")]
+    InvalidInputLength,
 
     #[msg("Invalid token account data - too short or malformed")]
     InvalidTokenAccountData,
@@ -33,11 +32,20 @@ pub enum ErrorCode {
     #[msg("Unknown operation code")]
     UnknownOperation,
 
-    #[msg("Unauthorized caller - only Protocol Adapter can call forward_call")]
+    /// The EVM forwarder's `ProtocolAdapterMismatch`: `forward_call`'s caller
+    /// is not the protocol adapter.
+    #[msg("The caller is not the protocol adapter")]
+    ProtocolAdapterMismatch,
+
+    /// The signer is not the emergency committee or the emergency caller an
+    /// emergency instruction requires.
+    #[msg("Unauthorized caller")]
     UnauthorizedCaller,
 
-    #[msg("Unauthorized logic_ref - this forwarder doesn't handle this resource type")]
-    UnauthorizedLogicRef,
+    /// The EVM forwarder's `LogicRefMismatch`: the calling resource's logic
+    /// ref is not the one this forwarder serves.
+    #[msg("The calling resource's logic ref is not this forwarder's")]
+    LogicRefMismatch,
 
     #[msg("Signature deadline has expired")]
     DeadlineExpired,
@@ -69,8 +77,17 @@ pub enum ErrorCode {
     #[msg("Invalid PA state account - does not match derived PDA from protocol_adapter")]
     InvalidPaState,
 
+    /// A zero emergency committee or emergency caller.
     #[msg("Zero address not allowed")]
     ZeroAddressNotAllowed,
+
+    /// The EVM forwarder's `ZeroProtocolAdapterNotAllowed`.
+    #[msg("Zero protocol adapter not allowed")]
+    ZeroProtocolAdapterNotAllowed,
+
+    /// The EVM forwarder's `ZeroLogicRefNotAllowed`.
+    #[msg("Zero logic ref not allowed")]
+    ZeroLogicRefNotAllowed,
 
     #[msg("Invalid escrow authority")]
     InvalidEscrowAuthority,

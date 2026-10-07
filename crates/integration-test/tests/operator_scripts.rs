@@ -11,8 +11,8 @@ use anomapay_spl_token_forwarder_client::{
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::scripts::{hex, run_script};
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, Build, FORWARDER_SO, LocalForwarder, balance, config, dev_set_config_version_ix,
-    executable_hash, give_sol, mint_to, new_mint, upgrade_authority,
+    self, Build, FORWARDER_SO, LocalForwarder, balance, config, executable_hash, give_sol, mint_to,
+    new_mint, upgrade_authority,
 };
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -134,17 +134,8 @@ async fn init_refuses_an_existing_config_that_differs_from_the_request() -> anyh
 /// the logic ref.
 #[tokio::test(flavor = "multi_thread")]
 async fn reinitialize_rotates_the_logic_ref() -> anyhow::Result<()> {
-    let (env, local) = setup::local_with(Build::Development).await?;
+    let (env, local) = setup::local_below_this_builds_version().await?;
     let (program, owner) = (local.forwarder.program, &local.owner);
-    env.send(
-        &[dev_set_config_version_ix(
-            &program,
-            &owner.pubkey(),
-            CONFIG_VERSION - 1,
-        )],
-        &[owner],
-    )
-    .await?;
     // The owner signs and pays as the script's wallet.
     give_sol(&env, &owner.pubkey(), 1_000_000_000)?;
     let rotated = Keypair::new().pubkey().to_bytes();

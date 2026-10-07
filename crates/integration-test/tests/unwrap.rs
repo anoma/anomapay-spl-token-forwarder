@@ -2,9 +2,16 @@
 //! and its event, and every account and recipient the forwarder refuses,
 //! with no tokens moved.
 
+use anoma_pa_solana_client::external_call::{OutputMode, SolanaExternalCall};
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
+use anoma_pa_testkit::fixtures::passthrough;
+use anoma_pa_testkit::prove_actions;
 use anoma_rm_risc0::resource::Resource;
-use anomapay_spl_token_forwarder_client::{ForwarderEvent, derive_forwarder_escrow_authority};
+use anoma_rm_risc0::utils::bytes_to_words;
+use anomapay_spl_token_forwarder_client::{
+    FORWARDER_UNWRAP_NUM_ACCOUNTS, ForwarderEvent, derive_forwarder_escrow_authority,
+    encode_unwrap_forwarder_input,
+};
 use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
 use anomapay_spl_token_forwarder_integration_test::refusal::{balances, refuses};
 use anomapay_spl_token_forwarder_integration_test::setup::{
@@ -61,7 +68,7 @@ async fn settles_an_unwrap_the_recipient_receives_the_tokens_from_escrow() -> an
         anyhow::bail!("the settlement emits {events:?}, not one Unwrapped event");
     };
     anyhow::ensure!(
-        event.token_mint == forwarder.mint.to_bytes()
+        event.token == forwarder.mint.to_bytes()
             && event.to == recipient.to_bytes()
             && event.amount == AMOUNT,
         "the Unwrapped event {event:?} is not the release of {AMOUNT} to {recipient}"
@@ -170,6 +177,47 @@ async fn refuses_an_unwrap_whose_recipient_is_the_escrow_authority() -> anyhow::
         |_| {},
         "Error Code: UnwrapToEscrow.",
         &unmoved,
+    )
+    .await
+}
+
+// Mirrors ForwarderBase.t.sol's LogicRefMismatch: the adapter passes the
+// calling resource's logic ref, and a resource of another logic (here the
+// pass-through logic) unwraps nothing, though the escrow holds what it names.
+#[tokio::test(flavor = "multi_thread")]
+async fn refuses_an_unwrap_called_by_a_resource_of_another_logic() -> anyhow::Result<()> {
+    let (mut env, local) = setup::local().await?;
+    let forwarder = &local.forwarder;
+    let escrow = forwarder.escrow_account();
+    mint_to(&env, &forwarder.mint, &escrow, AMOUNT).await?;
+    let recipient = Keypair::new().pubkey();
+    let recipient_account = token_account(&env, &recipient, &forwarder.mint).await?;
+    let call = SolanaExternalCall {
+        program_id: forwarder.program.to_bytes(),
+        instruction_data: encode_unwrap_forwarder_input(
+            &forwarder.mint.to_bytes(),
+            AMOUNT,
+            &recipient.to_bytes(),
+        ),
+        expected_output: vec![],
+        output_mode: OutputMode::ReturnData,
+        num_accounts: FORWARDER_UNWRAP_NUM_ACCOUNTS,
+    };
+    let action = passthrough::build(
+        2,
+        vec![bytes_to_words(&call.encode())],
+        passthrough::Overrides::default(),
+    )?
+    .witnesses;
+    let tx = prove_actions(&env, &[action]).await?;
+
+    refuses(
+        &mut env,
+        forwarder,
+        tx,
+        |_| {},
+        "Error Code: LogicRefMismatch.",
+        &[escrow, recipient_account],
     )
     .await
 }

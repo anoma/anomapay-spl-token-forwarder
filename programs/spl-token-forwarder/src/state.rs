@@ -215,11 +215,10 @@ pub struct WrapInput {
 impl WrapInput {
     pub const SIZE: usize = 121;
 
+    /// Every field is fixed-width, so Borsh refuses exactly the inputs that
+    /// are not `SIZE` bytes long.
     pub fn try_from_bytes(data: &[u8]) -> Result<Self> {
-        if data.len() != Self::SIZE {
-            return Err(crate::ErrorCode::InvalidWrapInputLength.into());
-        }
-        Self::try_from_slice(data).map_err(|_| crate::ErrorCode::InvalidWrapInputLength.into())
+        Self::try_from_slice(data).map_err(|_| crate::ErrorCode::InvalidInputLength.into())
     }
 
     pub fn to_message(&self, forwarder_id: &Pubkey) -> WrapMessage {
@@ -247,11 +246,10 @@ pub struct UnwrapInput {
 impl UnwrapInput {
     pub const SIZE: usize = 72;
 
+    /// Every field is fixed-width, so Borsh refuses exactly the inputs that
+    /// are not `SIZE` bytes long.
     pub fn try_from_bytes(data: &[u8]) -> Result<Self> {
-        if data.len() != Self::SIZE {
-            return Err(crate::ErrorCode::InvalidUnwrapInputLength.into());
-        }
-        Self::try_from_slice(data).map_err(|_| crate::ErrorCode::InvalidUnwrapInputLength.into())
+        Self::try_from_slice(data).map_err(|_| crate::ErrorCode::InvalidInputLength.into())
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {

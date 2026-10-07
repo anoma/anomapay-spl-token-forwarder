@@ -106,23 +106,11 @@ mod tests {
 
     #[test]
     fn the_idl_declares_the_accounts_the_decoders_read() {
-        let idl: serde_json::Value = serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/idl/spl_token_forwarder.json"
-        )))
-        .unwrap();
-        let fields_of = |name: &str| -> Vec<String> {
-            let ty = idl["types"]
-                .as_array()
-                .unwrap()
+        let idl = crate::idl::idl();
+        let fields_of = |name: &str| -> Vec<&str> {
+            crate::idl::fields(&idl, name)
                 .iter()
-                .find(|t| t["name"] == name)
-                .unwrap();
-            ty["type"]["fields"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|f| f["name"].as_str().unwrap().to_string())
+                .map(|f| f["name"].as_str().unwrap())
                 .collect()
         };
         assert_eq!(
