@@ -1,7 +1,8 @@
 //! The kind table anoma/risc0-kind-tables generates for solana-devnet is
-//! installable: a wrap proven against it is refused under the commitment the
-//! deployment holds, and settles once the adapter's owner installs the
-//! commitment risc0-kind-tables publishes for devnet.
+//! installable: a wrap proven against it is refused while the deployment
+//! holds another, non-empty table or the empty one, and settles once the
+//! adapter's owner installs the commitment risc0-kind-tables publishes for
+//! devnet.
 
 use anoma_pa_testkit::environment::{ProtocolAdapter as _, Refusal};
 use anoma_pa_testkit::{execute_tx, prove_actions};
@@ -59,12 +60,12 @@ async fn settles_a_wrap_proven_against_the_solana_devnet_kind_table_once_the_own
 
     let accounts = [forwarder.user_account(), forwarder.escrow_account()];
     let before = balances(&env, &accounts).await?;
-    // The same transaction settles below. A proof against another kind table
-    // is an invalid aggregation proof.
+    // The same transaction settles below. A kind table neither stored nor
+    // empty is refused before the proof is verified.
     let refusal = env.protocol_adapter.submit(tx.clone()).await?.err();
     anyhow::ensure!(
-        refusal == Some(Refusal::InvalidAggregationProof),
-        "the adapter returned {refusal:?}, not a refusal of the proof"
+        refusal == Some(Refusal::UnacceptedKindTableCommitment),
+        "the adapter returned {refusal:?}, not a refusal of the kind table"
     );
     anyhow::ensure!(
         balances(&env, &accounts).await? == before,
