@@ -117,11 +117,10 @@ async fn settles_a_wrap_the_escrow_receives_the_tokens_and_the_nonce_is_used() -
         anyhow::bail!("the settlement emits {wrapped:?}, not one Wrapped event");
     };
     anyhow::ensure!(
-        event.token_mint == forwarder.mint.to_bytes()
+        event.token == forwarder.mint.to_bytes()
             && event.from == forwarder.user.pubkey().to_bytes()
-            && event.amount == AMOUNT
-            && event.nonce == NONCE,
-        "the Wrapped event {event:?} is not the wrap of {AMOUNT} with nonce {NONCE}"
+            && event.amount == AMOUNT,
+        "the Wrapped event {event:?} is not the wrap of {AMOUNT}"
     );
 
     // Both resources carry the AnomaPay transfer logic the forwarder config

@@ -22,24 +22,18 @@ import { anchorDiscriminator } from "./discriminator.js";
 /** `anchor_lang::event::EVENT_IX_TAG_LE`: the u64 `0x1d9acb512ea545e4` little-endian. */
 export const EVENT_IX_TAG = new Uint8Array([0xe4, 0x45, 0xa5, 0x2e, 0x51, 0xcb, 0x9a, 0x1d]);
 
-/**
- * The forwarder escrowed `amount` of `tokenMint` from `from` for the wrap with
- * `nonce`, authorized for the action whose tree root is `actionTreeRoot`, as
- * the EVM forwarder's `Wrapped`.
- */
+/** The forwarder escrowed `amount` of the token whose mint is `token` from `from`, as the EVM forwarder's `Wrapped`. */
 export interface WrappedEvent {
   name: "Wrapped";
-  tokenMint: Uint8Array;
+  token: Uint8Array;
   from: Uint8Array;
   amount: bigint;
-  nonce: bigint;
-  actionTreeRoot: Uint8Array;
 }
 
-/** The forwarder released `amount` of `tokenMint` to `to`, as the EVM forwarder's `Unwrapped`. */
+/** The forwarder released `amount` of the token whose mint is `token` to `to`, as the EVM forwarder's `Unwrapped`. */
 export interface UnwrappedEvent {
   name: "Unwrapped";
-  tokenMint: Uint8Array;
+  token: Uint8Array;
   to: Uint8Array;
   amount: bigint;
 }
@@ -141,14 +135,12 @@ function bodyReader<N extends ForwarderEvent["name"], const F extends readonly B
 
 const BODY_READERS: { [N in ForwarderEvent["name"]]: (body: Uint8Array) => Extract<ForwarderEvent, { name: N }> } = {
   Wrapped: bodyReader("Wrapped", [
-    ["tokenMint", bytes32],
+    ["token", bytes32],
     ["from", bytes32],
     ["amount", u64],
-    ["nonce", u64],
-    ["actionTreeRoot", bytes32],
   ]),
   Unwrapped: bodyReader("Unwrapped", [
-    ["tokenMint", bytes32],
+    ["token", bytes32],
     ["to", bytes32],
     ["amount", u64],
   ]),

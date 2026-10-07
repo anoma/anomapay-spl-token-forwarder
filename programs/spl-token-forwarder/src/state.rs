@@ -217,9 +217,9 @@ impl WrapInput {
 
     pub fn try_from_bytes(data: &[u8]) -> Result<Self> {
         if data.len() != Self::SIZE {
-            return Err(crate::ErrorCode::InvalidWrapInputLength.into());
+            return Err(crate::ErrorCode::InvalidInputLength.into());
         }
-        Self::try_from_slice(data).map_err(|_| crate::ErrorCode::InvalidWrapInputLength.into())
+        Self::try_from_slice(data).map_err(|_| crate::ErrorCode::InvalidInputLength.into())
     }
 
     pub fn to_message(&self, forwarder_id: &Pubkey) -> WrapMessage {
@@ -249,9 +249,9 @@ impl UnwrapInput {
 
     pub fn try_from_bytes(data: &[u8]) -> Result<Self> {
         if data.len() != Self::SIZE {
-            return Err(crate::ErrorCode::InvalidUnwrapInputLength.into());
+            return Err(crate::ErrorCode::InvalidInputLength.into());
         }
-        Self::try_from_slice(data).map_err(|_| crate::ErrorCode::InvalidUnwrapInputLength.into())
+        Self::try_from_slice(data).map_err(|_| crate::ErrorCode::InvalidInputLength.into())
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {

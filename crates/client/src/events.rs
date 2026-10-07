@@ -14,23 +14,20 @@ use anoma_pa_solana_client::events::{
 };
 use anoma_pa_solana_client::{anchor_event_disc, ANCHOR_DISCRIMINATOR_LEN};
 
-/// The forwarder escrowed `amount` of `token_mint` from `from` for the wrap
-/// with `nonce`, authorized for the action whose tree root is
-/// `action_tree_root`, as the EVM forwarder's `Wrapped`.
+/// The forwarder escrowed `amount` of the token whose mint is `token` from
+/// `from`, as the EVM forwarder's `Wrapped`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WrappedEvent {
-    pub token_mint: [u8; 32],
+    pub token: [u8; 32],
     pub from: [u8; 32],
     pub amount: u64,
-    pub nonce: u64,
-    pub action_tree_root: [u8; 32],
 }
 
-/// The forwarder released `amount` of `token_mint` to `to`, as the EVM
-/// forwarder's `Unwrapped`.
+/// The forwarder released `amount` of the token whose mint is `token` to
+/// `to`, as the EVM forwarder's `Unwrapped`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnwrappedEvent {
-    pub token_mint: [u8; 32],
+    pub token: [u8; 32],
     pub to: [u8; 32],
     pub amount: u64,
 }
@@ -84,15 +81,13 @@ fn forwarder_event_body(
 ) -> Result<ForwarderEvent, EventDecodeError> {
     Ok(if disc == anchor_event_disc("Wrapped") {
         ForwarderEvent::Wrapped(WrappedEvent {
-            token_mint: c.array_32("token_mint")?,
+            token: c.array_32("token")?,
             from: c.array_32("from")?,
             amount: c.u64_le("amount")?,
-            nonce: c.u64_le("nonce")?,
-            action_tree_root: c.array_32("action_tree_root")?,
         })
     } else if disc == anchor_event_disc("Unwrapped") {
         ForwarderEvent::Unwrapped(UnwrappedEvent {
-            token_mint: c.array_32("token_mint")?,
+            token: c.array_32("token")?,
             to: c.array_32("to")?,
             amount: c.u64_le("amount")?,
         })
@@ -137,28 +132,17 @@ mod tests {
     fn each_event_decodes_to_its_fields() {
         let cases = [
             (
-                event(
-                    "Wrapped",
-                    &[
-                        &[1; 32],
-                        &[2; 32],
-                        &7u64.to_le_bytes(),
-                        &9u64.to_le_bytes(),
-                        &[3; 32],
-                    ],
-                ),
+                event("Wrapped", &[&[1; 32], &[2; 32], &7u64.to_le_bytes()]),
                 ForwarderEvent::Wrapped(WrappedEvent {
-                    token_mint: [1; 32],
+                    token: [1; 32],
                     from: [2; 32],
                     amount: 7,
-                    nonce: 9,
-                    action_tree_root: [3; 32],
                 }),
             ),
             (
                 event("Unwrapped", &[&[1; 32], &[4; 32], &5u64.to_le_bytes()]),
                 ForwarderEvent::Unwrapped(UnwrappedEvent {
-                    token_mint: [1; 32],
+                    token: [1; 32],
                     to: [4; 32],
                     amount: 5,
                 }),
@@ -221,7 +205,7 @@ mod tests {
     /// The last field of each event, which a body one byte short truncates.
     fn field_of(event: &ForwarderEvent) -> &'static str {
         match event {
-            ForwarderEvent::Wrapped(_) => "action_tree_root",
+            ForwarderEvent::Wrapped(_) => "amount",
             ForwarderEvent::Unwrapped(_) => "amount",
             ForwarderEvent::EmergencyCallerSet(_) => "set_by",
             ForwarderEvent::EmergencyWithdraw(_) => "caller",

@@ -111,6 +111,37 @@ async fn reinitialize_rotates_the_logic_ref_once_for_a_config_below_this_builds_
     refuses_reinitialize(&env, &local, owner, "Error Code: InvalidInitialization.").await
 }
 
+// Mirrors ForwarderBaseUpgradeable's ZeroLogicRefNotAllowed, which its
+// initializer, and so a reinitializer, raises for the zero logic ref.
+#[tokio::test(flavor = "multi_thread")]
+async fn reinitialize_refuses_the_zero_logic_ref() -> anyhow::Result<()> {
+    let (env, local) = setup::local_with(Build::Development).await?;
+    let (program, owner) = (local.forwarder.program, &local.owner);
+    env.send(
+        &[dev_set_config_version_ix(
+            &program,
+            &owner.pubkey(),
+            CONFIG_VERSION - 1,
+        )],
+        &[owner],
+    )
+    .await?;
+    let before = config(&env, &program).await?;
+    expect_integration_panic(Needle::Static("Error Code: ZeroLogicRefNotAllowed."))(
+        env.send(
+            &[reinitialize_ix(&program, &owner.pubkey(), [0; 32])],
+            &[owner],
+        )
+        .await,
+    )?;
+    let after = config(&env, &program).await?;
+    anyhow::ensure!(
+        after == before,
+        "the config moved from {before:?} to {after:?}"
+    );
+    Ok(())
+}
+
 // Mirrors ForwarderBase.t.sol: test_forwardCall_reverts_if_the_pa_is_not_the_caller.
 // The forwarder reads the current top-level instruction's program id from the
 // instructions sysvar; a direct call sees itself, not the adapter.
@@ -137,7 +168,7 @@ async fn refuses_a_forward_call_that_is_not_a_cpi_from_the_adapter() -> anyhow::
         ],
         data,
     };
-    expect_integration_panic(Needle::Static("Error Code: UnauthorizedCaller."))(
+    expect_integration_panic(Needle::Static("Error Code: ProtocolAdapterMismatch."))(
         env.send(&[forward_call], &[]).await,
     )
 }

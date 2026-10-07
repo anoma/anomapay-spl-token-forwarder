@@ -34,13 +34,13 @@ const eventIx = (name: string, body: Uint8Array[]): Uint8Array =>
 const forwarderCases: [ForwarderEvent["name"], Uint8Array, ForwarderEvent][] = [
   [
     "Wrapped",
-    eventIx("Wrapped", [MINT, USER, u64Le(1_000_000n), u64Le(77n), ROOT]),
-    { name: "Wrapped", tokenMint: MINT, from: USER, amount: 1_000_000n, nonce: 77n, actionTreeRoot: ROOT },
+    eventIx("Wrapped", [MINT, USER, u64Le(1_000_000n)]),
+    { name: "Wrapped", token: MINT, from: USER, amount: 1_000_000n },
   ],
   [
     "Unwrapped",
     eventIx("Unwrapped", [MINT, USER, u64Le(2n ** 64n - 1n)]),
-    { name: "Unwrapped", tokenMint: MINT, to: USER, amount: 2n ** 64n - 1n },
+    { name: "Unwrapped", token: MINT, to: USER, amount: 2n ** 64n - 1n },
   ],
   [
     "EmergencyCallerSet",
@@ -126,7 +126,7 @@ describe("decodeForwarderEventInstruction", () => {
       expect(() => decodeForwarderEventInstruction(data.slice(0, -1)), name).toThrow(/event truncated while reading/);
     }
     expect(() => decodeForwarderEventInstruction(forwarderCases[0]![1].slice(0, -1))).toThrow(
-      "event truncated while reading action_tree_root",
+      "event truncated while reading amount",
     );
     // A body that ends before its second field names that field.
     expect(() => decodeForwarderEventInstruction(forwarderCases[0]![1].slice(0, 16 + 32 + 5))).toThrow(

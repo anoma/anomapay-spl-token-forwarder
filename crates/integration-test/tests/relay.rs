@@ -107,7 +107,7 @@ async fn refuses_a_forward_call_relayed_by_a_program_the_adapter_invokes() -> an
             "the forwarder was not called through the relay ({reached}): {error:?}"
         );
     }
-    expect_integration_panic(Needle::Static("Error Code: UnauthorizedCaller."))(settled)?;
+    expect_integration_panic(Needle::Static("Error Code: ProtocolAdapterMismatch."))(settled)?;
     anyhow::ensure!(
         balances(&env, &[escrow, recipient_account]).await? == before,
         "the relayed unwrap moved tokens"

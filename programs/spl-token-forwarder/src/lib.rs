@@ -30,17 +30,15 @@ declare_id!(Pubkey::from_str_const(env!("FORWARDER_PROGRAM_ID")));
 /// Mirrors EVM: `event Wrapped(address indexed token, address indexed from, uint128 amount);`
 #[event]
 pub struct Wrapped {
-    pub token_mint: Pubkey,
+    pub token: Pubkey,
     pub from: Pubkey,
     pub amount: u64,
-    pub nonce: u64,
-    pub action_tree_root: [u8; 32],
 }
 
 /// Mirrors EVM: `event Unwrapped(address indexed token, address indexed to, uint128 amount);`
 #[event]
 pub struct Unwrapped {
-    pub token_mint: Pubkey,
+    pub token: Pubkey,
     pub to: Pubkey,
     pub amount: u64,
 }
@@ -121,9 +119,9 @@ pub mod spl_token_forwarder {
         );
         require!(
             protocol_adapter != Pubkey::default(),
-            ErrorCode::ZeroAddressNotAllowed
+            ErrorCode::ZeroProtocolAdapterNotAllowed
         );
-        require!(logic_ref != [0u8; 32], ErrorCode::ZeroAddressNotAllowed);
+        require!(logic_ref != [0u8; 32], ErrorCode::ZeroLogicRefNotAllowed);
         require!(
             emergency_committee != Pubkey::default(),
             ErrorCode::ZeroAddressNotAllowed
@@ -171,7 +169,7 @@ pub mod spl_token_forwarder {
             config.version < CONFIG_VERSION,
             ErrorCode::InvalidInitialization
         );
-        require!(logic_ref != [0u8; 32], ErrorCode::ZeroAddressNotAllowed);
+        require!(logic_ref != [0u8; 32], ErrorCode::ZeroLogicRefNotAllowed);
         config.logic_ref = logic_ref;
         config.version = CONFIG_VERSION;
         emit_cpi!(Initialized {
@@ -292,22 +290,19 @@ pub mod spl_token_forwarder {
         // msg.sender == $._protocolAdapter.
         require!(
             get_stack_height() == TRANSACTION_LEVEL_STACK_HEIGHT + 1,
-            ErrorCode::UnauthorizedCaller
+            ErrorCode::ProtocolAdapterMismatch
         );
         let ix_sysvar_info = &ctx.accounts.ix_sysvar;
         let current_ix_index = ix_sysvar::load_current_index_checked(ix_sysvar_info)
-            .map_err(|_| ErrorCode::UnauthorizedCaller)?;
+            .map_err(|_| ErrorCode::ProtocolAdapterMismatch)?;
         let current_ix =
             ix_sysvar::load_instruction_at_checked(current_ix_index as usize, ix_sysvar_info)
-                .map_err(|_| ErrorCode::UnauthorizedCaller)?;
+                .map_err(|_| ErrorCode::ProtocolAdapterMismatch)?;
         require!(
             current_ix.program_id == config.protocol_adapter,
-            ErrorCode::UnauthorizedCaller
+            ErrorCode::ProtocolAdapterMismatch
         );
-        require!(
-            logic_ref == config.logic_ref,
-            ErrorCode::UnauthorizedLogicRef
-        );
+        require!(logic_ref == config.logic_ref, ErrorCode::LogicRefMismatch);
 
         let (op, operand) = input.split_first().ok_or(ErrorCode::InvalidInput)?;
         match *op {
@@ -656,11 +651,9 @@ fn execute_wrap<'info>(ctx: &Context<'info, ForwardCall<'info>>, input: &[u8]) -
     nonce_bitmap.exit(ctx.program_id)?;
 
     emit_cpi!(Wrapped {
-        token_mint: wrap.token_mint,
+        token: wrap.token_mint,
         from: wrap.user,
         amount: wrap.amount,
-        nonce: wrap.nonce,
-        action_tree_root: wrap.action_tree_root,
     });
     Ok(())
 }
@@ -695,7 +688,7 @@ fn execute_unwrap(ctx: &Context<ForwardCall>, input: &[u8]) -> Result<()> {
     )?;
 
     emit_cpi!(Unwrapped {
-        token_mint: unwrap.token_mint,
+        token: unwrap.token_mint,
         to: unwrap.recipient,
         amount: unwrap.amount,
     });
