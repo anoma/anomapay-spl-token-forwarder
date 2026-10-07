@@ -184,9 +184,23 @@ mod tests {
                 }),
             ),
         ];
-        for (data, expected) in cases {
-            assert_eq!(decode_forwarder_event_instruction(&data).unwrap(), expected);
+        for (data, expected) in &cases {
+            assert_eq!(&decode_forwarder_event_instruction(data).unwrap(), expected);
         }
+        // The cases are the IDL's events: a variant for an event the program
+        // no longer emits fails here.
+        let decoded: std::collections::BTreeSet<String> = cases
+            .iter()
+            .map(|(_, e)| format!("{e:?}").split('(').next().unwrap().to_string())
+            .collect();
+        let idl = crate::idl::idl();
+        let declared: std::collections::BTreeSet<String> = idl["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["name"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(decoded, declared, "the decoded events are not the IDL's");
         assert_eq!(
             decode_forwarder_event_instruction(&event("Paused", &[])),
             Err(EventDecodeError::UnknownDiscriminator(anchor_event_disc(
@@ -210,27 +224,17 @@ mod tests {
     /// field, and the whole body decodes.
     #[test]
     fn every_event_the_idl_declares_decodes_its_fields_in_order() {
-        let idl: serde_json::Value = serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/idl/spl_token_forwarder.json"
-        )))
-        .unwrap();
+        let idl = crate::idl::idl();
         for e in idl["events"].as_array().unwrap() {
             let name = e["name"].as_str().unwrap();
-            let ty = idl["types"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|t| t["name"] == name)
-                .unwrap_or_else(|| panic!("the IDL declares no type for the event {name}"));
             let mut body = Vec::new();
-            for f in ty["type"]["fields"].as_array().unwrap() {
+            for f in crate::idl::fields(&idl, name) {
                 let field = f["name"].as_str().unwrap();
                 let width = idl_width(&f["type"]);
                 body.resize(body.len() + width - 1, 0);
                 let decoded = decode_forwarder_event_instruction(&event(name, &[&body]));
                 assert!(
-                    matches!(decoded, Err(EventDecodeError::Truncated { field: f }) if f == field),
+                    matches!(decoded, Err(EventDecodeError::Truncated { field: got }) if got == field),
                     "{name}: a body ending inside {field} decodes to {decoded:?}"
                 );
                 body.push(0);

@@ -22,11 +22,7 @@ mod tests {
 
     #[test]
     fn the_constants_the_idl_declares_are_the_idls() {
-        let idl: serde_json::Value = serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/idl/spl_token_forwarder.json"
-        )))
-        .unwrap();
+        let idl = crate::idl::idl();
         let declared = |name: &str| {
             idl["constants"]
                 .as_array()

@@ -574,11 +574,7 @@ mod tests {
         name: &str,
         args: &[u8],
     ) -> impl Fn(&str) -> Pubkey {
-        let idl: serde_json::Value = serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/idl/spl_token_forwarder.json"
-        )))
-        .unwrap();
+        let idl = crate::idl::idl();
         let spec = idl["instructions"]
             .as_array()
             .unwrap()

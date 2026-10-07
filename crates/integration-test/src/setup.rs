@@ -100,7 +100,7 @@ pub async fn local() -> anyhow::Result<(LocalEnv, LocalForwarder)> {
 }
 
 /// `local`, with the forwarder `build`.
-pub async fn local_with(build: Build) -> anyhow::Result<(LocalEnv, LocalForwarder)> {
+async fn local_with(build: Build) -> anyhow::Result<(LocalEnv, LocalForwarder)> {
     let (mut env, program) = deployed(build).await?;
     let payer = env.protocol_adapter.payer.pubkey();
     let (owner, committee) = (Keypair::new(), Keypair::new());
