@@ -11,7 +11,7 @@
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::instruction::{get_stack_height, TRANSACTION_LEVEL_STACK_HEIGHT};
-use anchor_lang::solana_program::program::{invoke_signed, set_return_data};
+use anchor_lang::solana_program::program::invoke_signed;
 use solana_instructions_sysvar as ix_sysvar;
 
 pub mod ed25519;
@@ -86,9 +86,6 @@ pub struct Upgraded {
 pub const OP_WRAP: u8 = 0;
 #[constant]
 pub const OP_UNWRAP: u8 = 1;
-
-/// Return data of a successful `forward_call`.
-pub const RESULT_SUCCESS: u8 = 1;
 
 const SPL_TRANSFER_OPCODE: u8 = 3;
 const SPL_CLOSE_ACCOUNT_OPCODE: u8 = 9;
@@ -275,7 +272,8 @@ pub mod spl_token_forwarder {
         Ok(())
     }
 
-    /// Forward a wrap or unwrap call from the Protocol Adapter.
+    /// Forward a wrap or unwrap call from the Protocol Adapter, returning
+    /// the empty output, as the EVM ERC20 forwarder's `_forwardCall` does.
     ///
     /// Like the EVM V2 `ForwarderBaseUpgradeable.forwardCall()`, this does not check the
     /// adapter's paused state: the adapter does not call forwarders while paused.
@@ -283,7 +281,7 @@ pub mod spl_token_forwarder {
         ctx: Context<'info, ForwardCall<'info>>,
         logic_ref: [u8; 32],
         input: Vec<u8>,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         let config = &ctx.accounts.config;
 
         // The instructions sysvar holds only top-level instructions, so it
@@ -318,8 +316,7 @@ pub mod spl_token_forwarder {
             _ => return Err(ErrorCode::UnknownOperation.into()),
         }
 
-        set_return_data(&[RESULT_SUCCESS]);
-        Ok(())
+        Ok(Vec::new())
     }
 
     /// Withdraw from escrow while the adapter is paused, as the emergency

@@ -227,7 +227,7 @@ dependencies = [
 [[package]]
 name = "anoma-pa-solana-client"
 version = "0.4.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=8ed65a4b5f00164641c10d16661de97d47a8ecab#8ed65a4b5f00164641c10d16661de97d47a8ecab"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=6b2f41cf613ccaf593bee79bc138c71dd1f7ab4c#6b2f41cf613ccaf593bee79bc138c71dd1f7ab4c"
 dependencies = [
  "bincode",
  "serde",
@@ -1611,8 +1611,8 @@ dependencies = [
 
 [[package]]
 name = "protocol-adapter"
-version = "2.0.0-rc.3"
-source = "git+https://github.com/anoma/solana-protocol-adapter?rev=7e723d6830ebfdf9ed8609f98593f109e3a1bac5#7e723d6830ebfdf9ed8609f98593f109e3a1bac5"
+version = "2.0.0-rc.4"
+source = "git+https://github.com/anoma/solana-protocol-adapter?rev=273492c1e824ee4d96a571cb3720e8da10ed64d2#273492c1e824ee4d96a571cb3720e8da10ed64d2"
 dependencies = [
  "anchor-lang",
  "anoma-rm-core",
@@ -3401,7 +3401,7 @@ dependencies = [
 
 [[package]]
 name = "spl-token-forwarder"
-version = "2.0.0-rc.4"
+version = "2.0.0-rc.5"
 dependencies = [
  "anchor-lang",
  "anomapay-spl-token-forwarder-client",
