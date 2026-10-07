@@ -14,7 +14,7 @@ pub const NONCES_PER_WORD: u64 = 256;
 
 /// The config version this build of the forwarder initializes to and
 /// reinitializes to (the `n` of an OpenZeppelin `reinitializer(n)`).
-pub const CONFIG_VERSION: u64 = 3;
+pub const CONFIG_VERSION: u64 = 4;
 
 #[cfg(test)]
 mod tests {

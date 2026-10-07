@@ -2,7 +2,7 @@
   "address": "BsfuXpxw8oCmZXnYijyQkUYNcCnuskFZbYizmWLnpSU7",
   "metadata": {
     "name": "spl_token_forwarder",
-    "version": "2.0.0-rc.4",
+    "version": "2.0.0-rc.5",
     "spec": "0.1.0",
     "description": "SPL Token forwarder for wrap/unwrap operations with Ed25519 signature verification"
   },
@@ -136,7 +136,8 @@
     {
       "name": "forward_call",
       "docs": [
-        "Forward a wrap or unwrap call from the Protocol Adapter.",
+        "Forward a wrap or unwrap call from the Protocol Adapter, returning",
+        "the empty output, as the EVM ERC20 forwarder's `_forwardCall` does.",
         "",
         "Like the EVM V2 `ForwarderBaseUpgradeable.forwardCall()`, this does not check the",
         "adapter's paused state: the adapter does not call forwarders while paused."
@@ -181,7 +182,8 @@
           "name": "input",
           "type": "bytes"
         }
-      ]
+      ],
+      "returns": "bytes"
     },
     {
       "name": "forward_emergency_call",
@@ -1326,7 +1328,7 @@
         "logic ref raises it by one, so its `reinitialize` runs once."
       ],
       "type": "u64",
-      "value": "3"
+      "value": "4"
     },
     {
       "name": "ESCROW_SEED",
