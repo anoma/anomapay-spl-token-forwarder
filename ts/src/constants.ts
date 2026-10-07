@@ -5,4 +5,3 @@ export const FORWARDER_WRAP_NUM_ACCOUNTS = 10;
 
 /** Number of accounts in an unwrap forwarder CPI segment (`buildUnwrapForwarderAccounts`). */
 export const FORWARDER_UNWRAP_NUM_ACCOUNTS = 9;
-

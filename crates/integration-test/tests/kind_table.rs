@@ -1,8 +1,7 @@
 //! The kind table anoma/risc0-kind-tables generates for solana-devnet is
 //! installable: a wrap proven against it is refused while the deployment
-//! holds another, non-empty table or the empty one, and settles once the
-//! adapter's owner installs the commitment risc0-kind-tables publishes for
-//! devnet.
+//! holds any other commitment, and settles once the adapter's owner installs
+//! the commitment risc0-kind-tables publishes for devnet.
 
 use anoma_pa_testkit::environment::{ProtocolAdapter as _, Refusal};
 use anoma_pa_testkit::{execute_tx, prove_actions};
