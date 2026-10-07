@@ -227,11 +227,9 @@ dependencies = [
 [[package]]
 name = "anoma-pa-solana-client"
 version = "0.4.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=4c034a946d34ba09e5ce845fcae1c8880babe0cb#4c034a946d34ba09e5ce845fcae1c8880babe0cb"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=8ed65a4b5f00164641c10d16661de97d47a8ecab#8ed65a4b5f00164641c10d16661de97d47a8ecab"
 dependencies = [
  "bincode",
- "hkdf",
- "hmac",
  "serde",
  "sha2 0.10.9",
  "solana-compute-budget-interface",
@@ -1254,15 +1252,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e712f64ec3850b98572bffac52e2c6f282b29fe6c5fa6d42334b30be438d95c1"
 
 [[package]]
-name = "hkdf"
-version = "0.12.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b5f8eb2ad728638ea2c7d47a21db23b7b58a72ed6a38256b8a1849f15fbbdf7"
-dependencies = [
- "hmac",
-]
-
-[[package]]
 name = "hmac"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1623,7 +1612,7 @@ dependencies = [
 [[package]]
 name = "protocol-adapter"
 version = "2.0.0-rc.3"
-source = "git+https://github.com/anoma/solana-protocol-adapter?rev=ab27899718c6962d5a85d545a05ea2be45a29bbb#ab27899718c6962d5a85d545a05ea2be45a29bbb"
+source = "git+https://github.com/anoma/solana-protocol-adapter?rev=7e723d6830ebfdf9ed8609f98593f109e3a1bac5#7e723d6830ebfdf9ed8609f98593f109e3a1bac5"
 dependencies = [
  "anchor-lang",
  "anoma-rm-core",
