@@ -267,7 +267,7 @@ dependencies = [
 
 [[package]]
 name = "anomapay-spl-token-forwarder-client"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anoma-pa-solana-client",
  "base64 0.22.1",
