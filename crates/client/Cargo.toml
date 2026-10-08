@@ -2,7 +2,7 @@
 name = "anomapay-spl-token-forwarder-client"
 version = "0.2.0"
 edition = "2021"
-license = "Apache-2.0"
+license = "MIT"
 description = "Client bindings for the AnomaPay SPL token forwarder: instruction builders, CPI segments, wire formats, events"
 repository = "https://github.com/anoma/anomapay-spl-token-forwarder"
 

@@ -3,7 +3,7 @@ name = "anomapay-spl-token-forwarder-integration-test"
 description = "Integration and e2e tests of the AnomaPay SPL token forwarder on the Solana protocol adapter's harness."
 version = "0.1.0"
 edition = "2024"
-license = "Apache-2.0"
+license = "MIT"
 repository = "https://github.com/anoma/anomapay-spl-token-forwarder"
 publish = false
 
