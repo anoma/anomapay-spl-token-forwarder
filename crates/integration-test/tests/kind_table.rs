@@ -11,7 +11,6 @@ use anoma_rm_risc0::compliance::{KindTableEntry, hash_kind_table_entries};
 use anomapay_spl_token_forwarder_integration_test::fixtures::{self, ShieldedOwner, WrapTerms};
 use anomapay_spl_token_forwarder_integration_test::refusal::balances;
 use anomapay_spl_token_forwarder_integration_test::setup;
-use solana_signer::Signer;
 
 /// 100 tokens at the mint's 6 decimals.
 const AMOUNT: u64 = 100_000_000;
@@ -52,9 +51,6 @@ async fn settles_a_wrap_proven_against_the_solana_devnet_kind_table_once_the_own
         entries,
         "kind-table/wrap",
     )?;
-    forwarder
-        .submitter
-        .authorize(forwarder.user.pubkey(), nonce, wrap.authorization);
     let tx = prove_actions(&env, &[wrap.witnesses]).await?;
 
     let accounts = [forwarder.user_account(), forwarder.escrow_account()];

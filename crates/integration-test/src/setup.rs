@@ -27,7 +27,7 @@ use spl_associated_token_account_interface::address::get_associated_token_addres
 use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
 use surfpool_sdk::Pubkey;
 
-use crate::fixtures::{self, ShieldedOwner, WrapAuthorization, WrapTerms};
+use crate::fixtures::{self, ShieldedOwner, WrapTerms};
 use crate::submitter::{Rewritten, SplTokenForwarder};
 
 /// The forwarder builds the local tests load: the deterministic builds at
@@ -386,12 +386,14 @@ pub async fn upgrade_authority<P>(
     }
 }
 
-/// A wrap, proven, whose authorization the submitter holds: the
-/// transaction, the shielded resource it creates, and what the user signed.
+/// A wrap, proven: the transaction, which carries the user's signature in the
+/// wrap's input, the shielded resource it creates, and the message the user
+/// signed.
 pub struct ProvenWrap {
     pub tx: Transaction,
     pub created: Resource,
-    pub authorization: WrapAuthorization,
+    /// The base64 digest of the wrap message, as UTF-8 text.
+    pub signed_message: Vec<u8>,
 }
 
 impl Forwarder {
@@ -409,7 +411,53 @@ impl Forwarder {
     where
         P: Prover,
     {
-        let wrap = fixtures::wrap(
+        let wrap = self.wrap_data(owner, amount, nonce, 0, seed)?;
+        Ok(ProvenWrap {
+            tx: prove_actions(env, &[wrap.witnesses]).await?,
+            created: wrap.created,
+            signed_message: wrap.signed_message,
+        })
+    }
+
+    /// Wraps of `wraps`' amounts under their forwarder nonces, each from the
+    /// user into a resource `owner` holds, in one transaction proven on
+    /// `env`. `seed` makes their resources distinct from every other wrap's.
+    pub async fn prove_wraps<P>(
+        &self,
+        env: &Environment<P>,
+        owner: &ShieldedOwner,
+        wraps: &[(u64, u64)],
+        seed: &str,
+    ) -> anyhow::Result<Transaction>
+    where
+        P: Prover,
+    {
+        let mut witnesses = Vec::new();
+        for (i, &(amount, nonce)) in wraps.iter().enumerate() {
+            let wrap = self.wrap_data(
+                owner,
+                amount,
+                nonce,
+                u8::try_from(i)?,
+                &format!("{seed}/{i}"),
+            )?;
+            witnesses.push(wrap.witnesses);
+        }
+        prove_actions(env, &witnesses).await
+    }
+
+    /// A wrap's witnesses, signed by the user, whose signature check is the
+    /// transaction's instruction `ed25519_ix_index`: the submitter puts a
+    /// settlement's checks first, in call order.
+    fn wrap_data(
+        &self,
+        owner: &ShieldedOwner,
+        amount: u64,
+        nonce: u64,
+        ed25519_ix_index: u8,
+        seed: &str,
+    ) -> anyhow::Result<fixtures::WrapData> {
+        fixtures::wrap(
             self.program,
             self.mint,
             &self.user,
@@ -417,19 +465,11 @@ impl Forwarder {
             WrapTerms {
                 amount,
                 nonce,
-                // The submitter puts the ed25519 instruction first.
-                ed25519_ix_index: 0,
+                ed25519_ix_index,
             },
             fixtures::loaded_kind_table(),
             seed,
-        )?;
-        self.submitter
-            .authorize(self.user.pubkey(), nonce, wrap.authorization.clone());
-        Ok(ProvenWrap {
-            tx: prove_actions(env, &[wrap.witnesses]).await?,
-            created: wrap.created,
-            authorization: wrap.authorization,
-        })
+        )
     }
 
     /// `prove_wrap`, settled: the resource the wrap creates.

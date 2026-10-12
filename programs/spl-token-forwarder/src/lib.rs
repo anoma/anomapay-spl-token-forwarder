@@ -256,11 +256,14 @@ pub mod spl_token_forwarder {
     }
 
     /// Create the nonce bitmap for one 256-nonce word of `user`, paid by
-    /// whoever signs. Permissionless: the bitmap holds nothing but used
-    /// bits, and a wrap requires it to exist. The adapter forwards no
-    /// signer to a forwarder, so the account cannot be created during the
-    /// wrap itself; a submitter sends this instruction ahead of settlement
-    /// when the word's bitmap is missing.
+    /// whoever signs, unless it exists, when it does nothing. Permissionless:
+    /// the bitmap holds nothing but used bits, and a wrap requires it to
+    /// exist. The adapter forwards no signer to a forwarder, so the account
+    /// cannot be created during the wrap itself; a submitter sends this
+    /// instruction ahead of every wrap's settlement, and needs not read the
+    /// chain to know whether the bitmap is there. An existing bitmap keeps
+    /// its bits: only its bump, the canonical one it already holds, is
+    /// written.
     pub fn init_nonce_bitmap(
         ctx: Context<InitNonceBitmap>,
         _user: Pubkey,
@@ -818,7 +821,7 @@ pub struct InitNonceBitmap<'info> {
     pub payer: Signer<'info>,
 
     #[account(
-        init,
+        init_if_needed,
         payer = payer,
         space = NonceBitmap::ACCOUNT_SIZE,
         seeds = [NONCE_BITMAP_SEED, user.as_ref(), &word_index.to_le_bytes()],

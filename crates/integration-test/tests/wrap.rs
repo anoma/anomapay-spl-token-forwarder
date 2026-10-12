@@ -18,6 +18,7 @@ use anomapay_spl_token_forwarder_integration_test::refusal::{balances, refuses};
 use anomapay_spl_token_forwarder_integration_test::setup::{
     self, Forwarder, LocalForwarder, ProvenWrap, create_mint, events, fund, token_account,
 };
+use anyhow::Context;
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 use spl_associated_token_account_interface::address::get_associated_token_address;
@@ -247,7 +248,7 @@ async fn refuses_a_wrap_whose_destination_the_escrow_does_not_own() -> anyhow::R
         &mut env,
         forwarder,
         wrap.tx,
-        move |accounts| accounts.segment[DESTINATION].pubkey = other,
+        move |accounts| accounts.segments[0][DESTINATION].pubkey = other,
         "Error Code: WrongTokenAccountOwner.",
         &unmoved,
     )
@@ -275,7 +276,7 @@ async fn refuses_a_wrap_whose_source_the_signing_user_does_not_own() -> anyhow::
         &mut env,
         forwarder,
         wrap.tx,
-        move |accounts| accounts.segment[SOURCE].pubkey = other,
+        move |accounts| accounts.segments[0][SOURCE].pubkey = other,
         "Error Code: WrongTokenAccountOwner.",
         &unmoved,
     )
@@ -307,8 +308,8 @@ async fn refuses_a_wrap_that_moves_tokens_of_another_mint() -> anyhow::Result<()
         forwarder,
         wrap.tx,
         move |accounts| {
-            accounts.segment[SOURCE].pubkey = user_other;
-            accounts.segment[DESTINATION].pubkey = escrow_other;
+            accounts.segments[0][SOURCE].pubkey = user_other;
+            accounts.segments[0][DESTINATION].pubkey = escrow_other;
         },
         "Error Code: WrongTokenAccountMint.",
         &unmoved,
@@ -327,9 +328,9 @@ async fn refuses_a_wrap_authorized_by_another_keys_signature_over_the_wrap_messa
     refuses_first_wrap(
         |_, wrap| {
             let other = Keypair::new();
-            let signature = other.sign_message(&wrap.authorization.message);
+            let signature = other.sign_message(&wrap.signed_message);
             let ed25519 = solana_ed25519_program::new_ed25519_instruction_with_signature(
-                &wrap.authorization.message,
+                &wrap.signed_message,
                 &<[u8; 64]>::from(signature),
                 &other.pubkey().to_bytes(),
             );
@@ -345,7 +346,7 @@ async fn refuses_a_wrap_whose_authorization_is_the_users_signature_over_another_
 -> anyhow::Result<()> {
     refuses_first_wrap(
         |forwarder, wrap| {
-            let mut message = wrap.authorization.message.clone();
+            let mut message = wrap.signed_message.clone();
             message[0] ^= 1;
             let signature = forwarder.user.sign_message(&message);
             let ed25519 = solana_ed25519_program::new_ed25519_instruction_with_signature(
@@ -394,6 +395,40 @@ async fn replay() -> anyhow::Result<(LocalEnv, LocalForwarder, Transaction)> {
     Ok((env, local, replay.tx))
 }
 
+// init_nonce_bitmap of a bitmap that exists does nothing: it succeeds, so a
+// submitter can send it with every wrap, and the nonces the bitmap records
+// stay used.
+#[tokio::test(flavor = "multi_thread")]
+async fn init_nonce_bitmap_of_an_existing_bitmap_leaves_its_nonces_used() -> anyhow::Result<()> {
+    let (mut env, local, owner) = local().await?;
+    let forwarder = &local.forwarder;
+    forwarder
+        .wrap(&mut env, &owner, AMOUNT, NONCE, "wrap/existing-bitmap")
+        .await?;
+    let user = forwarder.user.pubkey();
+    let payer = env.protocol_adapter.payer.pubkey();
+    let word = nonce_word_index(NONCE);
+    env.send(
+        &[init_nonce_bitmap_ix(
+            &forwarder.program,
+            &payer,
+            &user,
+            word,
+        )],
+        &[],
+    )
+    .await
+    .context("init_nonce_bitmap of an existing bitmap must succeed")?;
+
+    let (bitmap, _) = derive_nonce_bitmap_pda(&forwarder.program, &user, word);
+    let bitmap = decode_nonce_bitmap(&env.protocol_adapter.rpc.get_account_data(&bitmap).await?)?;
+    anyhow::ensure!(
+        bitmap.is_used(NONCE),
+        "the second init_nonce_bitmap cleared the used nonce {NONCE}"
+    );
+    Ok(())
+}
+
 // Mirrors ERC20Forwarder.t.sol: test_wrap_reverts_if_the_signature_was_already_used
 #[tokio::test(flavor = "multi_thread")]
 async fn refuses_a_wrap_that_replays_a_used_nonce() -> anyhow::Result<()> {
@@ -424,7 +459,7 @@ async fn refuses_a_replay_that_supplies_the_users_bitmap_of_another_word() -> an
         forwarder,
         tx,
         move |accounts| {
-            accounts.segment[NONCE_BITMAP].pubkey =
+            accounts.segments[0][NONCE_BITMAP].pubkey =
                 derive_nonce_bitmap_pda(&program, &user, word).0;
             accounts
                 .preceding
@@ -451,7 +486,7 @@ async fn refuses_a_replay_that_supplies_another_users_bitmap_of_the_nonces_word(
         forwarder,
         tx,
         move |accounts| {
-            accounts.segment[NONCE_BITMAP].pubkey =
+            accounts.segments[0][NONCE_BITMAP].pubkey =
                 derive_nonce_bitmap_pda(&program, &other, word).0;
             accounts
                 .preceding
@@ -475,7 +510,7 @@ async fn refuses_a_replay_whose_nonce_bitmap_is_an_account_of_another_program() 
         &mut env,
         forwarder,
         tx,
-        move |accounts| accounts.segment[NONCE_BITMAP].pubkey = user_account,
+        move |accounts| accounts.segments[0][NONCE_BITMAP].pubkey = user_account,
         "Error Code: NonceBitmapMissing.",
         &unmoved,
     )
@@ -495,7 +530,7 @@ async fn refuses_a_forward_call_whose_config_is_an_account_of_another_program() 
         &mut env,
         forwarder,
         tx,
-        move |accounts| accounts.segment[CONFIG].pubkey = mint,
+        move |accounts| accounts.segments[0][CONFIG].pubkey = mint,
         "AnchorError caused by account: config. Error Code: AccountOwnedByWrongProgram.",
         &unmoved,
     )

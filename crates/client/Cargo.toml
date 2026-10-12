@@ -1,6 +1,6 @@
 [package]
 name = "anomapay-spl-token-forwarder-client"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "Client bindings for the AnomaPay SPL token forwarder: instruction builders, CPI segments, wire formats, events"
@@ -17,6 +17,7 @@ sha2 = "0.10"
 # Solana SDK deps, used only by the instruction, PDA and program-id builders;
 # the versions the programs build with (Anchor 1.2).
 solana-compute-budget-interface = { version = "3", optional = true }
+solana-ed25519-program = { version = "3", optional = true }
 solana-instruction = { version = "3", optional = true }
 solana-pubkey = { version = "3", optional = true }
 solana-sdk-ids = { version = "3", optional = true }
@@ -33,6 +34,7 @@ default = ["solana"]
 solana = [
   "anoma-pa-solana-client/solana",
   "dep:solana-compute-budget-interface",
+  "dep:solana-ed25519-program",
   "dep:solana-instruction",
   "dep:solana-pubkey",
   "dep:solana-sdk-ids",
