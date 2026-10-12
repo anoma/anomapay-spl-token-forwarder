@@ -2,7 +2,7 @@
   "address": "BsfuXpxw8oCmZXnYijyQkUYNcCnuskFZbYizmWLnpSU7",
   "metadata": {
     "name": "spl_token_forwarder",
-    "version": "2.0.0-rc.6",
+    "version": "2.0.0-rc.7",
     "spec": "0.1.0",
     "description": "SPL Token forwarder for wrap/unwrap operations with Ed25519 signature verification"
   },
@@ -1329,7 +1329,7 @@
         "logic ref raises it by one, so its `reinitialize` runs once."
       ],
       "type": "u64",
-      "value": "4"
+      "value": "5"
     },
     {
       "name": "ESCROW_SEED",
