@@ -18,6 +18,7 @@ use anomapay_spl_token_forwarder_integration_test::refusal::{balances, refuses};
 use anomapay_spl_token_forwarder_integration_test::setup::{
     self, Forwarder, LocalForwarder, ProvenWrap, create_mint, events, fund, token_account,
 };
+use anyhow::Context;
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 use spl_associated_token_account_interface::address::get_associated_token_address;
@@ -392,6 +393,40 @@ async fn replay() -> anyhow::Result<(LocalEnv, LocalForwarder, Transaction)> {
         .prove_wrap(&env, &owner, AMOUNT, NONCE, "wrap/replay")
         .await?;
     Ok((env, local, replay.tx))
+}
+
+// init_nonce_bitmap of a bitmap that exists does nothing: it succeeds, so a
+// submitter can send it with every wrap, and the nonces the bitmap records
+// stay used.
+#[tokio::test(flavor = "multi_thread")]
+async fn init_nonce_bitmap_of_an_existing_bitmap_leaves_its_nonces_used() -> anyhow::Result<()> {
+    let (mut env, local, owner) = local().await?;
+    let forwarder = &local.forwarder;
+    forwarder
+        .wrap(&mut env, &owner, AMOUNT, NONCE, "wrap/existing-bitmap")
+        .await?;
+    let user = forwarder.user.pubkey();
+    let payer = env.protocol_adapter.payer.pubkey();
+    let word = nonce_word_index(NONCE);
+    env.send(
+        &[init_nonce_bitmap_ix(
+            &forwarder.program,
+            &payer,
+            &user,
+            word,
+        )],
+        &[],
+    )
+    .await
+    .context("init_nonce_bitmap of an existing bitmap must succeed")?;
+
+    let (bitmap, _) = derive_nonce_bitmap_pda(&forwarder.program, &user, word);
+    let bitmap = decode_nonce_bitmap(&env.protocol_adapter.rpc.get_account_data(&bitmap).await?)?;
+    anyhow::ensure!(
+        bitmap.is_used(NONCE),
+        "the second init_nonce_bitmap cleared the used nonce {NONCE}"
+    );
+    Ok(())
 }
 
 // Mirrors ERC20Forwarder.t.sol: test_wrap_reverts_if_the_signature_was_already_used

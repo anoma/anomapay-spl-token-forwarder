@@ -2,12 +2,11 @@
 //! harness's `Forwarder` for this program, through the client's
 //! `settlement_calls`.
 
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use anoma_pa_solana_client::external_call::SolanaExternalCall;
 use anoma_pa_solana_integration_test::forwarders::{CallAccounts, Forwarder};
-use anomapay_spl_token_forwarder_client::{settlement_calls, wrap_nonce_bitmaps};
+use anomapay_spl_token_forwarder_client::settlement_calls;
 use anyhow::Context;
 use futures::future::BoxFuture;
 use solana_rpc_client::nonblocking::rpc_client::RpcClient;
@@ -30,27 +29,12 @@ impl SplTokenForwarder {
 impl Forwarder for SplTokenForwarder {
     fn call_accounts<'a>(
         &'a self,
-        rpc: &'a RpcClient,
+        _rpc: &'a RpcClient,
         call: &'a SolanaExternalCall,
     ) -> BoxFuture<'a, anyhow::Result<CallAccounts>> {
         Box::pin(async move {
             let calls = std::slice::from_ref(call);
-            let bitmaps = wrap_nonce_bitmaps(&self.program, calls)?;
-            let mut absent = BTreeSet::new();
-            // An unwrap uses no bitmap, and reads none.
-            if !bitmaps.is_empty() {
-                let accounts = rpc
-                    .get_multiple_accounts(&bitmaps)
-                    .await
-                    .with_context(|| format!("failed to read the nonce bitmaps {bitmaps:?}"))?;
-                absent.extend(
-                    bitmaps
-                        .into_iter()
-                        .zip(accounts)
-                        .filter_map(|(bitmap, account)| account.is_none().then_some(bitmap)),
-                );
-            }
-            let mut settlement = settlement_calls(&self.program, &self.payer, calls, absent)?;
+            let mut settlement = settlement_calls(&self.program, &self.payer, calls)?;
             Ok(CallAccounts {
                 segment: settlement.segments.pop().context("one call, one segment")?,
                 preceding: settlement.preceding,

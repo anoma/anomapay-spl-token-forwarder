@@ -95,8 +95,9 @@ pub const NONCES_PER_WORD: u64 = 256;
 /// One 256-nonce word of a user's wrap nonces (Permit2's bitmap pattern).
 ///
 /// Seeds: ["nonce_bitmap", user, word_index_le_bytes]. Created by anyone
-/// through `init_nonce_bitmap`, which pays its rent; a wrap only reads and
-/// sets bits, so no signer reaches the forwarder through the adapter's CPI.
+/// through `init_nonce_bitmap`, which pays its rent and leaves an existing
+/// bitmap as it is; a wrap only reads and sets bits, so no signer reaches the
+/// forwarder through the adapter's CPI.
 #[account]
 #[derive(InitSpace, Default)]
 pub struct NonceBitmap {

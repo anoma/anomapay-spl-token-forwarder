@@ -37,7 +37,7 @@ A table entry need not exist on chain: the forwarder's keys go in before the for
 
 ## Nonce bitmaps
 
-A wrap's replay protection is a per-user, per-256-nonce-word bitmap account. The adapter forwards no signer to the forwarder, so the forwarder cannot create that account during a wrap; the submitter creates it with the permissionless `init_nonce_bitmap` instruction (any payer) when the word's bitmap does not exist, and the wrap fails with `NonceBitmapMissing` when it is absent. The init fits in the settlement transaction itself, after the ed25519 instruction the wrap input points at; the integration tests settle the first wrap that way.
+A wrap's replay protection is a per-user, per-256-nonce-word bitmap account. The adapter forwards no signer to the forwarder, so the forwarder cannot create that account during a wrap; the submitter creates it with the permissionless `init_nonce_bitmap` instruction (any payer), which does nothing when the word's bitmap exists, so a submitter sends it with every wrap without reading the chain; the wrap fails with `NonceBitmapMissing` when the bitmap is absent. The init fits in the settlement transaction itself, after the ed25519 instructions the wraps' inputs point at; the client's `settlement_calls` builds it so.
 
 ## Rotating the logic ref
 
