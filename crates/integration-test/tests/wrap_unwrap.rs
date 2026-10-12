@@ -60,7 +60,7 @@ where
     let user_before = balance(env, &user).await?;
     let escrow_before = balance(env, &escrow).await?;
 
-    let (tx, _) = forwarder
+    let tx = forwarder
         .prove_wraps(
             env,
             &owner,

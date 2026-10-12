@@ -421,20 +421,18 @@ impl Forwarder {
 
     /// Wraps of `wraps`' amounts under their forwarder nonces, each from the
     /// user into a resource `owner` holds, in one transaction proven on
-    /// `env`: the transaction and the resources the wraps create, in order.
-    /// `seed` makes their resources distinct from every other wrap's.
+    /// `env`. `seed` makes their resources distinct from every other wrap's.
     pub async fn prove_wraps<P>(
         &self,
         env: &Environment<P>,
         owner: &ShieldedOwner,
         wraps: &[(u64, u64)],
         seed: &str,
-    ) -> anyhow::Result<(Transaction, Vec<Resource>)>
+    ) -> anyhow::Result<Transaction>
     where
         P: Prover,
     {
         let mut witnesses = Vec::new();
-        let mut created = Vec::new();
         for (i, &(amount, nonce)) in wraps.iter().enumerate() {
             let wrap = self.wrap_data(
                 owner,
@@ -444,9 +442,8 @@ impl Forwarder {
                 &format!("{seed}/{i}"),
             )?;
             witnesses.push(wrap.witnesses);
-            created.push(wrap.created);
         }
-        Ok((prove_actions(env, &witnesses).await?, created))
+        prove_actions(env, &witnesses).await
     }
 
     /// A wrap's witnesses, signed by the user, whose signature check is the
