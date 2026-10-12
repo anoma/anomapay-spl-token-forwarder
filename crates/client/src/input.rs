@@ -9,34 +9,22 @@ pub const OP_WRAP: u8 = 0;
 /// Op byte prepended to `UnwrapInput`-shaped instruction data.
 pub const OP_UNWRAP: u8 = 1;
 
-/// Build the 122-byte forwarder instruction data for a wrap.
+/// Build the 186-byte forwarder instruction data for the wrap `input`.
 ///
 /// Layout: `op(1) + token_mint(32) + amount_le(8) + user(32) + nonce_le(8) +
-/// deadline_le_i64(8) + action_tree_root(32) + ed25519_ix_index(1)`.
-///
-/// The user's ed25519 signature is not part of the input: it reaches the chain
-/// in the ed25519 program instruction at `ed25519_ix_index`, which the
-/// forwarder verifies through the instructions sysvar.
-///
-/// `deadline` is signed i64 to match the forwarder's `WrapInput::deadline: i64`.
-pub fn encode_wrap_forwarder_input(
-    token_mint: &[u8; 32],
-    amount: u64,
-    user: &[u8; 32],
-    nonce: u64,
-    deadline: i64,
-    action_tree_root: &[u8; 32],
-    ed25519_ix_index: u8,
-) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(122);
+/// deadline_le_i64(8) + action_tree_root(32) + signature(64) +
+/// ed25519_ix_index(1)`.
+pub fn encode_wrap_forwarder_input(input: &WrapInput) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(186);
     buf.push(OP_WRAP);
-    buf.extend_from_slice(token_mint);
-    buf.extend_from_slice(&amount.to_le_bytes());
-    buf.extend_from_slice(user);
-    buf.extend_from_slice(&nonce.to_le_bytes());
-    buf.extend_from_slice(&deadline.to_le_bytes());
-    buf.extend_from_slice(action_tree_root);
-    buf.push(ed25519_ix_index);
+    buf.extend_from_slice(&input.token_mint);
+    buf.extend_from_slice(&input.amount.to_le_bytes());
+    buf.extend_from_slice(&input.user);
+    buf.extend_from_slice(&input.nonce.to_le_bytes());
+    buf.extend_from_slice(&input.deadline.to_le_bytes());
+    buf.extend_from_slice(&input.action_tree_root);
+    buf.extend_from_slice(&input.signature);
+    buf.push(input.ed25519_ix_index);
     buf
 }
 
@@ -66,15 +54,29 @@ pub enum ForwarderInput {
 
 /// A wrap's input: the forwarder escrows `amount` of `token_mint` from
 /// `user`'s token account, authorized by the user's ed25519 signature, which
-/// the settlement transaction carries at `ed25519_ix_index`.
+/// the settlement transaction verifies in the ed25519 instruction at
+/// `ed25519_ix_index`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WrapInput {
     pub token_mint: [u8; 32],
     pub amount: u64,
     pub user: [u8; 32],
     pub nonce: u64,
+    /// Signed to match the forwarder's `WrapInput::deadline: i64`.
     pub deadline: i64,
     pub action_tree_root: [u8; 32],
+    /// The user's ed25519 signature over the wrap message.
+    ///
+    /// The forwarder program does not read it, and that is intended: a
+    /// program cannot call the ed25519 verifier (precompiles are not callable
+    /// by CPI), so the ed25519 instruction at `ed25519_ix_index` verifies it,
+    /// and the program checks that instruction's key and message. The field
+    /// exists so that the proven transaction carries the signature, as the
+    /// EVM forwarder's wrap input carries its Permit2 signature: a submitter
+    /// reads it from here ([`settlement_calls`](crate::settlement_calls)) to
+    /// build that ed25519 instruction, and needs nothing but the transaction.
+    /// Do not remove it as unused.
+    pub signature: [u8; 64],
     pub ed25519_ix_index: u8,
 }
 
@@ -119,6 +121,10 @@ fn read_wrap(input: &mut Cursor) -> Result<WrapInput, Truncated> {
         // The i64's little-endian bytes, read as a u64 and reinterpreted.
         deadline: input.u64_le("deadline")? as i64,
         action_tree_root: input.array_32("action_tree_root")?,
+        signature: input
+            .take(64, "signature")?
+            .try_into()
+            .expect("take returns the 64 bytes it was asked for"),
         ed25519_ix_index: input.u8("ed25519_ix_index")?,
     })
 }
@@ -136,8 +142,8 @@ pub fn decode_forwarder_input(data: &[u8]) -> Result<ForwarderInput, InputError>
     let (&op, input) = data.split_first().ok_or(InputError::UnknownOp(None))?;
     let mut cursor = Cursor::new(input, 0);
     match op {
-        OP_WRAP if input.len() == 121 => Ok(ForwarderInput::Wrap(
-            read_wrap(&mut cursor).expect("a 121-byte input holds every wrap field"),
+        OP_WRAP if input.len() == 185 => Ok(ForwarderInput::Wrap(
+            read_wrap(&mut cursor).expect("a 185-byte input holds every wrap field"),
         )),
         OP_UNWRAP if input.len() == 72 => Ok(ForwarderInput::Unwrap(
             read_unwrap(&mut cursor).expect("a 72-byte input holds every unwrap field"),
@@ -154,21 +160,26 @@ pub fn decode_forwarder_input(data: &[u8]) -> Result<ForwarderInput, InputError>
 mod tests {
     use super::*;
 
+    fn wrap_input() -> WrapInput {
+        WrapInput {
+            token_mint: [1; 32],
+            amount: 42,
+            user: [2; 32],
+            nonce: 7,
+            deadline: -5,
+            action_tree_root: [3; 32],
+            signature: [4; 64],
+            ed25519_ix_index: 2,
+        }
+    }
+
     #[test]
-    fn wrap_input_layout_is_122_bytes() {
-        let bytes = encode_wrap_forwarder_input(
-            &[1u8; 32],
-            42,
-            &[2u8; 32],
-            7,
-            1_700_000_000,
-            &[3u8; 32],
-            2,
-        );
+    fn wrap_input_layout_is_186_bytes() {
+        let bytes = encode_wrap_forwarder_input(&wrap_input());
         // Pin the wire layout field by field: the forwarder's `WrapInput`
         // parses exactly these bytes after the op byte, and the resource
         // circuit commits them, so a silent field change must fail here.
-        assert_eq!(bytes.len(), 122);
+        assert_eq!(bytes.len(), 186);
         assert_eq!(bytes[0], OP_WRAP);
         assert_eq!(&bytes[1..33], &[1u8; 32], "token_mint");
         assert_eq!(
@@ -184,11 +195,12 @@ mod tests {
         );
         assert_eq!(
             i64::from_le_bytes(bytes[81..89].try_into().unwrap()),
-            1_700_000_000,
+            -5,
             "deadline (LE)"
         );
         assert_eq!(&bytes[89..121], &[3u8; 32], "action_tree_root");
-        assert_eq!(bytes[121], 2, "ed25519_ix_index");
+        assert_eq!(&bytes[121..185], &[4u8; 64], "signature");
+        assert_eq!(bytes[185], 2, "ed25519_ix_index");
     }
 
     #[test]
@@ -200,18 +212,10 @@ mod tests {
 
     #[test]
     fn the_decoder_reads_what_the_encoders_write() {
-        let wrap = encode_wrap_forwarder_input(&[1; 32], 42, &[2; 32], 7, -5, &[3; 32], 2);
+        let wrap = encode_wrap_forwarder_input(&wrap_input());
         assert_eq!(
             decode_forwarder_input(&wrap),
-            Ok(ForwarderInput::Wrap(WrapInput {
-                token_mint: [1; 32],
-                amount: 42,
-                user: [2; 32],
-                nonce: 7,
-                deadline: -5,
-                action_tree_root: [3; 32],
-                ed25519_ix_index: 2,
-            }))
+            Ok(ForwarderInput::Wrap(wrap_input()))
         );
         let unwrap = encode_unwrap_forwarder_input(&[1; 32], 100, &[4; 32]);
         assert_eq!(
@@ -223,10 +227,10 @@ mod tests {
             }))
         );
         assert_eq!(
-            decode_forwarder_input(&wrap[..121]),
+            decode_forwarder_input(&wrap[..185]),
             Err(InputError::Length {
                 op: OP_WRAP,
-                len: 120
+                len: 184
             })
         );
         assert_eq!(

@@ -194,12 +194,10 @@ impl WrapMessage {
     }
 }
 
-/// Wrap operand of `forward_call`, after the op-code byte: 121 bytes,
+/// Wrap operand of `forward_call`, after the op-code byte: 185 bytes,
 /// Borsh-serialized in field order (token_mint, amount u64 LE, user,
-/// nonce u64 LE, deadline i64 LE, action_tree_root, ed25519_ix_index).
-/// The user's signature is not part of the input: it travels in the
-/// ed25519 instruction `ed25519_ix_index` names, which the forwarder
-/// verifies through the instructions sysvar.
+/// nonce u64 LE, deadline i64 LE, action_tree_root, signature,
+/// ed25519_ix_index).
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct WrapInput {
     pub token_mint: Pubkey,
@@ -208,12 +206,24 @@ pub struct WrapInput {
     pub nonce: u64,
     pub deadline: i64,
     pub action_tree_root: [u8; 32],
+    /// The user's ed25519 signature over the wrap message.
+    ///
+    /// This program does not read it, and that is intended: a program
+    /// cannot call the ed25519 verifier (precompiles are not callable by
+    /// CPI), so the signature is verified by the ed25519 instruction
+    /// `ed25519_ix_index` names, whose key and message `forward_call`
+    /// checks through the instructions sysvar. The field exists so that
+    /// the proven transaction carries the signature, as the EVM forwarder's
+    /// wrap input carries its Permit2 signature: the submitter reads it
+    /// from here to build that ed25519 instruction, and needs nothing but
+    /// the transaction. Do not remove it as unused.
+    pub signature: [u8; 64],
     /// Index of the ed25519 instruction in the transaction.
     pub ed25519_ix_index: u8,
 }
 
 impl WrapInput {
-    pub const SIZE: usize = 121;
+    pub const SIZE: usize = 185;
 
     /// Every field is fixed-width, so Borsh refuses exactly the inputs that
     /// are not `SIZE` bytes long.

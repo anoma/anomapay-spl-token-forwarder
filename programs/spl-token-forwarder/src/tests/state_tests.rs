@@ -79,15 +79,18 @@ fn test_wrap_message_domain_separation() {
 /// wallet to sign.
 #[test]
 fn wrap_input_parses_the_client_encoding_and_recomputes_its_signed_message() {
-    let (mint, user, root) = ([1u8; 32], [2u8; 32], [3u8; 32]);
+    let (mint, user, root, signature) = ([1u8; 32], [2u8; 32], [3u8; 32], [4u8; 64]);
     let encoded = anomapay_spl_token_forwarder_client::encode_wrap_forwarder_input(
-        &mint,
-        1000,
-        &user,
-        42,
-        1_700_000_000,
-        &root,
-        3,
+        &anomapay_spl_token_forwarder_client::WrapInput {
+            token_mint: mint,
+            amount: 1000,
+            user,
+            nonce: 42,
+            deadline: 1_700_000_000,
+            action_tree_root: root,
+            signature,
+            ed25519_ix_index: 3,
+        },
     );
     let (op, operand) = encoded.split_first().unwrap();
     assert_eq!(*op, crate::OP_WRAP);
@@ -98,6 +101,7 @@ fn wrap_input_parses_the_client_encoding_and_recomputes_its_signed_message() {
     assert_eq!(input.nonce, 42);
     assert_eq!(input.deadline, 1_700_000_000);
     assert_eq!(input.action_tree_root, root);
+    assert_eq!(input.signature, signature);
     assert_eq!(input.ed25519_ix_index, 3);
 
     let client_message = anomapay_spl_token_forwarder_client::WrapMessage {
