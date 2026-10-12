@@ -17,9 +17,8 @@ use crate::forwarder::{
     build_unwrap_forwarder_accounts, build_wrap_forwarder_accounts, init_nonce_bitmap_ix,
     nonce_word_index,
 };
-use crate::input::{decode_forwarder_input, ForwarderInput, InputError};
+use crate::input::{decode_forwarder_input, ForwarderInput, InputError, WrapInput};
 use crate::pda::derive_nonce_bitmap_pda;
-use crate::wrap_message::WrapMessage;
 
 /// What a settlement passes the forwarder for its calls.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -104,26 +103,29 @@ fn inputs(
         .collect()
 }
 
+/// The nonce bitmap `wrap` uses through the forwarder `forwarder`, and its
+/// word.
+fn nonce_bitmap(forwarder: &Pubkey, wrap: &WrapInput) -> (Pubkey, u64) {
+    let word = nonce_word_index(wrap.nonce);
+    let user = Pubkey::new_from_array(wrap.user);
+    (derive_nonce_bitmap_pda(forwarder, &user, word).0, word)
+}
+
 /// The nonce bitmaps the wraps among `calls` use, every call to the forwarder
-/// `forwarder`: the accounts a submitter reads to learn which are absent.
+/// `forwarder`, sorted and without repeats: the accounts a submitter reads to
+/// learn which are absent.
 pub fn wrap_nonce_bitmaps(
     forwarder: &Pubkey,
     calls: &[SolanaExternalCall],
-) -> Result<BTreeSet<Pubkey>, CallsError> {
-    Ok(inputs(forwarder, calls)?
-        .into_iter()
+) -> Result<Vec<Pubkey>, CallsError> {
+    let bitmaps: BTreeSet<Pubkey> = inputs(forwarder, calls)?
+        .iter()
         .filter_map(|input| match input {
-            ForwarderInput::Wrap(wrap) => Some(
-                derive_nonce_bitmap_pda(
-                    forwarder,
-                    &Pubkey::new_from_array(wrap.user),
-                    nonce_word_index(wrap.nonce),
-                )
-                .0,
-            ),
+            ForwarderInput::Wrap(wrap) => Some(nonce_bitmap(forwarder, wrap).0),
             ForwarderInput::Unwrap(_) => None,
         })
-        .collect())
+        .collect();
+    Ok(bitmaps.into_iter().collect())
 }
 
 /// What a settlement passes the forwarder `forwarder` for `calls`, every one
@@ -138,26 +140,17 @@ pub fn settlement_calls(
     forwarder: &Pubkey,
     payer: &Pubkey,
     calls: &[SolanaExternalCall],
-    absent_bitmaps: &BTreeSet<Pubkey>,
+    mut absent_bitmaps: BTreeSet<Pubkey>,
 ) -> Result<SettlementCalls, CallsError> {
     let mut checks: Vec<(u8, Instruction)> = Vec::new();
     let mut accounts_needed: Vec<Instruction> = Vec::new();
-    let mut bitmaps_created: BTreeSet<Pubkey> = BTreeSet::new();
     let mut segments = Vec::with_capacity(calls.len());
 
     for (call, (external_call, input)) in calls.iter().zip(inputs(forwarder, calls)?).enumerate() {
         let segment = match input {
             ForwarderInput::Wrap(wrap) => {
                 let user = Pubkey::new_from_array(wrap.user);
-                let message = WrapMessage {
-                    forwarder_id: forwarder.to_bytes(),
-                    token_mint: wrap.token_mint,
-                    amount: wrap.amount,
-                    nonce: wrap.nonce,
-                    deadline: wrap.deadline,
-                    action_tree_root: wrap.action_tree_root,
-                }
-                .base64_digest();
+                let message = wrap.to_message(&forwarder.to_bytes()).base64_digest();
                 checks.push((
                     wrap.ed25519_ix_index,
                     new_ed25519_instruction_with_signature(
@@ -168,9 +161,9 @@ pub fn settlement_calls(
                 ));
                 // A wrap needs the bitmap of its nonce's word, and the
                 // adapter's CPI carries no signer that could create it.
-                let word = nonce_word_index(wrap.nonce);
-                let (bitmap, _) = derive_nonce_bitmap_pda(forwarder, &user, word);
-                if absent_bitmaps.contains(&bitmap) && bitmaps_created.insert(bitmap) {
+                // Removed once created, so two wraps of a word create it once.
+                let (bitmap, word) = nonce_bitmap(forwarder, &wrap);
+                if absent_bitmaps.remove(&bitmap) {
                     accounts_needed.push(init_nonce_bitmap_ix(forwarder, payer, &user, word));
                 }
                 build_wrap_forwarder_accounts(
@@ -277,15 +270,7 @@ mod tests {
     /// The signature check a wrap's settlement must carry: over the wrap
     /// message, by the user, with the input's signature.
     fn check_of(input: &WrapInput) -> Instruction {
-        let message = WrapMessage {
-            forwarder_id: FORWARDER.to_bytes(),
-            token_mint: input.token_mint,
-            amount: input.amount,
-            nonce: input.nonce,
-            deadline: input.deadline,
-            action_tree_root: input.action_tree_root,
-        }
-        .base64_digest();
+        let message = input.to_message(&FORWARDER.to_bytes()).base64_digest();
         new_ed25519_instruction_with_signature(message.as_bytes(), &input.signature, &input.user)
     }
 
@@ -294,9 +279,10 @@ mod tests {
         let input = wrap(2, 9, 0);
         let calls = [wrap_call(&input)];
         let bitmaps = wrap_nonce_bitmaps(&FORWARDER, &calls).unwrap();
-        assert_eq!(bitmaps, BTreeSet::from([bitmap_of(&input)]));
+        assert_eq!(bitmaps, vec![bitmap_of(&input)]);
 
-        let settlement = settlement_calls(&FORWARDER, &PAYER, &calls, &bitmaps).unwrap();
+        let settlement =
+            settlement_calls(&FORWARDER, &PAYER, &calls, bitmaps.into_iter().collect()).unwrap();
         assert_eq!(
             settlement.preceding,
             vec![
@@ -319,7 +305,7 @@ mod tests {
     fn a_wrap_whose_bitmap_exists_carries_only_its_signature_check() {
         let input = wrap(2, 9, 0);
         let settlement =
-            settlement_calls(&FORWARDER, &PAYER, &[wrap_call(&input)], &BTreeSet::new()).unwrap();
+            settlement_calls(&FORWARDER, &PAYER, &[wrap_call(&input)], BTreeSet::new()).unwrap();
         assert_eq!(settlement.preceding, vec![check_of(&input)]);
     }
 
@@ -329,7 +315,8 @@ mod tests {
         let calls = [wrap_call(&first), wrap_call(&second)];
         let bitmaps = wrap_nonce_bitmaps(&FORWARDER, &calls).unwrap();
         assert_eq!(bitmaps.len(), 1, "one word, one bitmap");
-        let settlement = settlement_calls(&FORWARDER, &PAYER, &calls, &bitmaps).unwrap();
+        let settlement =
+            settlement_calls(&FORWARDER, &PAYER, &calls, bitmaps.into_iter().collect()).unwrap();
         assert_eq!(settlement.preceding.len(), 3, "two checks, one bitmap init");
     }
 
@@ -338,7 +325,7 @@ mod tests {
         // The second call's wrap names index 0, the first's index 1.
         let (first, second) = (wrap(2, 9, 1), wrap(4, 9, 0));
         let calls = [wrap_call(&first), wrap_call(&second)];
-        let settlement = settlement_calls(&FORWARDER, &PAYER, &calls, &BTreeSet::new()).unwrap();
+        let settlement = settlement_calls(&FORWARDER, &PAYER, &calls, BTreeSet::new()).unwrap();
         assert_eq!(
             settlement.preceding,
             vec![check_of(&second), check_of(&first)]
@@ -349,7 +336,7 @@ mod tests {
     fn wraps_naming_indices_other_than_the_first_ones_are_refused() {
         let calls = [wrap_call(&wrap(2, 9, 1))];
         assert_eq!(
-            settlement_calls(&FORWARDER, &PAYER, &calls, &BTreeSet::new()),
+            settlement_calls(&FORWARDER, &PAYER, &calls, BTreeSet::new()),
             Err(CallsError::SignatureCheckIndices(vec![1]))
         );
     }
@@ -364,14 +351,14 @@ mod tests {
         )];
         assert_eq!(
             wrap_nonce_bitmaps(&FORWARDER, &calls).unwrap(),
-            BTreeSet::new()
+            Vec::<Pubkey>::new()
         );
         let (mint, recipient) = (
             Pubkey::new_from_array(mint),
             Pubkey::new_from_array(recipient),
         );
         assert_eq!(
-            settlement_calls(&FORWARDER, &PAYER, &calls, &BTreeSet::new()).unwrap(),
+            settlement_calls(&FORWARDER, &PAYER, &calls, BTreeSet::new()).unwrap(),
             SettlementCalls {
                 segments: vec![build_unwrap_forwarder_accounts(
                     &FORWARDER, &recipient, &mint
@@ -400,7 +387,7 @@ mod tests {
         };
         assert_eq!(wrap_nonce_bitmaps(&FORWARDER, &calls), Err(refusal.clone()));
         assert_eq!(
-            settlement_calls(&FORWARDER, &PAYER, &calls, &BTreeSet::new()),
+            settlement_calls(&FORWARDER, &PAYER, &calls, BTreeSet::new()),
             Err(refusal)
         );
     }
@@ -413,7 +400,7 @@ mod tests {
             FORWARDER_WRAP_NUM_ACCOUNTS + 1,
         )];
         assert_eq!(
-            settlement_calls(&FORWARDER, &PAYER, &calls, &BTreeSet::new()),
+            settlement_calls(&FORWARDER, &PAYER, &calls, BTreeSet::new()),
             Err(CallsError::AccountCount {
                 call: 0,
                 committed: FORWARDER_WRAP_NUM_ACCOUNTS + 1,

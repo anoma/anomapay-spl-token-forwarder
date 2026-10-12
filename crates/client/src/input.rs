@@ -3,6 +3,8 @@
 
 use anoma_pa_solana_client::cursor::{Cursor, Truncated};
 
+use crate::wrap_message::WrapMessage;
+
 /// Op byte prepended to `WrapInput`-shaped instruction data.
 pub const OP_WRAP: u8 = 0;
 
@@ -78,6 +80,21 @@ pub struct WrapInput {
     /// Do not remove it as unused.
     pub signature: [u8; 64],
     pub ed25519_ix_index: u8,
+}
+
+impl WrapInput {
+    /// The message the user signs for this wrap through the forwarder
+    /// `forwarder_id`, as the forwarder recomputes it.
+    pub fn to_message(&self, forwarder_id: &[u8; 32]) -> WrapMessage {
+        WrapMessage {
+            forwarder_id: *forwarder_id,
+            token_mint: self.token_mint,
+            amount: self.amount,
+            nonce: self.nonce,
+            deadline: self.deadline,
+            action_tree_root: self.action_tree_root,
+        }
+    }
 }
 
 /// An unwrap's input: the forwarder releases `amount` of `token_mint` from

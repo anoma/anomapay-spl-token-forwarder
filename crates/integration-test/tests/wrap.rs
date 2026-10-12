@@ -327,9 +327,9 @@ async fn refuses_a_wrap_authorized_by_another_keys_signature_over_the_wrap_messa
     refuses_first_wrap(
         |_, wrap| {
             let other = Keypair::new();
-            let signature = other.sign_message(&wrap.authorization.message);
+            let signature = other.sign_message(&wrap.signed_message);
             let ed25519 = solana_ed25519_program::new_ed25519_instruction_with_signature(
-                &wrap.authorization.message,
+                &wrap.signed_message,
                 &<[u8; 64]>::from(signature),
                 &other.pubkey().to_bytes(),
             );
@@ -345,7 +345,7 @@ async fn refuses_a_wrap_whose_authorization_is_the_users_signature_over_another_
 -> anyhow::Result<()> {
     refuses_first_wrap(
         |forwarder, wrap| {
-            let mut message = wrap.authorization.message.clone();
+            let mut message = wrap.signed_message.clone();
             message[0] ^= 1;
             let signature = forwarder.user.sign_message(&message);
             let ed25519 = solana_ed25519_program::new_ed25519_instruction_with_signature(

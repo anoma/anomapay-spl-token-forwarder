@@ -27,7 +27,7 @@ use spl_associated_token_account_interface::address::get_associated_token_addres
 use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
 use surfpool_sdk::Pubkey;
 
-use crate::fixtures::{self, ShieldedOwner, WrapAuthorization, WrapTerms};
+use crate::fixtures::{self, ShieldedOwner, WrapTerms};
 use crate::submitter::{Rewritten, SplTokenForwarder};
 
 /// The forwarder builds the local tests load: the deterministic builds at
@@ -386,12 +386,14 @@ pub async fn upgrade_authority<P>(
     }
 }
 
-/// A wrap, proven, whose authorization the submitter holds: the
-/// transaction, the shielded resource it creates, and what the user signed.
+/// A wrap, proven: the transaction, which carries the user's signature in the
+/// wrap's input, the shielded resource it creates, and the message the user
+/// signed.
 pub struct ProvenWrap {
     pub tx: Transaction,
     pub created: Resource,
-    pub authorization: WrapAuthorization,
+    /// The base64 digest of the wrap message, as UTF-8 text.
+    pub signed_message: Vec<u8>,
 }
 
 impl Forwarder {
@@ -426,7 +428,7 @@ impl Forwarder {
         Ok(ProvenWrap {
             tx: prove_actions(env, &[wrap.witnesses]).await?,
             created: wrap.created,
-            authorization: wrap.authorization,
+            signed_message: wrap.signed_message,
         })
     }
 

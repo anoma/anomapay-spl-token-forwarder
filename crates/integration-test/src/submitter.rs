@@ -35,20 +35,22 @@ impl Forwarder for SplTokenForwarder {
     ) -> BoxFuture<'a, anyhow::Result<CallAccounts>> {
         Box::pin(async move {
             let calls = std::slice::from_ref(call);
-            let bitmaps: Vec<Pubkey> = wrap_nonce_bitmaps(&self.program, calls)?
-                .into_iter()
-                .collect();
-            let accounts = rpc
-                .get_multiple_accounts_with_commitment(&bitmaps, rpc.commitment())
-                .await
-                .with_context(|| format!("failed to read the nonce bitmaps {bitmaps:?}"))?
-                .value;
-            let absent: BTreeSet<Pubkey> = bitmaps
-                .into_iter()
-                .zip(accounts)
-                .filter_map(|(bitmap, account)| account.is_none().then_some(bitmap))
-                .collect();
-            let mut settlement = settlement_calls(&self.program, &self.payer, calls, &absent)?;
+            let bitmaps = wrap_nonce_bitmaps(&self.program, calls)?;
+            let mut absent = BTreeSet::new();
+            // An unwrap uses no bitmap, and reads none.
+            if !bitmaps.is_empty() {
+                let accounts = rpc
+                    .get_multiple_accounts(&bitmaps)
+                    .await
+                    .with_context(|| format!("failed to read the nonce bitmaps {bitmaps:?}"))?;
+                absent.extend(
+                    bitmaps
+                        .into_iter()
+                        .zip(accounts)
+                        .filter_map(|(bitmap, account)| account.is_none().then_some(bitmap)),
+                );
+            }
+            let mut settlement = settlement_calls(&self.program, &self.payer, calls, absent)?;
             Ok(CallAccounts {
                 segment: settlement.segments.pop().context("one call, one segment")?,
                 preceding: settlement.preceding,

@@ -93,25 +93,14 @@ fn witnesses(action: TransferAction) -> ActionWitnesses {
     }
 }
 
-/// What the user's wallet signs to authorize a wrap, and the signature: the
-/// ed25519 instruction of the wrap's settlement carries both, and the wrap's
-/// input carries the signature.
-#[derive(Clone)]
-pub struct WrapAuthorization {
-    /// The base64 digest of the wrap message, as UTF-8 text.
-    pub message: Vec<u8>,
-    pub signature: [u8; 64],
-    /// The key the instruction names as the signer.
-    pub signer: Pubkey,
-}
-
 /// A wrap, unproven: its witnesses, the shielded resource it creates, and
-/// the user's authorization of it.
+/// the message the user signed, which its input carries the signature over.
 pub struct WrapData {
     pub witnesses: ActionWitnesses,
     /// The shielded resource the wrap creates, which an unwrap consumes.
     pub created: Resource,
-    pub authorization: WrapAuthorization,
+    /// The base64 digest of the wrap message, as UTF-8 text.
+    pub signed_message: Vec<u8>,
 }
 
 /// What a user's wrap authorization names besides the mint: the amount, the
@@ -176,11 +165,7 @@ pub fn wrap(
     Ok(WrapData {
         witnesses: witnesses(action),
         created: wrap.created,
-        authorization: WrapAuthorization {
-            message,
-            signature,
-            signer: user.pubkey(),
-        },
+        signed_message: message,
     })
 }
 
