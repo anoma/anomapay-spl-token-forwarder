@@ -90,7 +90,7 @@ async fn refuses_an_unwrap_to_a_token_account_the_recipient_does_not_own() -> an
         &mut env,
         forwarder,
         tx,
-        move |accounts| accounts.segment[DESTINATION].pubkey = user_account,
+        move |accounts| accounts.segments[0][DESTINATION].pubkey = user_account,
         "Error Code: WrongTokenAccountOwner.",
         &unmoved,
     )
@@ -120,7 +120,7 @@ async fn refuses_an_unwrap_whose_source_the_escrow_does_not_own() -> anyhow::Res
         &mut env,
         forwarder,
         tx,
-        move |accounts| accounts.segment[SOURCE].pubkey = other,
+        move |accounts| accounts.segments[0][SOURCE].pubkey = other,
         "Error Code: WrongTokenAccountOwner.",
         &unmoved,
     )
@@ -149,8 +149,8 @@ async fn refuses_an_unwrap_that_draws_another_mints_escrow() -> anyhow::Result<(
         forwarder,
         tx,
         move |accounts| {
-            accounts.segment[SOURCE].pubkey = escrow_other;
-            accounts.segment[DESTINATION].pubkey = recipient_other;
+            accounts.segments[0][SOURCE].pubkey = escrow_other;
+            accounts.segments[0][DESTINATION].pubkey = recipient_other;
         },
         "Error Code: WrongTokenAccountMint.",
         &unmoved,

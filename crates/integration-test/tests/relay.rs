@@ -38,7 +38,7 @@ impl Forwarder for RelayedUnwrap {
     fn call_accounts<'a>(
         &'a self,
         _rpc: &'a RpcClient,
-        _call: &'a SolanaExternalCall,
+        calls: &'a [SolanaExternalCall],
     ) -> BoxFuture<'a, anyhow::Result<CallAccounts>> {
         Box::pin(async move {
             let mut segment = vec![AccountMeta::new_readonly(self.test_forwarder, false)];
@@ -48,7 +48,7 @@ impl Forwarder for RelayedUnwrap {
                 &self.mint,
             ));
             Ok(CallAccounts {
-                segment,
+                segments: vec![segment; calls.len()],
                 preceding: vec![],
             })
         })

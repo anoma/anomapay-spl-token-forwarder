@@ -1,4 +1,4 @@
-//! How a submitter passes the SPL token forwarder a call's accounts: the
+//! How a submitter passes the SPL token forwarder its calls' accounts: the
 //! harness's `Forwarder` for this program, through the client's
 //! `settlement_calls`.
 
@@ -7,7 +7,6 @@ use std::sync::Arc;
 use anoma_pa_solana_client::external_call::SolanaExternalCall;
 use anoma_pa_solana_integration_test::forwarders::{CallAccounts, Forwarder};
 use anomapay_spl_token_forwarder_client::settlement_calls;
-use anyhow::Context;
 use futures::future::BoxFuture;
 use solana_rpc_client::nonblocking::rpc_client::RpcClient;
 use surfpool_sdk::Pubkey;
@@ -30,13 +29,12 @@ impl Forwarder for SplTokenForwarder {
     fn call_accounts<'a>(
         &'a self,
         _rpc: &'a RpcClient,
-        call: &'a SolanaExternalCall,
+        calls: &'a [SolanaExternalCall],
     ) -> BoxFuture<'a, anyhow::Result<CallAccounts>> {
         Box::pin(async move {
-            let calls = std::slice::from_ref(call);
-            let mut settlement = settlement_calls(&self.program, &self.payer, calls)?;
+            let settlement = settlement_calls(&self.program, &self.payer, calls)?;
             Ok(CallAccounts {
-                segment: settlement.segments.pop().context("one call, one segment")?,
+                segments: settlement.segments,
                 preceding: settlement.preceding,
             })
         })
@@ -55,10 +53,10 @@ impl<F: Fn(&mut CallAccounts) + Send + Sync> Forwarder for Rewritten<F> {
     fn call_accounts<'a>(
         &'a self,
         rpc: &'a RpcClient,
-        call: &'a SolanaExternalCall,
+        calls: &'a [SolanaExternalCall],
     ) -> BoxFuture<'a, anyhow::Result<CallAccounts>> {
         Box::pin(async move {
-            let mut accounts = self.submitter.call_accounts(rpc, call).await?;
+            let mut accounts = self.submitter.call_accounts(rpc, calls).await?;
             (self.rewrite)(&mut accounts);
             Ok(accounts)
         })

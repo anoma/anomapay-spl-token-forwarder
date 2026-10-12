@@ -248,7 +248,7 @@ async fn refuses_a_wrap_whose_destination_the_escrow_does_not_own() -> anyhow::R
         &mut env,
         forwarder,
         wrap.tx,
-        move |accounts| accounts.segment[DESTINATION].pubkey = other,
+        move |accounts| accounts.segments[0][DESTINATION].pubkey = other,
         "Error Code: WrongTokenAccountOwner.",
         &unmoved,
     )
@@ -276,7 +276,7 @@ async fn refuses_a_wrap_whose_source_the_signing_user_does_not_own() -> anyhow::
         &mut env,
         forwarder,
         wrap.tx,
-        move |accounts| accounts.segment[SOURCE].pubkey = other,
+        move |accounts| accounts.segments[0][SOURCE].pubkey = other,
         "Error Code: WrongTokenAccountOwner.",
         &unmoved,
     )
@@ -308,8 +308,8 @@ async fn refuses_a_wrap_that_moves_tokens_of_another_mint() -> anyhow::Result<()
         forwarder,
         wrap.tx,
         move |accounts| {
-            accounts.segment[SOURCE].pubkey = user_other;
-            accounts.segment[DESTINATION].pubkey = escrow_other;
+            accounts.segments[0][SOURCE].pubkey = user_other;
+            accounts.segments[0][DESTINATION].pubkey = escrow_other;
         },
         "Error Code: WrongTokenAccountMint.",
         &unmoved,
@@ -459,7 +459,7 @@ async fn refuses_a_replay_that_supplies_the_users_bitmap_of_another_word() -> an
         forwarder,
         tx,
         move |accounts| {
-            accounts.segment[NONCE_BITMAP].pubkey =
+            accounts.segments[0][NONCE_BITMAP].pubkey =
                 derive_nonce_bitmap_pda(&program, &user, word).0;
             accounts
                 .preceding
@@ -486,7 +486,7 @@ async fn refuses_a_replay_that_supplies_another_users_bitmap_of_the_nonces_word(
         forwarder,
         tx,
         move |accounts| {
-            accounts.segment[NONCE_BITMAP].pubkey =
+            accounts.segments[0][NONCE_BITMAP].pubkey =
                 derive_nonce_bitmap_pda(&program, &other, word).0;
             accounts
                 .preceding
@@ -510,7 +510,7 @@ async fn refuses_a_replay_whose_nonce_bitmap_is_an_account_of_another_program() 
         &mut env,
         forwarder,
         tx,
-        move |accounts| accounts.segment[NONCE_BITMAP].pubkey = user_account,
+        move |accounts| accounts.segments[0][NONCE_BITMAP].pubkey = user_account,
         "Error Code: NonceBitmapMissing.",
         &unmoved,
     )
@@ -530,7 +530,7 @@ async fn refuses_a_forward_call_whose_config_is_an_account_of_another_program() 
         &mut env,
         forwarder,
         tx,
-        move |accounts| accounts.segment[CONFIG].pubkey = mint,
+        move |accounts| accounts.segments[0][CONFIG].pubkey = mint,
         "AnchorError caused by account: config. Error Code: AccountOwnedByWrongProgram.",
         &unmoved,
     )
