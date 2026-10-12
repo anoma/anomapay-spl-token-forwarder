@@ -94,7 +94,8 @@ fn witnesses(action: TransferAction) -> ActionWitnesses {
 }
 
 /// What the user's wallet signs to authorize a wrap, and the signature: the
-/// ed25519 instruction of the wrap's settlement carries both.
+/// ed25519 instruction of the wrap's settlement carries both, and the wrap's
+/// input carries the signature.
 #[derive(Clone)]
 pub struct WrapAuthorization {
     /// The base64 digest of the wrap message, as UTF-8 text.
@@ -148,20 +149,21 @@ pub fn wrap(
     )
     .map_err(|e| anyhow::anyhow!("{e:?}"))
     .context("failed to build the wrap's resources")?;
+    let message = wrap
+        .signed_message(terms.nonce, WRAP_DEADLINE)
+        .map_err(|e| anyhow::anyhow!("{e:?}"))
+        .context("failed to derive the wrap's signed message")?
+        .into_bytes();
+    let signature: [u8; 64] = user.sign_message(&message).into();
     let auth = WrapAuth {
         user: user.pubkey().to_bytes(),
         info: WrapAuthInfo {
             nonce: terms.nonce,
             deadline: WRAP_DEADLINE,
+            signature,
             ed25519_ix_index: terms.ed25519_ix_index,
         },
     };
-    let message = wrap
-        .signed_message(&auth)
-        .map_err(|e| anyhow::anyhow!("{e:?}"))
-        .context("failed to derive the wrap's signed message")?
-        .into_bytes();
-    let signature = user.sign_message(&message);
     let action = wrap
         .action(
             auth,
@@ -176,7 +178,7 @@ pub fn wrap(
         created: wrap.created,
         authorization: WrapAuthorization {
             message,
-            signature: signature.into(),
+            signature,
             signer: user.pubkey(),
         },
     })

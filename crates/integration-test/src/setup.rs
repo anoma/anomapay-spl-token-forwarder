@@ -423,8 +423,6 @@ impl Forwarder {
             fixtures::loaded_kind_table(),
             seed,
         )?;
-        self.submitter
-            .authorize(self.user.pubkey(), nonce, wrap.authorization.clone());
         Ok(ProvenWrap {
             tx: prove_actions(env, &[wrap.witnesses]).await?,
             created: wrap.created,

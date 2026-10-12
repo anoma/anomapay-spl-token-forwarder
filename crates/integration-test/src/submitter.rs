@@ -1,48 +1,29 @@
 //! How a submitter passes the SPL token forwarder a call's accounts: the
-//! harness's `Forwarder` for this program.
+//! harness's `Forwarder` for this program, through the client's
+//! `settlement_calls`.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use anoma_pa_solana_client::external_call::SolanaExternalCall;
 use anoma_pa_solana_integration_test::forwarders::{CallAccounts, Forwarder};
-use anomapay_spl_token_forwarder_client::{
-    ForwarderInput, build_unwrap_forwarder_accounts, build_wrap_forwarder_accounts,
-    decode_forwarder_input, derive_nonce_bitmap_pda, init_nonce_bitmap_ix, nonce_word_index,
-};
+use anomapay_spl_token_forwarder_client::{settlement_calls, wrap_nonce_bitmaps};
 use anyhow::Context;
 use futures::future::BoxFuture;
 use solana_rpc_client::nonblocking::rpc_client::RpcClient;
-use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
 use surfpool_sdk::Pubkey;
 
-use crate::fixtures::WrapAuthorization;
-
-/// The submitter's view of the forwarder `program`: the authorizations its
-/// users signed for their wraps, which a wrap's settlement carries in an
-/// ed25519 instruction, and the payer of the accounts a call needs created.
+/// The submitter's view of the forwarder `program`: `payer` pays for the
+/// accounts a call needs created. Everything else comes from the call, a
+/// wrap's signature included.
 pub struct SplTokenForwarder {
     pub program: Pubkey,
     payer: Pubkey,
-    authorizations: Mutex<HashMap<(Pubkey, u64), WrapAuthorization>>,
 }
 
 impl SplTokenForwarder {
     pub fn new(program: Pubkey, payer: Pubkey) -> Self {
-        Self {
-            program,
-            payer,
-            authorizations: Mutex::new(HashMap::new()),
-        }
-    }
-
-    /// Records `authorization` as what `user` signed for the wrap with
-    /// `nonce`: the ed25519 instruction its settlement carries.
-    pub fn authorize(&self, user: Pubkey, nonce: u64, authorization: WrapAuthorization) {
-        self.authorizations
-            .lock()
-            .expect("the authorizations lock is not poisoned")
-            .insert((user, nonce), authorization);
+        Self { program, payer }
     }
 }
 
@@ -53,69 +34,25 @@ impl Forwarder for SplTokenForwarder {
         call: &'a SolanaExternalCall,
     ) -> BoxFuture<'a, anyhow::Result<CallAccounts>> {
         Box::pin(async move {
-            match decode_forwarder_input(&call.instruction_data)? {
-                ForwarderInput::Wrap(wrap) => {
-                    let user = Pubkey::new_from_array(wrap.user);
-                    let mint = Pubkey::new_from_array(wrap.token_mint);
-                    let authorization = self
-                        .authorizations
-                        .lock()
-                        .expect("the authorizations lock is not poisoned")
-                        .get(&(user, wrap.nonce))
-                        .cloned()
-                        .with_context(|| {
-                            format!("{user} authorized no wrap with nonce {}", wrap.nonce)
-                        })?;
-                    let mut preceding = vec![
-                        solana_ed25519_program::new_ed25519_instruction_with_signature(
-                            &authorization.message,
-                            &authorization.signature,
-                            &authorization.signer.to_bytes(),
-                        ),
-                    ];
-                    // A wrap needs the bitmap of its nonce's word; the
-                    // adapter's CPI carries no signer that could create it.
-                    let word = nonce_word_index(wrap.nonce);
-                    let (bitmap, _) = derive_nonce_bitmap_pda(&self.program, &user, word);
-                    let existing = rpc
-                        .get_account_with_commitment(&bitmap, rpc.commitment())
-                        .await
-                        .with_context(|| format!("failed to read the nonce bitmap {bitmap}"))?
-                        .value;
-                    if existing.is_none() {
-                        preceding.push(init_nonce_bitmap_ix(
-                            &self.program,
-                            &self.payer,
-                            &user,
-                            word,
-                        ));
-                    }
-                    Ok(CallAccounts {
-                        segment: build_wrap_forwarder_accounts(
-                            &self.program,
-                            &user,
-                            &mint,
-                            wrap.nonce,
-                        ),
-                        preceding,
-                    })
-                }
-                ForwarderInput::Unwrap(unwrap) => {
-                    let recipient = Pubkey::new_from_array(unwrap.recipient);
-                    let mint = Pubkey::new_from_array(unwrap.token_mint);
-                    Ok(CallAccounts {
-                        segment: build_unwrap_forwarder_accounts(&self.program, &recipient, &mint),
-                        // The forwarder's transfer needs the recipient's
-                        // token account to exist.
-                        preceding: vec![create_associated_token_account_idempotent(
-                            &self.payer,
-                            &recipient,
-                            &mint,
-                            &spl_token_interface::id(),
-                        )],
-                    })
-                }
-            }
+            let calls = std::slice::from_ref(call);
+            let bitmaps: Vec<Pubkey> = wrap_nonce_bitmaps(&self.program, calls)?
+                .into_iter()
+                .collect();
+            let accounts = rpc
+                .get_multiple_accounts_with_commitment(&bitmaps, rpc.commitment())
+                .await
+                .with_context(|| format!("failed to read the nonce bitmaps {bitmaps:?}"))?
+                .value;
+            let absent: BTreeSet<Pubkey> = bitmaps
+                .into_iter()
+                .zip(accounts)
+                .filter_map(|(bitmap, account)| account.is_none().then_some(bitmap))
+                .collect();
+            let mut settlement = settlement_calls(&self.program, &self.payer, calls, &absent)?;
+            Ok(CallAccounts {
+                segment: settlement.segments.pop().context("one call, one segment")?,
+                preceding: settlement.preceding,
+            })
         })
     }
 }

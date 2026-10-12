@@ -34,8 +34,8 @@ anoma-rm-risc0-gadgets = "=2.0.0-rc.6"
 # The AnomaPay transfer resource whose logic ref (b2355844) the forwarder
 # serves: another build has another logic ref, which a forwarder configured
 # for this one refuses.
-transfer_library = { git = "https://github.com/anoma/anomapay-solana-resource", rev = "8edd1830c564dbfede6575a1c9865a67d722f036" }
-transfer_witness = { git = "https://github.com/anoma/anomapay-solana-resource", rev = "8edd1830c564dbfede6575a1c9865a67d722f036" }
+transfer_library = { git = "https://github.com/anoma/anomapay-solana-resource", rev = "752b180feca04fd18b9ae36654ab4336dbe0a2be" }
+transfer_witness = { git = "https://github.com/anoma/anomapay-solana-resource", rev = "752b180feca04fd18b9ae36654ab4336dbe0a2be" }
 anyhow = "1.0"
 bincode = "1.3"
 futures = "0.3"
