@@ -22,10 +22,10 @@ e2e = ["anoma-pa-solana-integration-test/e2e"]
 
 [dependencies]
 # The adapter's harness: pa-testkit's environments for the Solana adapter.
-anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "4807fd35d082035363aeebe1fa5db27b4f33d90a", default-features = false }
+anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "a7230323295cb733d460859e5370ba7d31226de4", default-features = false }
 # The revisions the harness pins.
-anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "6b2f41cf613ccaf593bee79bc138c71dd1f7ab4c" }
-anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "fee5441725fc03f2437d782df513a9a59eb35b0d", default-features = false, features = [
+anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "39d098fc40c97c61912e6953ede10a4857dc05e2" }
+anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "cf94169a4009d45123e6f2905a7c898f5a53e19f", default-features = false, features = [
   "fixtures",
 ] }
 anomapay-spl-token-forwarder-client = { path = "../client" }
@@ -56,7 +56,6 @@ spl-token-interface = "3"
 surfpool-sdk = "=1.6.0"
 
 [dev-dependencies]
-solana-address-lookup-table-interface = { version = "3.1", features = ["bincode"] }
 # The kind tables the harness pins.
 anoma-risc0-kind-tables = { git = "https://github.com/anoma/risc0-kind-tables", rev = "919c7787259eca02b8cedb079a639ad31e04ae51", features = [
   "arm",
@@ -66,7 +65,7 @@ serde_json = "1.0"
 solana-sdk-ids = "3"
 solana-signature = "3"
 solana-transaction = "4"
-solana-packet = "4"
+solana-message = "4"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 
 [[test]]

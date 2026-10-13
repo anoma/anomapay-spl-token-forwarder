@@ -397,32 +397,6 @@ pub fn build_unwrap_forwarder_accounts(
     accounts
 }
 
-/// The accounts every settlement that calls the forwarder carries for it and
-/// that are the same for every call: the ones a deployment's settlement
-/// lookup table holds for it. Each mint in `mints` adds its escrow's token
-/// account; the user's and the recipient's token accounts and the user's
-/// nonce bitmap differ per settlement.
-pub fn forwarder_settlement_lookup_keys(
-    forwarder_program: &Pubkey,
-    mints: &[Pubkey],
-) -> Vec<Pubkey> {
-    let (escrow_authority, _) = derive_forwarder_escrow_authority(forwarder_program);
-    let mut keys = vec![
-        *forwarder_program,
-        derive_forwarder_config_pda(forwarder_program).0,
-        sysvar::instructions::id(),
-        derive_event_authority_pda(forwarder_program).0,
-        escrow_authority,
-        spl_token_interface::id(),
-    ];
-    keys.extend(
-        mints
-            .iter()
-            .map(|mint| get_associated_token_address(&escrow_authority, mint)),
-    );
-    keys
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -502,37 +476,6 @@ mod tests {
         );
         assert!(accs.iter().all(|a| !a.is_signer));
     }
-
-    #[test]
-    fn the_lookup_keys_are_the_segments_accounts_no_user_or_recipient_changes() {
-        let forwarder = Pubkey::new_unique();
-        let (user, recipient) = (Pubkey::new_unique(), Pubkey::new_unique());
-        let mints = [Pubkey::new_unique(), Pubkey::new_unique()];
-        let lookup = forwarder_settlement_lookup_keys(&forwarder, &mints);
-        for mint in &mints {
-            let per_settlement = [
-                get_associated_token_address(&user, mint),
-                derive_nonce_bitmap_pda(&forwarder, &user, 0).0,
-                get_associated_token_address(&recipient, mint),
-            ];
-            let segments = keys(&build_wrap_forwarder_accounts(&forwarder, &user, mint, 0))
-                .into_iter()
-                .chain(keys(&build_unwrap_forwarder_accounts(
-                    &forwarder, &recipient, mint,
-                )));
-            for key in segments {
-                assert_eq!(
-                    lookup.contains(&key),
-                    !per_settlement.contains(&key),
-                    "{key} is in the lookup keys {lookup:?} exactly when no settlement changes it"
-                );
-            }
-        }
-        // The six accounts every call shares and one escrow per mint: every
-        // fixed segment account once, nothing else.
-        assert_eq!(lookup.len(), 6 + mints.len(), "{lookup:?}");
-    }
-
     #[test]
     fn nonce_word_index_covers_256_nonces_per_word() {
         assert_eq!(nonce_word_index(0), 0);

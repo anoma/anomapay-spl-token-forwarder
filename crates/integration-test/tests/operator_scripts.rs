@@ -6,7 +6,7 @@ use anoma_pa_solana_client::{derive_pa_state_pda, derive_upgrade_authority_pda};
 use anoma_pa_testkit::environment::ProtocolAdapter as _;
 use anomapay_spl_token_forwarder_client::{
     CONFIG_VERSION, ConfigAccount, derive_forwarder_escrow_authority,
-    forwarder_settlement_lookup_keys, set_emergency_caller_ix,
+    set_emergency_caller_ix,
 };
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::scripts::{hex, run_script};
@@ -207,37 +207,6 @@ async fn emergency_withdraw_moves_escrowed_tokens_to_the_recipient() -> anyhow::
         balance(&env, &escrow).await? == 600 && balance(&env, &recipient_account).await? == 400,
         "the withdrawal did not move 400 from escrow to the recipient"
     );
-    Ok(())
-}
-
-/// The forwarder's fixed accounts, and the listed mints' escrow accounts,
-/// join the deployment's settlement lookup table.
-#[tokio::test(flavor = "multi_thread")]
-async fn lookup_table_adds_the_forwarders_accounts_to_the_deployments_table() -> anyhow::Result<()>
-{
-    let (env, program) = setup::deployed(Build::Production).await?;
-    let mint = new_mint(&env).await?;
-    let table = env.protocol_adapter.lookup_table.key;
-    let ran = run_script(
-        &env,
-        &env.protocol_adapter.payer,
-        "lookup-table.ts",
-        &[],
-        &[
-            ("PA_LOOKUP_TABLE", table.to_string()),
-            ("STF_TOKEN_MINTS", mint.to_string()),
-        ],
-    )?;
-    anyhow::ensure!(ran.success, "{ran}");
-
-    let data = env.protocol_adapter.rpc.get_account_data(&table).await?;
-    let stored =
-        solana_address_lookup_table_interface::state::AddressLookupTable::deserialize(&data)?
-            .addresses
-            .to_vec();
-    for key in forwarder_settlement_lookup_keys(&program, &[mint]) {
-        anyhow::ensure!(stored.contains(&key), "the table lacks {key}: {ran}");
-    }
     Ok(())
 }
 
