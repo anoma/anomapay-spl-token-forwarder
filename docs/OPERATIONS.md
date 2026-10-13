@@ -1,6 +1,6 @@
 # Operating the SPL token forwarder
 
-The SPL token forwarder holds AnomaPay's wrapped SPL tokens in escrow and executes the wrap and unwrap calls the adapter forwards to it. It has two authorities, both recorded in its config PDA at initialization: the **owner**, which upgrades the program and rotates the logic ref, and the **emergency committee**, which names the emergency caller and closes accounts. The adapter's own procedures (its deployment, owner, pause, kind table and the settlement lookup table's creation) are in the adapter repository's [docs/OPERATIONS.md](https://github.com/anoma/solana-protocol-adapter/blob/anthony/arm-v2-port/solana-pa-prototype/docs/OPERATIONS.md).
+The SPL token forwarder holds AnomaPay's wrapped SPL tokens in escrow and executes the wrap and unwrap calls the adapter forwards to it. It has two authorities, both recorded in its config PDA at initialization: the **owner**, which upgrades the program and rotates the logic ref, and the **emergency committee**, which names the emergency caller and closes accounts. The adapter's own procedures (its deployment, owner, pause and kind table) are in the adapter repository's [docs/OPERATIONS.md](https://github.com/anoma/solana-protocol-adapter/blob/anthony/arm-v2-port/solana-pa-prototype/docs/OPERATIONS.md).
 
 Commands run through `./scripts/dev.sh`, which enters the Nix shell; cluster operations take `--cluster <localnet|devnet|mainnet>` (`scripts/ops.sh` lists every flag). devnet and mainnet operations go through the operator's RPC provider: pass `--url <rpc>` or set `DEVNET_RPC_URL` / `MAINNET_RPC_URL`; there is no public-endpoint default. The forwarder's commands take their parameters as `STF_*` environment variables (`scripts/forwarder.ts` lists them).
 
@@ -22,18 +22,7 @@ export STF_TOKEN_MINT=<base58 mint>          # optional: also creates the mint's
 
 A first deploy reads the forwarder's keypair path from the uncommitted `env/<cluster>.keys.env` ([env/README.md](../env/README.md)). On devnet and mainnet, `deploy` publishes the forwarder's IDL and stops before `initialize`, for the reason the adapter's deploy does: `initialize` gives the upgrade authority, which alone creates the program's canonical metadata accounts, to the program, so the deployer gives the IDL account to the owner (`program-metadata set-authority`) before initializing. On localnet it initializes at once.
 
-The program's upgrade authority, the deployer, initializes the config, as the EVM proxy runs its initializer at deployment; no other signer can. It hands the upgrade authority to the program's PDA. The config pins the adapter program id (`env/<cluster>.env`), the logic ref, the committee and the owner. A wrap is only executed when the adapter forwards it for a resource carrying that logic ref. One escrow authority, a PDA of the forwarder, owns every mint's escrow: the associated token account of the authority and the mint, as the EVM forwarder holds every token at its own address. `forwarder init` with `STF_TOKEN_MINT` creates a mint's escrow account, and the same command adds further mints later. Add each new mint's escrow account to the settlement lookup table as well.
-
-## The settlement lookup table
-
-The adapter's operator creates the deployment's settlement lookup table and adds the adapter's fixed accounts. The forwarder's fixed accounts (the forwarder, its config, the instructions sysvar, its event authority and escrow authority, and the SPL token program) and each supported mint's escrow account join it from here, signed by the table's authority:
-
-```sh
-PA_LOOKUP_TABLE=<address> STF_TOKEN_MINTS=<mint>,<mint> \
-  ./scripts/dev.sh lookup-table --cluster devnet
-```
-
-A table entry need not exist on chain: the forwarder's keys go in before the forwarder is deployed, and a mint's escrow account before `forwarder init` creates it. Extending is idempotent; a rerun adds only what is missing.
+The program's upgrade authority, the deployer, initializes the config, as the EVM proxy runs its initializer at deployment; no other signer can. It hands the upgrade authority to the program's PDA. The config pins the adapter program id (`env/<cluster>.env`), the logic ref, the committee and the owner. A wrap is only executed when the adapter forwards it for a resource carrying that logic ref. One escrow authority, a PDA of the forwarder, owns every mint's escrow: the associated token account of the authority and the mint, as the EVM forwarder holds every token at its own address. `forwarder init` with `STF_TOKEN_MINT` creates a mint's escrow account, and the same command adds further mints later.
 
 ## Nonce bitmaps
 

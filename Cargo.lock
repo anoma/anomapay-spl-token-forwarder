@@ -226,14 +226,14 @@ dependencies = [
 
 [[package]]
 name = "anoma-pa-solana-client"
-version = "0.4.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=6b2f41cf613ccaf593bee79bc138c71dd1f7ab4c#6b2f41cf613ccaf593bee79bc138c71dd1f7ab4c"
+version = "0.6.0"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=ec540440c2ed1bb02017f814e9a239632bc83516#ec540440c2ed1bb02017f814e9a239632bc83516"
 dependencies = [
  "bincode",
  "serde",
  "sha2 0.10.9",
- "solana-compute-budget-interface",
  "solana-instruction 3.5.1",
+ "solana-message 4.6.0",
  "solana-pubkey 3.0.0",
  "solana-sdk-ids 3.1.0",
 ]
@@ -2327,7 +2327,7 @@ dependencies = [
  "solana-hash 2.3.0",
  "solana-instruction 2.3.3",
  "solana-keccak-hasher",
- "solana-message",
+ "solana-message 2.4.0",
  "solana-nonce",
  "solana-pubkey 2.4.0",
  "solana-sdk-ids 2.2.1",
@@ -2427,6 +2427,7 @@ dependencies = [
  "five8 1.0.0",
  "serde",
  "serde_derive",
+ "solana-sanitize 3.0.1",
 ]
 
 [[package]]
@@ -2671,8 +2672,22 @@ dependencies = [
  "solana-sdk-ids 2.2.1",
  "solana-short-vec",
  "solana-system-interface 1.0.0",
- "solana-transaction-error",
+ "solana-transaction-error 2.2.1",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "solana-message"
+version = "4.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef4b58f6d685adebefc945f28cf051cf3c11e295233e6dd3adfc0a71c3c6fb76"
+dependencies = [
+ "solana-address 2.8.0",
+ "solana-hash 4.7.0",
+ "solana-instruction 3.5.1",
+ "solana-sanitize 3.0.1",
+ "solana-sdk-ids 3.1.0",
+ "solana-transaction-error 3.4.0",
 ]
 
 [[package]]
@@ -2772,7 +2787,7 @@ dependencies = [
  "solana-loader-v2-interface",
  "solana-loader-v3-interface 5.0.0",
  "solana-loader-v4-interface",
- "solana-message",
+ "solana-message 2.4.0",
  "solana-msg 2.2.1",
  "solana-native-token",
  "solana-nonce",
@@ -3376,6 +3391,16 @@ checksum = "222a9dc8fdb61c6088baab34fc3a8b8473a03a7a5fd404ed8dd502fa79b67cb1"
 dependencies = [
  "solana-instruction 2.3.3",
  "solana-sanitize 2.2.1",
+]
+
+[[package]]
+name = "solana-transaction-error"
+version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a37cf28c58b03878d38c38411f0414d3a99a9e3b7e5ebb0f83f3317b2796d18"
+dependencies = [
+ "solana-instruction-error 2.5.0",
+ "solana-sanitize 3.0.1",
 ]
 
 [[package]]

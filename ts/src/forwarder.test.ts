@@ -7,7 +7,6 @@ import { FORWARDER_UNWRAP_NUM_ACCOUNTS, FORWARDER_WRAP_NUM_ACCOUNTS } from "./co
 import {
   buildUnwrapForwarderAccounts,
   buildWrapForwarderAccounts,
-  forwarderSettlementLookupKeys,
   initNonceBitmapIx,
   nonceWordIndex,
 } from "./forwarder.js";
@@ -70,26 +69,6 @@ describe("forwarder segment builders", () => {
     );
     expect(accounts.map((a) => a.isWritable)).toEqual([false, false, false, false, false, true, true, false, false]);
     expect(accounts.every((a) => !a.isSigner)).toBe(true);
-  });
-
-  it("the lookup keys are the segments' accounts no user or recipient changes", () => {
-    const user = Keypair.generate().publicKey;
-    const recipient = Keypair.generate().publicKey;
-    const mints = [Keypair.generate().publicKey, Keypair.generate().publicKey];
-    const lookup = forwarderSettlementLookupKeys(forwarder, mints).map((k) => k.toBase58());
-    for (const m of mints) {
-      const perSettlement = [tokenAccount(user, m), deriveNonceBitmapPda(forwarder, user, 0n)[0], tokenAccount(recipient, m)].map(
-        (k) => k.toBase58(),
-      );
-      const segments = [...buildWrapForwarderAccounts(forwarder, user, m, 0n), ...buildUnwrapForwarderAccounts(forwarder, recipient, m)];
-      for (const { pubkey } of segments) {
-        const key = pubkey.toBase58();
-        expect(lookup.includes(key), key).toBe(!perSettlement.includes(key));
-      }
-    }
-    // The six accounts every call shares and one escrow per mint: every fixed
-    // segment account once, nothing else.
-    expect(lookup).toHaveLength(6 + mints.length);
   });
 
   it("nonce word index covers 256 nonces per word", () => {

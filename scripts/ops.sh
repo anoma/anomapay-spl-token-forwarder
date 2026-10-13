@@ -51,10 +51,6 @@ Cluster operations (--cluster required):
   forwarder <cmd>
                  init, reinitialize, emergency-withdraw. Parameters are STF_*
                  environment variables; see scripts/forwarder.ts.
-  lookup-table   Add the forwarder's accounts, and STF_TOKEN_MINTS' escrow
-                 accounts, to the deployment's settlement lookup table
-                 PA_LOOKUP_TABLE (its authority's wallet). See
-                 scripts/lookup-table.ts.
   idl-publish    Publish the production IDL on chain (the program's canonical
                  Program Metadata IDL account; signer must be the upgrade
                  authority to create it, the upgrade authority or its
@@ -505,10 +501,6 @@ cmd_forwarder() {
   run_operator_script forwarder.ts "$ARGUMENT"
 }
 
-cmd_lookup_table() {
-  run_operator_script lookup-table.ts
-}
-
 # Publish the production IDL on chain as the program's canonical Program
 # Metadata "idl" account (derived from the program ID), so explorers and
 # generic Anchor clients decode the program's instructions, accounts, and
@@ -638,7 +630,7 @@ case "$COMMAND" in
     fi
     (cd ts && npm ci && npm run tsc && npm test)
     ;;
-  deploy | upgrade | forwarder | lookup-table | idl-publish | status)
+  deploy | upgrade | forwarder | idl-publish | status)
     require_cmd solana
     require_cmd solana-keygen
     resolve_cluster

@@ -15,7 +15,7 @@ use anoma_rm_risc0::resource::Resource;
 use anomapay_spl_token_forwarder_client::{
     CONFIG_VERSION, ConfigAccount, ForwarderEvent, decode_config,
     decode_forwarder_event_instruction, derive_forwarder_config_pda,
-    derive_forwarder_escrow_authority, forwarder_settlement_lookup_keys, initialize_ix, sha256,
+    derive_forwarder_escrow_authority, initialize_ix, sha256,
 };
 use anyhow::Context;
 use solana_instruction::{AccountMeta, Instruction};
@@ -156,8 +156,7 @@ pub async fn e2e() -> anyhow::Result<(
 
 /// Has the forwarder `program` serve a new mint on `env`: the mint, its
 /// escrow, a user holding `USER_TOKENS` who has approved the escrow authority
-/// to move them, the submitter registered with the adapter, and the
-/// forwarder's fixed accounts in the settlement lookup table.
+/// to move them, and the submitter registered with the adapter.
 async fn serve<P>(env: &mut Environment<P>, program: Pubkey) -> anyhow::Result<Forwarder> {
     let payer = env.protocol_adapter.payer.pubkey();
     let mint = create_mint(env, &program).await?;
@@ -168,9 +167,6 @@ async fn serve<P>(env: &mut Environment<P>, program: Pubkey) -> anyhow::Result<F
     env.protocol_adapter
         .forwarders
         .register(program, submitter.clone());
-    env.protocol_adapter
-        .extend_lookup_table(forwarder_settlement_lookup_keys(&program, &[mint]))
-        .await?;
 
     Ok(Forwarder {
         submitter,

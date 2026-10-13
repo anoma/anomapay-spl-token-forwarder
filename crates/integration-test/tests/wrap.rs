@@ -3,14 +3,14 @@
 //! the forwarder refuses, with no tokens moved.
 
 use anoma_pa_solana_client::events::PaEvent;
+use anoma_pa_solana_client::{anchor_instruction_disc, transaction_size};
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::forwarders::CallAccounts;
 use anoma_pa_solana_integration_test::test_forwarder;
 use anoma_pa_testkit::transaction::Transaction;
 use anomapay_spl_token_forwarder_client::{
-    ForwarderEvent, build_wrap_forwarder_accounts, decode_nonce_bitmap,
-    derive_forwarder_escrow_authority, derive_nonce_bitmap_pda, init_nonce_bitmap_ix,
-    nonce_word_index,
+    ForwarderEvent, decode_nonce_bitmap, derive_forwarder_escrow_authority,
+    derive_nonce_bitmap_pda, init_nonce_bitmap_ix, nonce_word_index,
 };
 use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
@@ -20,6 +20,7 @@ use anomapay_spl_token_forwarder_integration_test::setup::{
 };
 use anyhow::Context;
 use solana_keypair::Keypair;
+use solana_message::VersionedMessage;
 use solana_signer::Signer;
 use spl_associated_token_account_interface::address::get_associated_token_address;
 use surfpool_sdk::Pubkey;
@@ -162,61 +163,41 @@ async fn settles_a_wrap_the_escrow_receives_the_tokens_and_the_nonce_is_used() -
 }
 
 // The largest settlement the forwarder takes part in: the ed25519
-// authorization, the inline bitmap init and the settle with the wrap
-// segment. Sent as a v0 transaction through the settlement lookup table, it
-// fits one packet, and every account of the forwarder's that is the same for
-// every wrap of the mint is looked up rather than static: the only static
-// ones are signers, invoked programs and the user's own accounts.
+// authorization, the bitmap init and the settle with the wrap segment. It
+// settles in one v1 transaction: those instructions, then the adapter's
+// `settle` carrying the input.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_first_wrap_fits_one_packet_with_the_forwarders_fixed_accounts_looked_up()
--> anyhow::Result<()> {
+async fn the_first_wrap_settles_in_one_v1_transaction() -> anyhow::Result<()> {
     let (mut env, local, owner) = local().await?;
     let forwarder = &local.forwarder;
     let wrap = first_wrap(&env, forwarder, &owner).await?;
     let executed = env.protocol_adapter.settled(wrap.tx).await?;
 
-    let size = bincode::serialize(&executed.transaction)?.len();
-    let message = &executed.transaction.message;
+    let VersionedMessage::V1(message) = &executed.transaction.message else {
+        anyhow::bail!("the first-wrap settlement is not a v1 transaction");
+    };
     println!(
-        "first-wrap settlement as v0: {size} bytes, {} static keys, {} looked up",
-        message.static_account_keys().len(),
-        executed.loaded.len()
+        "first-wrap settlement: {} bytes, {} accounts",
+        transaction_size(message),
+        message.account_keys.len()
+    );
+    let programs: Vec<Pubkey> = message
+        .instructions
+        .iter()
+        .map(|ix| message.account_keys[usize::from(ix.program_id_index)])
+        .collect();
+    let settle = executed
+        .instruction_data(&env.protocol_adapter.program)
+        .context("the settlement transaction has no adapter instruction")?;
+    anyhow::ensure!(
+        settle[..8] == anchor_instruction_disc("settle"),
+        "the first wrap is not settled inline in one transaction"
     );
     anyhow::ensure!(
-        size <= solana_packet::PACKET_DATA_SIZE,
-        "the first-wrap settlement is {size} bytes, more than one packet"
+        programs.contains(&solana_sdk_ids::ed25519_program::id())
+            && programs.contains(&forwarder.program),
+        "the transaction lacks the wrap's signature check or bitmap init: {programs:?}"
     );
-
-    let user = forwarder.user.pubkey();
-    let payer = env.protocol_adapter.payer.pubkey();
-    let per_user = [
-        forwarder.user_account(),
-        derive_nonce_bitmap_pda(&forwarder.program, &user, nonce_word_index(NONCE)).0,
-        payer,
-    ];
-    let invoked: Vec<Pubkey> = message
-        .instructions()
-        .iter()
-        .map(|ix| message.static_account_keys()[usize::from(ix.program_id_index)])
-        .collect();
-    let forwarders_accounts =
-        build_wrap_forwarder_accounts(&forwarder.program, &user, &forwarder.mint, NONCE)
-            .into_iter()
-            .chain(
-                init_nonce_bitmap_ix(&forwarder.program, &payer, &user, nonce_word_index(NONCE))
-                    .accounts,
-            )
-            .map(|meta| meta.pubkey);
-    for key in forwarders_accounts {
-        if per_user.contains(&key) || invoked.contains(&key) {
-            continue;
-        }
-        anyhow::ensure!(
-            executed.loaded.contains(&key),
-            "the forwarder's fixed account {key} is static, not looked up: the settlement \
-             lookup table lacks it"
-        );
-    }
     Ok(())
 }
 

@@ -138,22 +138,3 @@ export function buildUnwrapForwarderAccounts(
   ];
 }
 
-/**
- * The accounts every settlement that calls the forwarder carries for it and
- * that are the same for every call: the ones a deployment's settlement lookup
- * table holds for it. Each mint in `mints` adds its escrow's token account; the
- * user's and the recipient's token accounts and the user's nonce bitmap differ
- * per settlement.
- */
-export function forwarderSettlementLookupKeys(forwarderProgram: PublicKey, mints: PublicKey[]): PublicKey[] {
-  const [escrowAuthority] = deriveForwarderEscrowAuthority(forwarderProgram);
-  return [
-    forwarderProgram,
-    deriveForwarderConfigPda(forwarderProgram)[0],
-    SYSVAR_INSTRUCTIONS_PUBKEY,
-    deriveEventAuthorityPda(forwarderProgram)[0],
-    escrowAuthority,
-    TOKEN_PROGRAM_ID,
-    ...mints.map((mint) => getAssociatedTokenAddressSync(mint, escrowAuthority, true)),
-  ];
-}
