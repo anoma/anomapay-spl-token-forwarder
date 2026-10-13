@@ -1220,7 +1220,7 @@ dependencies = [
 [[package]]
 name = "anoma-pa-solana-client"
 version = "0.6.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=39d098fc40c97c61912e6953ede10a4857dc05e2#39d098fc40c97c61912e6953ede10a4857dc05e2"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=ec540440c2ed1bb02017f814e9a239632bc83516#ec540440c2ed1bb02017f814e9a239632bc83516"
 dependencies = [
  "anoma-rm-risc0",
  "bincode",
@@ -1236,7 +1236,7 @@ dependencies = [
 [[package]]
 name = "anoma-pa-solana-integration-test"
 version = "0.1.0"
-source = "git+https://github.com/anoma/solana-protocol-adapter?rev=a7230323295cb733d460859e5370ba7d31226de4#a7230323295cb733d460859e5370ba7d31226de4"
+source = "git+https://github.com/anoma/solana-protocol-adapter?rev=d08f3eec0bfec5344b7e1a1a92fee5d439564838#d08f3eec0bfec5344b7e1a1a92fee5d439564838"
 dependencies = [
  "anoma-pa-solana-client 0.6.0",
  "anoma-pa-testkit",

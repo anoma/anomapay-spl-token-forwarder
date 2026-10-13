@@ -227,7 +227,7 @@ dependencies = [
 [[package]]
 name = "anoma-pa-solana-client"
 version = "0.6.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=39d098fc40c97c61912e6953ede10a4857dc05e2#39d098fc40c97c61912e6953ede10a4857dc05e2"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=ec540440c2ed1bb02017f814e9a239632bc83516#ec540440c2ed1bb02017f814e9a239632bc83516"
 dependencies = [
  "bincode",
  "serde",
@@ -2428,7 +2428,6 @@ dependencies = [
  "serde",
  "serde_derive",
  "solana-sanitize 3.0.1",
- "wincode",
 ]
 
 [[package]]
@@ -2671,7 +2670,7 @@ dependencies = [
  "solana-pubkey 2.4.0",
  "solana-sanitize 2.2.1",
  "solana-sdk-ids 2.2.1",
- "solana-short-vec 2.2.1",
+ "solana-short-vec",
  "solana-system-interface 1.0.0",
  "solana-transaction-error 2.2.1",
  "wasm-bindgen",
@@ -2688,9 +2687,7 @@ dependencies = [
  "solana-instruction 3.5.1",
  "solana-sanitize 3.0.1",
  "solana-sdk-ids 3.1.0",
- "solana-short-vec 3.3.0",
  "solana-transaction-error 3.4.0",
- "wincode",
 ]
 
 [[package]]
@@ -2808,7 +2805,7 @@ dependencies = [
  "solana-serde-varint",
  "solana-serialize-utils 2.2.1",
  "solana-sha256-hasher 2.3.0",
- "solana-short-vec 2.2.1",
+ "solana-short-vec",
  "solana-slot-hashes 2.2.1",
  "solana-slot-history 2.2.1",
  "solana-stable-layout 2.2.1",
@@ -3138,15 +3135,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "solana-short-vec"
-version = "3.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c75782529cc4521114c1ecd71c7e2cdebd41a6fe9844b5d088fd36ef08c57c36"
-dependencies = [
- "wincode",
-]
-
-[[package]]
 name = "solana-slot-hashes"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3435,7 +3423,7 @@ dependencies = [
  "solana-sdk-ids 2.2.1",
  "solana-serde-varint",
  "solana-serialize-utils 2.2.1",
- "solana-short-vec 2.2.1",
+ "solana-short-vec",
  "solana-system-interface 1.0.0",
 ]
 

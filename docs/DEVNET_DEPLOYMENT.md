@@ -6,7 +6,7 @@ Live state is always what `./scripts/dev.sh status --cluster devnet` reports; th
 
 ## Current deployment (since 2026-10-01)
 
-Deployed 2026-10-01 by the operator wallet `5S8LtbDPtQE7GtWWMBFY78gmiYp2LqS5BsoFDxKjoHr9`, for the adapter `5zeqkB3kc9fd1RvaXB2GeMB53Jgf98QJtaFK38e6tTsc`. Since 2026-10-03 that wallet is the forwarder's stored owner, and the forwarder's upgrade authority is its own PDA `2z6EPiBxM5Pfubmrouj8qSCZJrSveuDEbe2xvNbVzgvd` (seed `upgrade_authority`); upgrades go through its owner-only `upgrade` (`dev.sh upgrade`). The deployment's settlement lookup table `4UFsq2ks2DcC29ErmEeHxqXWKLRWo26vs4W65S89bpWn` holds the forwarder's accounts and the test mint `9EHEFzyuY7sZEzTVm7C3uMkNZFMgm5ZeWjGjirZ3MVfr`'s escrow.
+Deployed 2026-10-01 by the operator wallet `5S8LtbDPtQE7GtWWMBFY78gmiYp2LqS5BsoFDxKjoHr9`, for the adapter `5zeqkB3kc9fd1RvaXB2GeMB53Jgf98QJtaFK38e6tTsc`. Since 2026-10-03 that wallet is the forwarder's stored owner, and the forwarder's upgrade authority is its own PDA `2z6EPiBxM5Pfubmrouj8qSCZJrSveuDEbe2xvNbVzgvd` (seed `upgrade_authority`); upgrades go through its owner-only `upgrade` (`dev.sh upgrade`). The deployment's settlement lookup table `4UFsq2ks2DcC29ErmEeHxqXWKLRWo26vs4W65S89bpWn` holds the forwarder's accounts and the test mint `9EHEFzyuY7sZEzTVm7C3uMkNZFMgm5ZeWjGjirZ3MVfr`'s escrow; it is unused, since settlements are v1 transactions, which take no lookup table.
 
 | Program | ID | State |
 |---|---|---|

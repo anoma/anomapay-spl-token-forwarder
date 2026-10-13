@@ -186,15 +186,11 @@ async fn the_first_wrap_settles_in_one_v1_transaction() -> anyhow::Result<()> {
         .iter()
         .map(|ix| message.account_keys[usize::from(ix.program_id_index)])
         .collect();
-    let settle = message
-        .instructions
-        .iter()
-        .find(|ix| {
-            message.account_keys[usize::from(ix.program_id_index)] == env.protocol_adapter.program
-        })
+    let settle = executed
+        .instruction_data(&env.protocol_adapter.program)
         .context("the settlement transaction has no adapter instruction")?;
     anyhow::ensure!(
-        settle.data[..8] == anchor_instruction_disc("settle"),
+        settle[..8] == anchor_instruction_disc("settle"),
         "the first wrap is not settled inline in one transaction"
     );
     anyhow::ensure!(
