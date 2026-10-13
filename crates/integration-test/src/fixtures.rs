@@ -3,7 +3,7 @@
 
 use anoma_pa_testkit::witness::ActionWitnesses;
 use anoma_rm_risc0::Digest;
-use anoma_rm_risc0::compliance::KindTableEntry;
+use anoma_rm_risc0::kind_table::KindTable;
 use anoma_rm_risc0::merkle_path::MerklePath;
 use anoma_rm_risc0::nullifier_key::NullifierKey;
 use anoma_rm_risc0::resource::Resource;
@@ -15,6 +15,7 @@ use k256::elliptic_curve::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use solana_keypair::Keypair;
 use solana_signer::Signer;
+use std::sync::LazyLock;
 use surfpool_sdk::Pubkey;
 use transfer_library::action::{self, ComplianceParams, Owner, TransferAction, WrapAuth};
 use transfer_witness::{AUTH_SIGNATURE_DOMAIN, LabelInfo, ValueInfo, WrapAuthInfo};
@@ -70,7 +71,7 @@ fn discovery_pk() -> AffinePoint {
 
 /// The compliance facts of an action: commitment randomness drawn from
 /// `seed`, and the kind table it is proven against.
-fn compliance(seed: &str, kind_table: Vec<KindTableEntry>) -> ComplianceParams {
+fn compliance<'a>(seed: &str, kind_table: &'a KindTable) -> ComplianceParams<'a> {
     ComplianceParams {
         rcv: scalar(&format!("{seed}/rcv")).to_bytes().to_vec(),
         kind_table,
@@ -79,8 +80,9 @@ fn compliance(seed: &str, kind_table: Vec<KindTableEntry>) -> ComplianceParams {
 
 /// The kind table loaded for proving: the empty table locally, the
 /// deployment's in e2e.
-pub fn loaded_kind_table() -> Vec<KindTableEntry> {
-    anoma_rm_risc0::constants::kind_table().to_vec()
+pub fn loaded_kind_table() -> &'static KindTable {
+    static EMPTY: LazyLock<KindTable> = LazyLock::new(KindTable::empty);
+    anoma_rm_risc0::constants::global_kind_table().unwrap_or(&EMPTY)
 }
 
 fn witnesses(action: TransferAction) -> ActionWitnesses {
@@ -123,7 +125,7 @@ pub fn wrap(
     user: &Keypair,
     owner: &ShieldedOwner,
     terms: WrapTerms,
-    kind_table: Vec<KindTableEntry>,
+    kind_table: &KindTable,
     seed: &str,
 ) -> anyhow::Result<WrapData> {
     let wrap = action::wrap(

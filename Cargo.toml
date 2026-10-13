@@ -17,7 +17,7 @@ anchor-lang = { git = "https://github.com/otter-sec/anchor", rev = "2c9747a2d31b
 # layout, the upgrade helpers) and its client: the revision of the adapter's
 # integration-test harness and the client the harness pins, so the tests link
 # one copy of the client.
-protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "9f8b2cd080fd1c2354b5befe9059f6993858b745", default-features = false, features = ["no-entrypoint"] }
+protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "510a4813d1aea29bc4e972f5af3e0a6c3a8dda95", default-features = false, features = ["no-entrypoint"] }
 anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "f9f4a1df862586802135161c850aab554d2bf8e2", default-features = false }
 
 [profile.release]
