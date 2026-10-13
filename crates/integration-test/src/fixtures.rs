@@ -3,7 +3,7 @@
 
 use anoma_pa_testkit::witness::ActionWitnesses;
 use anoma_rm_risc0::Digest;
-use anoma_rm_risc0::compliance::KindTableEntry;
+use anoma_rm_risc0::kind_table::KindTable;
 use anoma_rm_risc0::merkle_path::MerklePath;
 use anoma_rm_risc0::nullifier_key::NullifierKey;
 use anoma_rm_risc0::resource::Resource;
@@ -70,17 +70,11 @@ fn discovery_pk() -> AffinePoint {
 
 /// The compliance facts of an action: commitment randomness drawn from
 /// `seed`, and the kind table it is proven against.
-fn compliance(seed: &str, kind_table: Vec<KindTableEntry>) -> ComplianceParams {
+fn compliance<'a>(seed: &str, kind_table: &'a KindTable) -> ComplianceParams<'a> {
     ComplianceParams {
         rcv: scalar(&format!("{seed}/rcv")).to_bytes().to_vec(),
         kind_table,
     }
-}
-
-/// The kind table loaded for proving: the empty table locally, the
-/// deployment's in e2e.
-pub fn loaded_kind_table() -> Vec<KindTableEntry> {
-    anoma_rm_risc0::constants::kind_table().to_vec()
 }
 
 fn witnesses(action: TransferAction) -> ActionWitnesses {
@@ -123,7 +117,7 @@ pub fn wrap(
     user: &Keypair,
     owner: &ShieldedOwner,
     terms: WrapTerms,
-    kind_table: Vec<KindTableEntry>,
+    kind_table: &KindTable,
     seed: &str,
 ) -> anyhow::Result<WrapData> {
     let wrap = action::wrap(
@@ -201,7 +195,10 @@ pub fn unwrap(
         .action(
             auth_sig,
             path,
-            compliance(&format!("unwrap/{}", root), loaded_kind_table()),
+            compliance(
+                &format!("unwrap/{}", root),
+                anoma_pa_testkit::fixtures::kind_table(),
+            ),
         )
         .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to build the unwrap's witnesses")?;

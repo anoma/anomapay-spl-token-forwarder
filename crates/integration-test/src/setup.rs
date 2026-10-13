@@ -21,6 +21,7 @@ use anyhow::Context;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
+use solana_program_option::COption;
 use solana_program_pack::Pack;
 use solana_signer::Signer;
 use spl_associated_token_account_interface::address::get_associated_token_address;
@@ -158,8 +159,51 @@ pub async fn e2e() -> anyhow::Result<(
 /// escrow, a user holding `USER_TOKENS` who has approved the escrow authority
 /// to move them, and the submitter registered with the adapter.
 async fn serve<P>(env: &mut Environment<P>, program: Pubkey) -> anyhow::Result<Forwarder> {
-    let payer = env.protocol_adapter.payer.pubkey();
     let mint = create_mint(env, &program).await?;
+    serve_mint(env, program, mint).await
+}
+
+/// `serve` for the mint at `mint`, an address whose key no test holds, such
+/// as a mint a kind table lists: the runtime writes the mint account, of
+/// `decimals` and whose authority is the adapter's payer, and its escrow.
+pub async fn serve_mint_at<P>(
+    env: &mut Environment<P>,
+    program: Pubkey,
+    mint: Pubkey,
+    decimals: u8,
+) -> anyhow::Result<Forwarder> {
+    let mut data = vec![0; spl_token_interface::state::Mint::LEN];
+    spl_token_interface::state::Mint {
+        mint_authority: COption::Some(env.protocol_adapter.payer.pubkey()),
+        supply: 0,
+        decimals,
+        is_initialized: true,
+        freeze_authority: COption::None,
+    }
+    .pack_into_slice(&mut data);
+    let rent = env
+        .protocol_adapter
+        .rpc
+        .get_minimum_balance_for_rent_exemption(data.len())
+        .await
+        .context("failed to read the mint's rent")?;
+    env.surfnet
+        .cheatcodes()
+        .set_account(&mint, rent, &data, &spl_token_interface::id())
+        .with_context(|| format!("failed to write the mint {mint}"))?;
+    escrow(env, &program, &mint).await?;
+    serve_mint(env, program, mint).await
+}
+
+/// Has the forwarder `program` serve `mint`: a user holding `USER_TOKENS`
+/// who has approved the escrow authority to move them, and the submitter
+/// registered with the adapter.
+async fn serve_mint<P>(
+    env: &mut Environment<P>,
+    program: Pubkey,
+    mint: Pubkey,
+) -> anyhow::Result<Forwarder> {
+    let payer = env.protocol_adapter.payer.pubkey();
     let user = Keypair::new();
     fund(env, &program, &mint, &user, USER_TOKENS).await?;
 
@@ -215,11 +259,17 @@ pub async fn new_mint<P>(env: &Environment<P>) -> anyhow::Result<Pubkey> {
 /// `new_mint`, and the forwarder `program`'s escrow account for it.
 pub async fn create_mint<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::Result<Pubkey> {
     let mint = new_mint(env).await?;
+    escrow(env, program, &mint).await?;
+    Ok(mint)
+}
+
+/// The forwarder `program`'s escrow account for `mint`.
+async fn escrow<P>(env: &Environment<P>, program: &Pubkey, mint: &Pubkey) -> anyhow::Result<()> {
     let (escrow_authority, _) = derive_forwarder_escrow_authority(program);
-    token_account(env, &escrow_authority, &mint)
+    token_account(env, &escrow_authority, mint)
         .await
         .context("failed to create the mint's escrow")?;
-    Ok(mint)
+    Ok(())
 }
 
 /// `owner`'s token account for `mint`, created if it does not exist.
@@ -463,7 +513,7 @@ impl Forwarder {
                 nonce,
                 ed25519_ix_index,
             },
-            fixtures::loaded_kind_table(),
+            anoma_pa_testkit::fixtures::kind_table(),
             seed,
         )
     }

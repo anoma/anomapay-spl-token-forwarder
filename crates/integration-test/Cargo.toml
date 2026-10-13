@@ -22,20 +22,20 @@ e2e = ["anoma-pa-solana-integration-test/e2e"]
 
 [dependencies]
 # The adapter's harness: pa-testkit's environments for the Solana adapter.
-anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "db4279b0617db319975cd17a2c74d06699c24421", default-features = false }
+anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "eb95e1ddb23fc2c6799e5543356b21447af0b63a", default-features = false }
 # The revisions the harness pins.
-anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "18f6db061ba2c6850de88e06cb69b0a421eee728" }
-anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "cf94169a4009d45123e6f2905a7c898f5a53e19f", default-features = false, features = [
+anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "f9f4a1df862586802135161c850aab554d2bf8e2" }
+anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "88974462f5ab996c350eeca16639457120cf7dd5", default-features = false, features = [
   "fixtures",
 ] }
 anomapay-spl-token-forwarder-client = { path = "../client" }
-anoma-rm-risc0 = { version = "=2.0.0-rc.6", default-features = false, features = ["transaction"] }
-anoma-rm-risc0-gadgets = "=2.0.0-rc.6"
-# The AnomaPay transfer resource whose logic ref (b2355844) the forwarder
+anoma-rm-risc0 = { version = "=2.0.0-rc.7", default-features = false, features = ["transaction"] }
+anoma-rm-risc0-gadgets = "=2.0.0-rc.7"
+# The AnomaPay transfer resource whose logic ref (1c7232d6) the forwarder
 # serves: another build has another logic ref, which a forwarder configured
 # for this one refuses.
-transfer_library = { git = "https://github.com/anoma/anomapay-solana-resource", rev = "752b180feca04fd18b9ae36654ab4336dbe0a2be" }
-transfer_witness = { git = "https://github.com/anoma/anomapay-solana-resource", rev = "752b180feca04fd18b9ae36654ab4336dbe0a2be" }
+transfer_library = { git = "https://github.com/anoma/anomapay-solana-resource", rev = "ca9b9cc74cc388e3e7b0360b840eab87f15268cc" }
+transfer_witness = { git = "https://github.com/anoma/anomapay-solana-resource", rev = "ca9b9cc74cc388e3e7b0360b840eab87f15268cc" }
 anyhow = "1.0"
 bincode = "1.3"
 futures = "0.3"
@@ -46,6 +46,7 @@ solana-ed25519-program = "3"
 solana-instruction = "3"
 solana-keypair = "3.1"
 solana-loader-v3-interface = { version = "7", features = ["serde"] }
+solana-program-option = "3"
 solana-program-pack = "3"
 solana-rpc-client = "4"
 solana-rpc-client-types = "4"
@@ -57,7 +58,7 @@ surfpool-sdk = "=1.6.0"
 
 [dev-dependencies]
 # The kind tables the harness pins.
-anoma-risc0-kind-tables = { git = "https://github.com/anoma/risc0-kind-tables", rev = "919c7787259eca02b8cedb079a639ad31e04ae51", features = [
+anoma-risc0-kind-tables = { git = "https://github.com/anoma/risc0-kind-tables", rev = "007263b7c63ef9d339f0c4ff8db82cc53a93383d", features = [
   "arm",
 ] }
 base64 = "0.22"
