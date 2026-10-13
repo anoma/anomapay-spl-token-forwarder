@@ -35,10 +35,10 @@ pub use wrap_message::{sha256, WrapMessage, WRAP_MESSAGE_LEN};
 #[cfg(feature = "solana")]
 pub use forwarder::{
     build_unwrap_forwarder_accounts, build_wrap_forwarder_accounts, close_config_ix,
-    close_escrow_ix, close_nonce_bitmaps_batch_ix, forward_emergency_call_ix,
-    init_nonce_bitmap_ix, initialize_ix, nonce_word_index,
-    reinitialize_ix, renounce_ownership_ix, set_emergency_caller_ix, transfer_ownership_ix,
-    upgrade_ixs, version_ix, UPGRADE_COMPUTE_UNIT_LIMIT,
+    close_escrow_ix, close_nonce_bitmaps_batch_ix, forward_emergency_call_ix, init_nonce_bitmap_ix,
+    initialize_ix, nonce_word_index, reinitialize_ix, renounce_ownership_ix,
+    set_emergency_caller_ix, transfer_ownership_ix, upgrade_ixs, version_ix,
+    UPGRADE_COMPUTE_UNIT_LIMIT,
 };
 #[cfg(feature = "solana")]
 pub use pda::{

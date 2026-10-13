@@ -5,8 +5,7 @@
 use anoma_pa_solana_client::{derive_pa_state_pda, derive_upgrade_authority_pda};
 use anoma_pa_testkit::environment::ProtocolAdapter as _;
 use anomapay_spl_token_forwarder_client::{
-    CONFIG_VERSION, ConfigAccount, derive_forwarder_escrow_authority,
-    set_emergency_caller_ix,
+    CONFIG_VERSION, ConfigAccount, derive_forwarder_escrow_authority, set_emergency_caller_ix,
 };
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::scripts::{hex, run_script};
