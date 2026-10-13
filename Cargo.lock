@@ -391,11 +391,10 @@ dependencies = [
 [[package]]
 name = "anoma-pa-solana-client"
 version = "0.6.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=d5fba48492c2320fe1c7386268ce77a60969faf7#d5fba48492c2320fe1c7386268ce77a60969faf7"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=10cb82eec6ed81b8f872e8b695d1eff161b50301#10cb82eec6ed81b8f872e8b695d1eff161b50301"
 dependencies = [
  "anoma-rm-risc0",
  "bincode",
- "futures",
  "risc0-zkvm",
  "serde",
  "sha2 0.10.9",
@@ -469,7 +468,6 @@ version = "0.3.0"
 dependencies = [
  "anoma-pa-solana-client",
  "base64 0.22.1",
- "futures",
  "serde_json",
  "sha2 0.10.9",
  "solana-compute-budget-interface",
@@ -2877,7 +2875,7 @@ dependencies = [
 [[package]]
 name = "protocol-adapter"
 version = "2.0.0-rc.5"
-source = "git+https://github.com/anoma/solana-protocol-adapter?rev=9a327eba7875f8843264eb05d0be11758d6a2813#9a327eba7875f8843264eb05d0be11758d6a2813"
+source = "git+https://github.com/anoma/solana-protocol-adapter?rev=4fdb5d964412cf9b9ba5f8e1128258c54adae8e3#4fdb5d964412cf9b9ba5f8e1128258c54adae8e3"
 dependencies = [
  "anchor-lang",
  "anoma-rm-core",

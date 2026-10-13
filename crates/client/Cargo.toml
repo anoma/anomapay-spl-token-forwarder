@@ -26,7 +26,6 @@ spl-token-interface = { version = "3", optional = true }
 
 # The submitter's plug-in (`rpc` feature): the adapter client's `Forwarder`
 # for this program.
-futures = { version = "0.3", optional = true }
 solana-rpc-client = { version = "4", optional = true }
 
 [dev-dependencies]
@@ -48,4 +47,4 @@ solana = [
 ]
 # The submitter's plug-in: `SplTokenForwarder`, the adapter client's
 # `Forwarder` for this program.
-rpc = ["solana", "anoma-pa-solana-client/rpc", "dep:futures", "dep:solana-rpc-client"]
+rpc = ["solana", "anoma-pa-solana-client/rpc", "dep:solana-rpc-client"]

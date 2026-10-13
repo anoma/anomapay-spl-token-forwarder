@@ -1,7 +1,7 @@
 //! What a test checks of a settlement the forwarder refuses: the refusal it
 //! logs, and that no tokens moved.
 
-use anoma_pa_solana_client::forwarders::CallAccounts;
+use anoma_pa_solana_client::settlement::CallAccounts;
 use anoma_pa_solana_integration_test::envs::common::environment::Environment;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
 use anoma_pa_testkit::environment::Prover;

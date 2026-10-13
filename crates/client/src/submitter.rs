@@ -2,8 +2,7 @@
 //! client's `Forwarder` for this program, through `settlement_calls`.
 
 use anoma_pa_solana_client::external_call::SolanaExternalCall;
-use anoma_pa_solana_client::forwarders::{CallAccounts, Forwarder, ForwarderError};
-use futures::future::BoxFuture;
+use anoma_pa_solana_client::forwarders::{CallAccountsFuture, Forwarder};
 use solana_pubkey::Pubkey;
 use solana_rpc_client::nonblocking::rpc_client::RpcClient;
 
@@ -28,13 +27,15 @@ impl Forwarder for SplTokenForwarder {
         &'a self,
         _rpc: &'a RpcClient,
         calls: &'a [SolanaExternalCall],
-    ) -> BoxFuture<'a, Result<CallAccounts, ForwarderError>> {
+        preceding_start: usize,
+    ) -> CallAccountsFuture<'a> {
         Box::pin(async move {
-            let settlement = settlement_calls(&self.program, &self.payer, calls)?;
-            Ok(CallAccounts {
-                segments: settlement.segments,
-                preceding: settlement.preceding,
-            })
+            Ok(settlement_calls(
+                &self.program,
+                &self.payer,
+                calls,
+                preceding_start,
+            )?)
         })
     }
 }

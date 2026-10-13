@@ -2,13 +2,15 @@
 //! call's program, instruction data and account count, but not the accounts,
 //! so a submitter supplies them: each call's CPI segment, and the
 //! instructions the settlement transaction carries before the settlement.
-//! Everything here follows from the transaction's external calls alone.
+//! Everything here follows from the transaction's external calls and where
+//! the settlement carries the forwarder's preceding instructions.
 
 use std::collections::BTreeSet;
 
 use anoma_pa_solana_client::external_call::SolanaExternalCall;
+use anoma_pa_solana_client::settlement::CallAccounts;
 use solana_ed25519_program::new_ed25519_instruction_with_signature;
-use solana_instruction::{AccountMeta, Instruction};
+use solana_instruction::Instruction;
 use solana_pubkey::Pubkey;
 use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
 
@@ -18,17 +20,6 @@ use crate::forwarder::{
 };
 use crate::input::{decode_forwarder_input, ForwarderInput, InputError, WrapInput};
 use crate::pda::derive_nonce_bitmap_pda;
-
-/// What a settlement passes the forwarder for its calls.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SettlementCalls {
-    /// Each call's CPI segment, in call order.
-    pub segments: Vec<Vec<AccountMeta>>,
-    /// The instructions before the settlement: the wraps' ed25519 signature
-    /// checks, each at the index its wrap names, then the accounts the calls
-    /// need to exist.
-    pub preceding: Vec<Instruction>,
-}
 
 /// The calls cannot be settled through the forwarder.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,9 +35,9 @@ pub enum CallsError {
         committed: u8,
         segment: usize,
     },
-    /// The wraps name these signature-check indices, sorted, which are not
-    /// `0..k` for k wraps.
-    SignatureCheckIndices(Vec<u8>),
+    /// The wraps name the signature-check indices `named`, sorted, which are
+    /// not `start..start + k` for k wraps whose checks start at `start`.
+    SignatureCheckIndices { named: Vec<u8>, start: usize },
 }
 
 impl core::fmt::Display for CallsError {
@@ -70,12 +61,12 @@ impl core::fmt::Display for CallsError {
                 "external call {call} commits {committed} accounts; the forwarder's segment has \
                  {segment}"
             ),
-            CallsError::SignatureCheckIndices(named) => write!(
+            CallsError::SignatureCheckIndices { named, start } => write!(
                 f,
-                "the wraps name signature-check indices {named:?}; a settlement carries its {} \
-                 checks first, at indices 0..{}",
+                "the wraps name signature-check indices {named:?}; the settlement carries their \
+                 {} checks at indices {start}..{}",
                 named.len(),
-                named.len()
+                start + named.len()
             ),
         }
     }
@@ -116,14 +107,17 @@ fn nonce_bitmap(forwarder: &Pubkey, wrap: &WrapInput) -> (Pubkey, u64) {
 /// carries them whatever the chain holds.
 ///
 /// A wrap's input names the absolute index of its signature check in the
-/// settlement transaction. The checks come first, so the indices k wraps
-/// name must be exactly `0..k`. Each check is built from the wrap input's
-/// signature ([`WrapInput::signature`](crate::WrapInput::signature)).
+/// settlement transaction. The checks come first among the forwarder's
+/// preceding instructions, which the settlement carries from index
+/// `preceding_start` on, so the indices k wraps name must be exactly
+/// `preceding_start..preceding_start + k`. Each check is built from the wrap
+/// input's signature ([`WrapInput::signature`](crate::WrapInput::signature)).
 pub fn settlement_calls(
     forwarder: &Pubkey,
     payer: &Pubkey,
     calls: &[SolanaExternalCall],
-) -> Result<SettlementCalls, CallsError> {
+    preceding_start: usize,
+) -> Result<CallAccounts, CallsError> {
     let mut checks: Vec<(u8, Instruction)> = Vec::new();
     let mut accounts_needed: Vec<Instruction> = Vec::new();
     let mut bitmaps: BTreeSet<Pubkey> = BTreeSet::new();
@@ -183,14 +177,15 @@ pub fn settlement_calls(
     if checks
         .iter()
         .map(|(index, _)| usize::from(*index))
-        .ne(0..checks.len())
+        .ne(preceding_start..preceding_start + checks.len())
     {
-        return Err(CallsError::SignatureCheckIndices(
-            checks.iter().map(|(index, _)| *index).collect(),
-        ));
+        return Err(CallsError::SignatureCheckIndices {
+            named: checks.iter().map(|(index, _)| *index).collect(),
+            start: preceding_start,
+        });
     }
 
-    Ok(SettlementCalls {
+    Ok(CallAccounts {
         segments,
         preceding: checks
             .into_iter()
@@ -251,7 +246,7 @@ mod tests {
     #[test]
     fn a_wrap_carries_its_signature_check_then_its_bitmaps_init() {
         let input = wrap(2, 9, 0);
-        let settlement = settlement_calls(&FORWARDER, &PAYER, &[wrap_call(&input)]).unwrap();
+        let settlement = settlement_calls(&FORWARDER, &PAYER, &[wrap_call(&input)], 0).unwrap();
         assert_eq!(
             settlement.preceding,
             vec![
@@ -274,7 +269,7 @@ mod tests {
     fn two_wraps_of_one_bitmap_create_it_once() {
         let (first, second) = (wrap(2, 9, 0), wrap(2, 10, 1));
         let calls = [wrap_call(&first), wrap_call(&second)];
-        let settlement = settlement_calls(&FORWARDER, &PAYER, &calls).unwrap();
+        let settlement = settlement_calls(&FORWARDER, &PAYER, &calls, 0).unwrap();
         assert_eq!(settlement.preceding.len(), 3, "two checks, one bitmap init");
     }
 
@@ -283,7 +278,7 @@ mod tests {
         // The second call's wrap names index 0, the first's index 1.
         let (first, second) = (wrap(2, 9, 1), wrap(4, 9, 0));
         let calls = [wrap_call(&first), wrap_call(&second)];
-        let settlement = settlement_calls(&FORWARDER, &PAYER, &calls).unwrap();
+        let settlement = settlement_calls(&FORWARDER, &PAYER, &calls, 0).unwrap();
         assert_eq!(
             settlement.preceding[..2],
             [check_of(&second), check_of(&first)]
@@ -294,8 +289,37 @@ mod tests {
     fn wraps_naming_indices_other_than_the_first_ones_are_refused() {
         let calls = [wrap_call(&wrap(2, 9, 1))];
         assert_eq!(
-            settlement_calls(&FORWARDER, &PAYER, &calls),
-            Err(CallsError::SignatureCheckIndices(vec![1]))
+            settlement_calls(&FORWARDER, &PAYER, &calls, 0),
+            Err(CallsError::SignatureCheckIndices {
+                named: vec![1],
+                start: 0
+            })
+        );
+    }
+
+    /// Another forwarder's two preceding instructions come first, so this
+    /// forwarder's checks start at index 2, where its wraps name them.
+    #[test]
+    fn the_signature_checks_start_where_the_forwarders_preceding_instructions_do() {
+        let (first, second) = (wrap(2, 9, 3), wrap(4, 9, 2));
+        let calls = [wrap_call(&first), wrap_call(&second)];
+        let settlement = settlement_calls(&FORWARDER, &PAYER, &calls, 2).unwrap();
+        assert_eq!(
+            settlement.preceding[..2],
+            [check_of(&second), check_of(&first)]
+        );
+        // Indices from 0 name the other forwarder's instructions.
+        assert_eq!(
+            settlement_calls(
+                &FORWARDER,
+                &PAYER,
+                &[wrap_call(&wrap(2, 9, 0)), wrap_call(&wrap(4, 9, 1))],
+                2
+            ),
+            Err(CallsError::SignatureCheckIndices {
+                named: vec![0, 1],
+                start: 2
+            })
         );
     }
 
@@ -312,8 +336,8 @@ mod tests {
             Pubkey::new_from_array(recipient),
         );
         assert_eq!(
-            settlement_calls(&FORWARDER, &PAYER, &calls).unwrap(),
-            SettlementCalls {
+            settlement_calls(&FORWARDER, &PAYER, &calls, 0).unwrap(),
+            CallAccounts {
                 segments: vec![build_unwrap_forwarder_accounts(
                     &FORWARDER, &recipient, &mint
                 )],
@@ -339,7 +363,10 @@ mod tests {
             call: 0,
             program: other,
         };
-        assert_eq!(settlement_calls(&FORWARDER, &PAYER, &calls), Err(refusal));
+        assert_eq!(
+            settlement_calls(&FORWARDER, &PAYER, &calls, 0),
+            Err(refusal)
+        );
     }
 
     #[test]
@@ -350,7 +377,7 @@ mod tests {
             FORWARDER_WRAP_NUM_ACCOUNTS + 1,
         )];
         assert_eq!(
-            settlement_calls(&FORWARDER, &PAYER, &calls),
+            settlement_calls(&FORWARDER, &PAYER, &calls, 0),
             Err(CallsError::AccountCount {
                 call: 0,
                 committed: FORWARDER_WRAP_NUM_ACCOUNTS + 1,
