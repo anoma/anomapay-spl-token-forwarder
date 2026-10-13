@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use anoma_pa_solana_client::external_call::{OutputMode, SolanaExternalCall};
-use anoma_pa_solana_integration_test::forwarders::{CallAccounts, Forwarder};
+use anoma_pa_solana_client::forwarders::{CallAccounts, Forwarder, ForwarderError};
 use anoma_pa_solana_integration_test::test_forwarder::{RELAY_OK, relay_input};
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
 use anoma_pa_testkit::fixtures::passthrough;
@@ -39,7 +39,7 @@ impl Forwarder for RelayedUnwrap {
         &'a self,
         _rpc: &'a RpcClient,
         calls: &'a [SolanaExternalCall],
-    ) -> BoxFuture<'a, anyhow::Result<CallAccounts>> {
+    ) -> BoxFuture<'a, Result<CallAccounts, ForwarderError>> {
         Box::pin(async move {
             let mut segment = vec![AccountMeta::new_readonly(self.test_forwarder, false)];
             segment.extend(build_unwrap_forwarder_accounts(
