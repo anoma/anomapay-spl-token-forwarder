@@ -43,7 +43,7 @@ async fn settles_a_wrap_proven_against_the_solana_devnet_kind_table_once_the_own
             .collect(),
     )
     .map_err(|error| anyhow::anyhow!("the devnet table is not a kind table: {error:?}"))?;
-    let published = table::staging::commitment(SolanaCluster::Devnet)?;
+    let published = table::staging::root(SolanaCluster::Devnet)?;
     anyhow::ensure!(
         kind_table.root() == published,
         "the devnet table's entries do not have the root published for devnet"
