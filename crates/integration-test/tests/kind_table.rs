@@ -33,6 +33,7 @@ async fn settles_a_wrap_proven_against_the_solana_devnet_kind_table_once_the_own
         &mut env,
         local.forwarder.program,
         Pubkey::new_from_array(*listed.mint.as_bytes()),
+        listed.decimals,
     )
     .await?;
     let kind_table = KindTable::from_entries(
@@ -42,7 +43,7 @@ async fn settles_a_wrap_proven_against_the_solana_devnet_kind_table_once_the_own
             .map(KindTableEntry::from)
             .collect(),
     )
-    .map_err(|error| anyhow::anyhow!("the devnet table is not a kind table: {error:?}"))?;
+    .context("the devnet table is not a kind table")?;
     let published = table::staging::root(SolanaCluster::Devnet)?;
     anyhow::ensure!(
         kind_table.root() == published,

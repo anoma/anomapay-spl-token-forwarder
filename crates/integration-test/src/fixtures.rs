@@ -15,7 +15,6 @@ use k256::elliptic_curve::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use solana_keypair::Keypair;
 use solana_signer::Signer;
-use std::sync::LazyLock;
 use surfpool_sdk::Pubkey;
 use transfer_library::action::{self, ComplianceParams, Owner, TransferAction, WrapAuth};
 use transfer_witness::{AUTH_SIGNATURE_DOMAIN, LabelInfo, ValueInfo, WrapAuthInfo};
@@ -76,13 +75,6 @@ fn compliance<'a>(seed: &str, kind_table: &'a KindTable) -> ComplianceParams<'a>
         rcv: scalar(&format!("{seed}/rcv")).to_bytes().to_vec(),
         kind_table,
     }
-}
-
-/// The kind table loaded for proving: the empty table locally, the
-/// deployment's in e2e.
-pub fn loaded_kind_table() -> &'static KindTable {
-    static EMPTY: LazyLock<KindTable> = LazyLock::new(KindTable::empty);
-    anoma_rm_risc0::constants::global_kind_table().unwrap_or(&EMPTY)
 }
 
 fn witnesses(action: TransferAction) -> ActionWitnesses {
@@ -203,7 +195,10 @@ pub fn unwrap(
         .action(
             auth_sig,
             path,
-            compliance(&format!("unwrap/{}", root), loaded_kind_table()),
+            compliance(
+                &format!("unwrap/{}", root),
+                anoma_pa_testkit::fixtures::kind_table(),
+            ),
         )
         .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to build the unwrap's witnesses")?;

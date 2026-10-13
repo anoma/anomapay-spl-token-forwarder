@@ -27,7 +27,6 @@ use solana_signer::Signer;
 use spl_associated_token_account_interface::address::get_associated_token_address;
 use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
 use surfpool_sdk::Pubkey;
-use surfpool_sdk::cheatcodes::builders::SetAccount;
 
 use crate::fixtures::{self, ShieldedOwner, WrapTerms};
 use crate::submitter::{Rewritten, SplTokenForwarder};
@@ -165,19 +164,19 @@ async fn serve<P>(env: &mut Environment<P>, program: Pubkey) -> anyhow::Result<F
 }
 
 /// `serve` for the mint at `mint`, an address whose key no test holds, such
-/// as a mint a kind table lists: the runtime writes the mint account, of 6
-/// decimals and whose authority is the adapter's payer, and its escrow.
+/// as a mint a kind table lists: the runtime writes the mint account, of
+/// `decimals` and whose authority is the adapter's payer, and its escrow.
 pub async fn serve_mint_at<P>(
     env: &mut Environment<P>,
     program: Pubkey,
     mint: Pubkey,
+    decimals: u8,
 ) -> anyhow::Result<Forwarder> {
-    let payer = env.protocol_adapter.payer.pubkey();
     let mut data = vec![0; spl_token_interface::state::Mint::LEN];
     spl_token_interface::state::Mint {
-        mint_authority: COption::Some(payer),
+        mint_authority: COption::Some(env.protocol_adapter.payer.pubkey()),
         supply: 0,
-        decimals: 6,
+        decimals,
         is_initialized: true,
         freeze_authority: COption::None,
     }
@@ -190,17 +189,9 @@ pub async fn serve_mint_at<P>(
         .context("failed to read the mint's rent")?;
     env.surfnet
         .cheatcodes()
-        .execute(
-            SetAccount::new(mint)
-                .lamports(rent)
-                .data(data)
-                .owner(spl_token_interface::id()),
-        )
+        .set_account(&mint, rent, &data, &spl_token_interface::id())
         .with_context(|| format!("failed to write the mint {mint}"))?;
-    let (escrow_authority, _) = derive_forwarder_escrow_authority(&program);
-    token_account(env, &escrow_authority, &mint)
-        .await
-        .context("failed to create the mint's escrow")?;
+    escrow(env, &program, &mint).await?;
     serve_mint(env, program, mint).await
 }
 
@@ -268,11 +259,17 @@ pub async fn new_mint<P>(env: &Environment<P>) -> anyhow::Result<Pubkey> {
 /// `new_mint`, and the forwarder `program`'s escrow account for it.
 pub async fn create_mint<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::Result<Pubkey> {
     let mint = new_mint(env).await?;
+    escrow(env, program, &mint).await?;
+    Ok(mint)
+}
+
+/// The forwarder `program`'s escrow account for `mint`.
+async fn escrow<P>(env: &Environment<P>, program: &Pubkey, mint: &Pubkey) -> anyhow::Result<()> {
     let (escrow_authority, _) = derive_forwarder_escrow_authority(program);
-    token_account(env, &escrow_authority, &mint)
+    token_account(env, &escrow_authority, mint)
         .await
         .context("failed to create the mint's escrow")?;
-    Ok(mint)
+    Ok(())
 }
 
 /// `owner`'s token account for `mint`, created if it does not exist.
@@ -516,7 +513,7 @@ impl Forwarder {
                 nonce,
                 ed25519_ix_index,
             },
-            fixtures::loaded_kind_table(),
+            anoma_pa_testkit::fixtures::kind_table(),
             seed,
         )
     }

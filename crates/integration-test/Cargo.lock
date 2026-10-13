@@ -1226,7 +1226,7 @@ dependencies = [
 [[package]]
 name = "anoma-pa-solana-integration-test"
 version = "0.1.0"
-source = "git+https://github.com/anoma/solana-protocol-adapter?rev=e0a0f863d75d7df8c9f52c26c40bd5da946460d6#e0a0f863d75d7df8c9f52c26c40bd5da946460d6"
+source = "git+https://github.com/anoma/solana-protocol-adapter?rev=eb95e1ddb23fc2c6799e5543356b21447af0b63a#eb95e1ddb23fc2c6799e5543356b21447af0b63a"
 dependencies = [
  "anoma-pa-solana-client",
  "anoma-pa-testkit",
@@ -1258,7 +1258,7 @@ dependencies = [
 [[package]]
 name = "anoma-pa-testkit"
 version = "1.0.0-rc.2"
-source = "git+https://github.com/anoma/pa-testkit?rev=03eba033e6adbfbe53d816e1f773df9aedee874a#03eba033e6adbfbe53d816e1f773df9aedee874a"
+source = "git+https://github.com/anoma/pa-testkit?rev=88974462f5ab996c350eeca16639457120cf7dd5#88974462f5ab996c350eeca16639457120cf7dd5"
 dependencies = [
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",
