@@ -322,6 +322,11 @@ fn nonce_bitmap_address_check_uses_the_stored_bump() {
 #[test]
 fn nonce_bitmap_account_is_discriminator_word_and_bump() {
     assert_eq!(NonceBitmap::ACCOUNT_SIZE, 8 + 32 + 1);
+    assert_eq!(
+        NonceBitmap::ACCOUNT_SIZE,
+        anomapay_spl_token_forwarder_client::constants::NONCE_BITMAP_ACCOUNT_SIZE,
+        "the client's size is the program's"
+    );
 }
 
 /// The config is the discriminator, four keys, the version and the owner.
