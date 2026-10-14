@@ -397,7 +397,8 @@ upgrade_through_program() {
 
 # The artifact a deploy or upgrade ships: the existing one with --prebuilt
 # (verify-build's deterministic build, which a rebuild here would clobber),
-# else a fresh production build.
+# with the production IDL and types the operator scripts import, else a fresh
+# production build, which writes both.
 build_for_deploy() {
   if [[ "$PREBUILT" == "true" ]]; then
     if [[ ! -f "$PROGRAM_SO" ]]; then
@@ -405,6 +406,7 @@ build_for_deploy() {
       exit 1
     fi
     echo "    Deploying the prebuilt artifact ${PROGRAM_SO} (no build)."
+    release_idl
     return 0
   fi
   build_release
