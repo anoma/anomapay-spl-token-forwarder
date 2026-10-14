@@ -22,9 +22,9 @@ e2e = ["anoma-pa-solana-integration-test/e2e"]
 
 [dependencies]
 # The adapter's harness: pa-testkit's environments for the Solana adapter.
-anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "4416d008fae670887b21b0253fb4a3b029f4737b", default-features = false }
-# The revisions the harness pins.
-anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "dc949c1783ced6258c20d1ea4d4d76e08d26ee0f" }
+anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "bindings/v0.2.0", default-features = false }
+# The client and pa-testkit the harness pins.
+anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", tag = "bindings/v0.7.0" }
 anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "88974462f5ab996c350eeca16639457120cf7dd5", default-features = false, features = [
   "fixtures",
 ] }
@@ -57,7 +57,7 @@ surfpool-sdk = "=1.6.0"
 
 [dev-dependencies]
 # The kind tables the harness pins.
-anoma-risc0-kind-tables = { git = "https://github.com/anoma/risc0-kind-tables", rev = "007263b7c63ef9d339f0c4ff8db82cc53a93383d", features = [
+anoma-risc0-kind-tables = { git = "https://github.com/anoma/risc0-kind-tables", tag = "v1.0.0-rc.6", features = [
   "arm",
 ] }
 base64 = "0.22"
