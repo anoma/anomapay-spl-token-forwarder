@@ -397,7 +397,8 @@ upgrade_through_program() {
 
 # The artifact a deploy or upgrade ships: the existing one with --prebuilt
 # (verify-build's deterministic build, which a rebuild here would clobber),
-# else a fresh production build.
+# with the production IDL and types the operator scripts import, else a fresh
+# production build, which writes both.
 build_for_deploy() {
   if [[ "$PREBUILT" == "true" ]]; then
     if [[ ! -f "$PROGRAM_SO" ]]; then
@@ -405,6 +406,7 @@ build_for_deploy() {
       exit 1
     fi
     echo "    Deploying the prebuilt artifact ${PROGRAM_SO} (no build)."
+    release_idl
     return 0
   fi
   build_release
@@ -586,7 +588,9 @@ case "$COMMAND" in
   integration-test)
     require_cmd cargo
     if [[ "$E2E" == "true" ]]; then
-      (cd crates/integration-test && RUST_TEST_THREADS=1 cargo test --features e2e e2e_test)
+      # In release mode, as the adapter's harness runs its e2e cases: risc0
+      # proves far faster optimized.
+      (cd crates/integration-test && RUST_TEST_THREADS=1 cargo test --release --features e2e e2e_test)
     else
       (cd crates/integration-test && cargo test)
     fi
