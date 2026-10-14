@@ -21,7 +21,6 @@ use anyhow::Context;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
-use solana_program_option::COption;
 use solana_program_pack::Pack;
 use solana_signer::Signer;
 use spl_associated_token_account_interface::address::get_associated_token_address;
@@ -161,38 +160,6 @@ pub async fn e2e() -> anyhow::Result<(
 /// to move them, and the submitter registered with the adapter.
 async fn serve<P>(env: &mut Environment<P>, program: Pubkey) -> anyhow::Result<Forwarder> {
     let mint = create_mint(env, &program).await?;
-    serve_mint(env, program, mint).await
-}
-
-/// `serve` for the mint at `mint`, an address whose key no test holds, such
-/// as a mint a kind table lists: the runtime writes the mint account, of
-/// `decimals` and whose authority is the adapter's payer, and its escrow.
-pub async fn serve_mint_at<P>(
-    env: &mut Environment<P>,
-    program: Pubkey,
-    mint: Pubkey,
-    decimals: u8,
-) -> anyhow::Result<Forwarder> {
-    let mut data = vec![0; spl_token_interface::state::Mint::LEN];
-    spl_token_interface::state::Mint {
-        mint_authority: COption::Some(env.protocol_adapter.payer.pubkey()),
-        supply: 0,
-        decimals,
-        is_initialized: true,
-        freeze_authority: COption::None,
-    }
-    .pack_into_slice(&mut data);
-    let rent = env
-        .protocol_adapter
-        .rpc
-        .get_minimum_balance_for_rent_exemption(data.len())
-        .await
-        .context("failed to read the mint's rent")?;
-    env.surfnet
-        .cheatcodes()
-        .set_account(&mint, rent, &data, &spl_token_interface::id())
-        .with_context(|| format!("failed to write the mint {mint}"))?;
-    escrow(env, &program, &mint).await?;
     serve_mint(env, program, mint).await
 }
 
