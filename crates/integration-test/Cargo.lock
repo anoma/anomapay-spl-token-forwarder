@@ -1210,7 +1210,7 @@ dependencies = [
 [[package]]
 name = "anoma-pa-solana-client"
 version = "0.6.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=f9f4a1df862586802135161c850aab554d2bf8e2#f9f4a1df862586802135161c850aab554d2bf8e2"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=dc949c1783ced6258c20d1ea4d4d76e08d26ee0f#dc949c1783ced6258c20d1ea4d4d76e08d26ee0f"
 dependencies = [
  "anoma-rm-risc0",
  "bincode",
@@ -1220,15 +1220,30 @@ dependencies = [
  "solana-instruction 3.4.1",
  "solana-message 4.4.1",
  "solana-pubkey 3.0.0",
+ "solana-rpc-client",
+ "solana-rpc-client-api",
  "solana-sdk-ids 3.1.0",
+ "solana-signature",
+ "solana-transaction 4.1.6",
+ "solana-transaction-error 3.3.2",
+]
+
+[[package]]
+name = "anoma-pa-solana-client"
+version = "0.6.0"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=f9f4a1df862586802135161c850aab554d2bf8e2#f9f4a1df862586802135161c850aab554d2bf8e2"
+dependencies = [
+ "bincode",
+ "serde",
+ "sha2 0.10.9",
 ]
 
 [[package]]
 name = "anoma-pa-solana-integration-test"
 version = "0.1.0"
-source = "git+https://github.com/anoma/solana-protocol-adapter?rev=eb95e1ddb23fc2c6799e5543356b21447af0b63a#eb95e1ddb23fc2c6799e5543356b21447af0b63a"
+source = "git+https://github.com/anoma/solana-protocol-adapter?rev=4416d008fae670887b21b0253fb4a3b029f4737b#4416d008fae670887b21b0253fb4a3b029f4737b"
 dependencies = [
- "anoma-pa-solana-client",
+ "anoma-pa-solana-client 0.6.0 (git+https://github.com/anoma/anoma-pa-solana-client?rev=dc949c1783ced6258c20d1ea4d4d76e08d26ee0f)",
  "anoma-pa-testkit",
  "anoma-risc0-kind-tables",
  "anoma-rm-risc0",
@@ -1354,13 +1369,14 @@ dependencies = [
 name = "anomapay-spl-token-forwarder-client"
 version = "0.3.0"
 dependencies = [
- "anoma-pa-solana-client",
+ "anoma-pa-solana-client 0.6.0 (git+https://github.com/anoma/anoma-pa-solana-client?rev=dc949c1783ced6258c20d1ea4d4d76e08d26ee0f)",
  "base64 0.22.1",
  "sha2 0.10.9",
  "solana-compute-budget-interface",
  "solana-ed25519-program",
  "solana-instruction 3.4.1",
  "solana-pubkey 3.0.0",
+ "solana-rpc-client",
  "solana-sdk-ids 3.1.0",
  "spl-associated-token-account-interface",
  "spl-token-interface 3.0.0",
@@ -1371,7 +1387,7 @@ name = "anomapay-spl-token-forwarder-client"
 version = "0.3.0"
 source = "git+https://github.com/anoma/anomapay-spl-token-forwarder?rev=dff0ed2024e779c7f80c37c554d88738a3ee5ec5#dff0ed2024e779c7f80c37c554d88738a3ee5ec5"
 dependencies = [
- "anoma-pa-solana-client",
+ "anoma-pa-solana-client 0.6.0 (git+https://github.com/anoma/anoma-pa-solana-client?rev=f9f4a1df862586802135161c850aab554d2bf8e2)",
  "base64 0.22.1",
  "sha2 0.10.9",
 ]
@@ -1380,7 +1396,7 @@ dependencies = [
 name = "anomapay-spl-token-forwarder-integration-test"
 version = "0.1.0"
 dependencies = [
- "anoma-pa-solana-client",
+ "anoma-pa-solana-client 0.6.0 (git+https://github.com/anoma/anoma-pa-solana-client?rev=dc949c1783ced6258c20d1ea4d4d76e08d26ee0f)",
  "anoma-pa-solana-integration-test",
  "anoma-pa-testkit",
  "anoma-risc0-kind-tables",
@@ -1390,7 +1406,6 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "bincode",
- "futures 0.3.34",
  "k256",
  "rand_chacha 0.3.1",
  "risc0-zkvm",
@@ -14306,7 +14321,7 @@ name = "transfer_witness"
 version = "2.0.0-rc.6"
 source = "git+https://github.com/anoma/anomapay-solana-resource?rev=ca9b9cc74cc388e3e7b0360b840eab87f15268cc#ca9b9cc74cc388e3e7b0360b840eab87f15268cc"
 dependencies = [
- "anoma-pa-solana-client",
+ "anoma-pa-solana-client 0.6.0 (git+https://github.com/anoma/anoma-pa-solana-client?rev=f9f4a1df862586802135161c850aab554d2bf8e2)",
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",
  "anomapay-spl-token-forwarder-client 0.3.0 (git+https://github.com/anoma/anomapay-spl-token-forwarder?rev=dff0ed2024e779c7f80c37c554d88738a3ee5ec5)",

@@ -17,6 +17,8 @@ pub mod pda;
 pub mod program_ids;
 #[cfg(feature = "solana")]
 pub mod settlement;
+#[cfg(feature = "rpc")]
+pub mod submitter;
 
 pub use accounts::{
     decode_config, decode_nonce_bitmap, AccountDecodeError, ConfigAccount, NonceBitmapAccount,
@@ -47,7 +49,7 @@ pub use pda::{
 #[cfg(feature = "solana")]
 pub use program_ids::*;
 #[cfg(feature = "solana")]
-pub use settlement::{settlement_calls, CallsError, SettlementCalls};
+pub use settlement::{settlement_calls, CallsError};
 
 /// The vendored IDL, which the unit tests check the hand-written items against.
 #[cfg(test)]

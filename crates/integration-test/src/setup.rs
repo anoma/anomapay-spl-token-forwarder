@@ -4,10 +4,10 @@
 use std::sync::Arc;
 
 use anoma_pa_solana_client::anchor_instruction_disc;
+use anoma_pa_solana_client::settlement::CallAccounts;
 use anoma_pa_solana_integration_test::envs::common::environment::Environment;
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::executed::Executed;
-use anoma_pa_solana_integration_test::forwarders::CallAccounts;
 use anoma_pa_testkit::environment::Prover;
 use anoma_pa_testkit::transaction::Transaction;
 use anoma_pa_testkit::{execute_tx, prove_actions};
@@ -29,7 +29,8 @@ use spl_associated_token_account_interface::instruction::create_associated_token
 use surfpool_sdk::Pubkey;
 
 use crate::fixtures::{self, ShieldedOwner, WrapTerms};
-use crate::submitter::{Rewritten, SplTokenForwarder};
+use crate::submitter::Rewritten;
+use anomapay_spl_token_forwarder_client::submitter::SplTokenForwarder;
 
 /// The forwarder builds the local tests load: the deterministic builds at
 /// the local addresses (`dev.sh test-program`), production and development.

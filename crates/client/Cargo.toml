@@ -24,6 +24,10 @@ solana-sdk-ids = { version = "3", optional = true }
 spl-associated-token-account-interface = { version = "2", optional = true }
 spl-token-interface = { version = "3", optional = true }
 
+# The submitter's plug-in (`rpc` feature): the adapter client's `Forwarder`
+# for this program.
+solana-rpc-client = { version = "4", optional = true }
+
 [dev-dependencies]
 # Reads the vendored IDL.
 serde_json = "1.0"
@@ -41,3 +45,6 @@ solana = [
   "dep:spl-associated-token-account-interface",
   "dep:spl-token-interface",
 ]
+# The submitter's plug-in: `SplTokenForwarder`, the adapter client's
+# `Forwarder` for this program.
+rpc = ["solana", "anoma-pa-solana-client/rpc", "dep:solana-rpc-client"]
