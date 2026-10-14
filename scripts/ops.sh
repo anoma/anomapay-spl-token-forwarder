@@ -588,7 +588,9 @@ case "$COMMAND" in
   integration-test)
     require_cmd cargo
     if [[ "$E2E" == "true" ]]; then
-      (cd crates/integration-test && RUST_TEST_THREADS=1 cargo test --features e2e e2e_test)
+      # In release mode, as the adapter's harness runs its e2e cases: risc0
+      # proves far faster optimized.
+      (cd crates/integration-test && RUST_TEST_THREADS=1 cargo test --release --features e2e e2e_test)
     else
       (cd crates/integration-test && cargo test)
     fi
