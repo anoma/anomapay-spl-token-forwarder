@@ -8,17 +8,16 @@ resolver = "2"
 solana = "4.3.0"
 
 [workspace.dependencies]
-# The adapter's pin: Anchor's v1.2.1 release PR (solana-foundation/anchor#5134),
-# whose fix #4737 lets a program with a field-less accounts struct compile with
-# `cpi`. Moves with the adapter to the published 1.2.1
-# (anoma/solana-protocol-adapter#124).
+# The adapter's pin: an Anchor commit with solana-foundation/anchor#4737, which
+# lets a program with a field-less accounts struct compile with `cpi`. No
+# published Anchor has the fix (1.2.1 does not).
 anchor-lang = { git = "https://github.com/otter-sec/anchor", rev = "2c9747a2d31bd5e94745cee6c083577f3e6675c0" }
 # The adapter this forwarder is built against: its program crate (the state
-# layout, the upgrade helpers) and its client: the revision of the adapter's
+# layout, the upgrade helpers) and its client: the release of the adapter's
 # integration-test harness and the client the harness pins, so the tests link
 # one copy of the client.
-protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "4416d008fae670887b21b0253fb4a3b029f4737b", default-features = false, features = ["no-entrypoint"] }
-anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "dc949c1783ced6258c20d1ea4d4d76e08d26ee0f", default-features = false }
+protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "bindings/v0.2.0", default-features = false, features = ["no-entrypoint"] }
+anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", tag = "bindings/v0.7.0", default-features = false }
 
 [profile.release]
 overflow-checks = true

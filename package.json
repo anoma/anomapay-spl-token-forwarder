@@ -7,7 +7,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@anchor-lang/core": "^1.2.0",
+    "@anchor-lang/core": "^1.2.1",
     "@noble/hashes": "^1.8.0",
     "@solana/codecs": "^8.4.0",
     "@solana/spl-token": "^0.4.15",
