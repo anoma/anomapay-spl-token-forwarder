@@ -13,10 +13,11 @@
 
 use anoma_pa_solana_client::external_call::{OutputMode, SolanaExternalCall};
 use anoma_pa_solana_client::settlement::CallAccounts;
+use anoma_pa_solana_integration_test::envs::common::environment::Environment;
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::executed::Executed;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
-use anoma_pa_testkit::environment::{DeniedLogicRef, ProtocolAdapter as _};
+use anoma_pa_testkit::environment::{DeniedLogicRef, ProtocolAdapter as _, Prover};
 use anoma_pa_testkit::fixtures::passthrough::{self, PASSTHROUGH_LOGIC_VK};
 use anoma_pa_testkit::transaction::Transaction;
 use anoma_pa_testkit::{execute_tx, latest_root, prove_actions};
@@ -31,16 +32,21 @@ use anomapay_spl_token_forwarder_client::{
     MigratedEvent, VulnerableLogicRefListedEvent, decode_migration_record,
     decode_vulnerable_logic_refs, encode_migrate_forwarder_input, forwarder_migrate_num_accounts,
 };
-use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
+use anomapay_spl_token_forwarder_integration_test::fixtures::{self, ShieldedOwner};
 use anomapay_spl_token_forwarder_integration_test::logic::{logic_ref, random_logic_ref};
 use anomapay_spl_token_forwarder_integration_test::refusal::{NOT_THE_OWNER, balances};
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, FORWARDER_EMERGENCY_MIGRATING_DEV_SO, FORWARDER_EMERGENCY_MIGRATING_SO, LocalForwarder,
-    config, events, set_config_version,
+    self, FORWARDER_EMERGENCY_MIGRATING_DEV_SO, FORWARDER_EMERGENCY_MIGRATING_SO, OwnedForwarder,
+    balance, config, events, set_config_version,
 };
+use emergency_migrating_transfer_library::{
+    EMERGENCY_MIGRATING_TOKEN_TRANSFER_ID, EmergencyMigratingTransferLogic,
+};
+use emergency_migrating_transfer_witness::MigrateEntry as EmergencyMigrateEntry;
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
 use solana_signer::Signer;
+use spl_associated_token_account_interface::address::get_associated_token_address;
 use surfpool_sdk::Pubkey;
 
 /// 100 tokens at the mint's 6 decimals.
@@ -55,12 +61,16 @@ fn bytes(digest: Digest) -> [u8; 32] {
 }
 
 /// The adapter's owner denies `logic_ref` on both denylists.
-async fn deny(env: &mut LocalEnv, logic_ref: Digest) -> anyhow::Result<()> {
+async fn deny<P>(env: &mut Environment<P>, logic_ref: Digest) -> anyhow::Result<()> {
     deny_on(env, logic_ref, &[true, false]).await
 }
 
 /// The adapter's owner denies `logic_ref` on the denylists `consumed` names.
-async fn deny_on(env: &mut LocalEnv, logic_ref: Digest, consumed: &[bool]) -> anyhow::Result<()> {
+async fn deny_on<P>(
+    env: &mut Environment<P>,
+    logic_ref: Digest,
+    consumed: &[bool],
+) -> anyhow::Result<()> {
     let denied: Vec<DeniedLogicRef> = consumed
         .iter()
         .map(|&consumed| DeniedLogicRef {
@@ -72,9 +82,9 @@ async fn deny_on(env: &mut LocalEnv, logic_ref: Digest, consumed: &[bool]) -> an
 }
 
 /// The owner's `reinitialize` of the emergency-migrating build.
-fn reinitialize(
-    env: &LocalEnv,
-    local: &LocalForwarder,
+fn reinitialize<P>(
+    env: &Environment<P>,
+    local: &OwnedForwarder,
     new_logic_ref: Digest,
     vulnerable: &[Digest],
 ) -> Instruction {
@@ -100,8 +110,8 @@ async fn listed(env: &LocalEnv, program: &Pubkey) -> anyhow::Result<Vec<[u8; 32]
 
 /// Whether the forwarder migrated the resource with `nullifier`, as the EVM
 /// draft's `isNullifierMigrated`: its record exists and says so.
-async fn is_migrated(
-    env: &LocalEnv,
+async fn is_migrated<P>(
+    env: &Environment<P>,
     program: &Pubkey,
     nullifier: [u8; 32],
 ) -> anyhow::Result<bool> {
@@ -123,7 +133,7 @@ async fn is_migrated(
 /// resource's circuit.
 struct Incident {
     env: LocalEnv,
-    local: LocalForwarder,
+    local: OwnedForwarder,
     /// The owner of `wrapped`.
     owner: ShieldedOwner,
     /// A resource with the vulnerable logic ref, which the user wrapped.
@@ -343,7 +353,7 @@ async fn reinitialize_keeps_the_logic_ref_and_lists_the_vulnerable_refs() -> any
 /// the config keeps the production build's version.
 async fn refuses_reinitialize(
     env: &LocalEnv,
-    local: &LocalForwarder,
+    local: &OwnedForwarder,
     ix: Instruction,
     signer: &Keypair,
     error: &'static str,
@@ -908,4 +918,123 @@ async fn the_production_build_refuses_a_migration() -> anyhow::Result<()> {
     expect_integration_panic(Needle::Static("Error Code: UnknownOperation."))(
         execute_tx(&mut env, tx).await,
     )
+}
+
+// ---------------------------------------------------------------------------
+// A migration proven by the emergency-migrating logic
+// ---------------------------------------------------------------------------
+
+/// The incident end to end with the AnomaPay resource, as the EVM
+/// integration test test_execute_emergency_migrates_a_resource_after_the_protocol_adapter_denies_its_logic_ref
+/// runs it with the ERC20 resource: a holder wraps `AMOUNT` under the
+/// transfer logic; the adapter's owner denies it; the forwarder's owner
+/// upgrades to the emergency-migrating build and reinitializes it, listing
+/// the transfer logic and moving to the emergency-migrating logic. The
+/// holder's migration, which that logic proves, records the wrapped
+/// resource's nullifier and moves no tokens, and its resource then unwraps
+/// through that logic, releasing the escrowed tokens to a recipient.
+async fn a_migration_recovers_the_wrapped_tokens<P: Prover>(
+    env: &mut Environment<P>,
+    owned: OwnedForwarder,
+) -> anyhow::Result<()> {
+    let holder = ShieldedOwner::seeded("real-migration/holder");
+    let forwarder = &owned.forwarder;
+    let program = forwarder.program;
+    let escrow = forwarder.escrow_account();
+    let escrow_before = balance(env, &escrow).await?;
+
+    let wrapped = forwarder
+        .wrap(env, &holder, AMOUNT, 1, "real-migration/wrap")
+        .await?;
+    let path = env
+        .protocol_adapter
+        .commitment_tree
+        .path_to(wrapped.commitment())?;
+
+    deny(env, logic_ref()).await?;
+    setup::upgrade(
+        env,
+        &program,
+        &owned.owner,
+        FORWARDER_EMERGENCY_MIGRATING_SO,
+    )
+    .await?;
+    let ix = reinitialize(
+        env,
+        &owned,
+        EMERGENCY_MIGRATING_TOKEN_TRANSFER_ID,
+        &[logic_ref()],
+    );
+    env.send(&[ix], &[&owned.owner]).await?;
+    let forwarder = owned.forwarder.serving::<EmergencyMigratingTransferLogic>();
+
+    let migration = fixtures::migrate(
+        program,
+        forwarder.mint,
+        vec![EmergencyMigrateEntry {
+            resource: wrapped,
+            nf_key: holder.keys.nf_key.clone(),
+            path,
+            value_info: holder.keys.value.clone(),
+            forwarder_program_id: program.to_bytes(),
+        }],
+        &holder,
+        &holder,
+        "real-migration/migrate",
+    )?;
+    let tx = prove_actions(env, &[migration.witnesses]).await?;
+    let executed = env.protocol_adapter.settled(tx).await?;
+    let nullifier = bytes(
+        wrapped
+            .nullifier(&holder.keys.nf_key)
+            .map_err(|e| anyhow::anyhow!("{e:?}"))?,
+    );
+    let expected = vec![ForwarderEvent::Migrated(MigratedEvent {
+        token: forwarder.mint.to_bytes(),
+        vulnerable_logic_ref: bytes(logic_ref()),
+        nullifier,
+    })];
+    let emitted = events(&executed, &program)?;
+    anyhow::ensure!(
+        emitted == expected,
+        "the migration emits {emitted:?}, not {expected:?}"
+    );
+    anyhow::ensure!(
+        is_migrated(env, &program, nullifier).await?,
+        "the forwarder did not record the wrapped resource's nullifier"
+    );
+    anyhow::ensure!(
+        balance(env, &escrow).await? == escrow_before + AMOUNT,
+        "the migration moved escrowed tokens"
+    );
+
+    let recipient = Keypair::new().pubkey();
+    let tx = forwarder
+        .prove_unwrap(env, migration.created, &holder, recipient)
+        .await?;
+    execute_tx(env, tx).await?;
+    let recipient_account = get_associated_token_address(&recipient, &forwarder.mint);
+    anyhow::ensure!(
+        balance(env, &recipient_account).await? == AMOUNT,
+        "the unwrap of the migrated resource did not release {AMOUNT} to the recipient"
+    );
+    anyhow::ensure!(
+        balance(env, &escrow).await? == escrow_before,
+        "the escrow holds {} after the unwrap, not {escrow_before}",
+        balance(env, &escrow).await?
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn local_a_migration_recovers_the_wrapped_tokens() -> anyhow::Result<()> {
+    let (mut env, owned) = setup::local().await?;
+    a_migration_recovers_the_wrapped_tokens(&mut env, owned).await
+}
+
+#[cfg(feature = "e2e")]
+#[tokio::test(flavor = "multi_thread")]
+async fn e2e_test_a_migration_recovers_the_wrapped_tokens() -> anyhow::Result<()> {
+    let (mut env, owned) = setup::e2e_owned().await?;
+    a_migration_recovers_the_wrapped_tokens(&mut env, owned).await
 }

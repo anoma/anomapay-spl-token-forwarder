@@ -1,13 +1,38 @@
-//! The AnomaPay transfer resource's logic as a pa-testkit logic witness, as
+//! The AnomaPay transfer resource's logics as pa-testkit logic witnesses, as
 //! the ERC20 forwarder's tests wrap theirs: pa-testkit's provers constrain or
-//! prove it like any other resource logic.
+//! prove them like any other resource logic.
 
 use anoma_pa_testkit::witness::LogicWitness;
 use anoma_rm_risc0::Digest;
 use anoma_rm_risc0::logic_instance::LogicInstance;
+use anoma_rm_risc0::logic_proof::LogicProver;
 use anyhow::Context;
-use transfer_library::{TOKEN_TRANSFER_ELF, TOKEN_TRANSFER_ID, TransferLogic};
-use transfer_witness::LogicCircuit;
+use emergency_migrating_transfer_library::EmergencyMigratingTransferLogic;
+use emergency_migrating_transfer_witness::EmergencyMigratingCall;
+use transfer_library::{TOKEN_TRANSFER_ID, TransferLogic};
+use transfer_witness::{ForwarderCall, ForwarderInfo, LogicCircuit};
+
+/// A logic the forwarder serves: the transfer resource's, or one that
+/// extends it (the emergency-migrating logic), whose flows the resource's
+/// builders build.
+pub trait Logic: LogicProver<Witness: LogicCircuit> + From<TransferLogic> + 'static {
+    /// The call its ephemeral resources make, which fixes the domain its
+    /// owners sign under.
+    type Call: ForwarderCall;
+}
+
+impl Logic for TransferLogic {
+    type Call = ForwarderInfo;
+}
+
+impl Logic for EmergencyMigratingTransferLogic {
+    type Call = EmergencyMigratingCall;
+}
+
+/// The domain owners of `L`'s resources sign under.
+pub fn auth_signature_domain<L: Logic>() -> &'static [u8] {
+    <L::Call as ForwarderCall>::AUTH_SIGNATURE_DOMAIN
+}
 
 /// A logic ref no resource has: 32 random bytes.
 pub fn random_logic_ref() -> Digest {
@@ -20,28 +45,27 @@ pub fn logic_ref() -> Digest {
     TOKEN_TRANSFER_ID
 }
 
-/// One resource's transfer logic.
-pub(crate) struct Witness(pub(crate) TransferLogic);
+/// One resource's logic `L`.
+pub(crate) struct Witness<L>(pub(crate) L);
 
-impl LogicWitness for Witness {
+impl<L: Logic> LogicWitness for Witness<L> {
     fn verifying_key(&self) -> Digest {
-        TOKEN_TRANSFER_ID
+        L::verifying_key()
     }
 
     fn constrain(&self) -> anyhow::Result<LogicInstance> {
         self.0
-            .witness
+            .witness()
             .constrain()
             .map_err(|e| anyhow::anyhow!("{e:?}"))
-            .context("the transfer logic refuses its witness")
+            .context("the logic refuses its witness")
     }
 
     fn witness_to_vec(&self) -> anyhow::Result<Vec<u32>> {
-        risc0_zkvm::serde::to_vec(&self.0.witness)
-            .context("failed to serialize the transfer witness")
+        risc0_zkvm::serde::to_vec(self.0.witness()).context("failed to serialize the witness")
     }
 
     fn proving_key(&self) -> Vec<u8> {
-        TOKEN_TRANSFER_ELF.to_vec()
+        L::proving_key().to_vec()
     }
 }

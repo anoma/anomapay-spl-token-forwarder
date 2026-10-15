@@ -63,7 +63,7 @@ After an incident, C is active and has the migrate call. `reinitialize` runs onl
 
 ## Emergency migration transactions
 
-An emergency migration transaction consumes one ephemeral resource of the active version, the trigger, and creates resources of the active version for the same total quantity. For each migrated resource, the trigger's logic proves that the commitment tree at a given root contains the resource's commitment, and computes the resource's nullifier. One signature of the resource owner over the action tree root authorizes all resources of the batch, so all of them must have the same authorization key.
+An emergency migration transaction consumes one ephemeral resource of the active version, the trigger, and creates resources of the active version for the same total quantity. For each migrated resource, the trigger's logic proves that the commitment tree at a given root contains the resource's commitment, and computes the resource's nullifier. One signature of the resource owner over the action tree root authorizes all resources of the batch, so all of them must have the same authorization key. The AnomaPay resource's emergency-migrating logic is this logic: the `emergency_migrating_transfer_*` crates of [anoma/anomapay-solana-resource](https://github.com/anoma/anomapay-solana-resource), the port of the ERC20 resource's `anomapay_emergency_migrating_erc20_*`. The integration test `a_migration_recovers_the_wrapped_tokens` runs an incident end to end with it: a wrap under the transfer logic, the denial, the upgrade and `reinitialize`, a migration that logic proves, and the unwrap of the migrated resource.
 
 The trigger's external call carries the forwarder instruction data `OP_MIGRATE` (2) followed by the Borsh encoding of
 

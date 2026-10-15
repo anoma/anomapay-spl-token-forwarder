@@ -1,6 +1,7 @@
 //! The forwarder on one of the adapter harness's environments, as the
 //! ERC20 forwarder's tests add theirs to pa-evm's.
 
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use anoma_pa_solana_client::anchor_instruction_disc;
@@ -26,8 +27,10 @@ use solana_signer::Signer;
 use spl_associated_token_account_interface::address::get_associated_token_address;
 use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
 use surfpool_sdk::Pubkey;
+use transfer_library::TransferLogic;
 
 use crate::fixtures::{self, ShieldedOwner, WrapTerms};
+use crate::logic::Logic;
 use crate::submitter::Rewritten;
 use anomapay_spl_token_forwarder_client::submitter::SplTokenForwarder;
 
@@ -65,19 +68,21 @@ fn forwarder_address(env_file: &str) -> anyhow::Result<Pubkey> {
         .with_context(|| format!("FORWARDER_PROGRAM_ID={value} is not base58"))
 }
 
-/// The forwarder on an environment: the submitter registered with the
-/// adapter, a mint it serves, and a user holding the mint's tokens who has
-/// approved the forwarder's escrow authority as delegate.
-pub struct Forwarder {
+/// The forwarder on an environment, serving the logic `L`: the submitter
+/// registered with the adapter, a mint it serves, and a user holding the
+/// mint's tokens who has approved the forwarder's escrow authority as
+/// delegate.
+pub struct Forwarder<L = TransferLogic> {
     pub submitter: Arc<SplTokenForwarder>,
     pub program: Pubkey,
     pub mint: Pubkey,
     pub user: Keypair,
+    logic: PhantomData<L>,
 }
 
-/// The forwarder as the local environment deploys it: also the owner it was
-/// initialized with.
-pub struct LocalForwarder {
+/// The forwarder as a test deploys it: also the owner it was initialized
+/// with.
+pub struct OwnedForwarder {
     pub forwarder: Forwarder,
     pub owner: Keypair,
 }
@@ -137,16 +142,25 @@ async fn initialize<P>(env: &Environment<P>, program: Pubkey) -> anyhow::Result<
 
 /// The local environment with the forwarder deployed and initialized for the
 /// adapter and the transfer resource's logic ref.
-pub async fn local() -> anyhow::Result<(LocalEnv, LocalForwarder)> {
+pub async fn local() -> anyhow::Result<(LocalEnv, OwnedForwarder)> {
     local_with(Build::Production).await
 }
 
 /// `local`, with the forwarder `build`.
-async fn local_with(build: Build) -> anyhow::Result<(LocalEnv, LocalForwarder)> {
-    let (mut env, program) = deployed(build).await?;
-    let owner = initialize(&env, program).await?;
-    let forwarder = serve(&mut env, program).await?;
-    Ok((env, LocalForwarder { forwarder, owner }))
+async fn local_with(build: Build) -> anyhow::Result<(LocalEnv, OwnedForwarder)> {
+    let mut env = LocalEnv::setup_bare().await?;
+    let owned = owned(&mut env, build).await?;
+    Ok((env, owned))
+}
+
+/// Deploys the forwarder `build` on `env`, initializes it for the adapter
+/// and the transfer resource's logic ref with a new owner, and has it serve
+/// a new mint.
+async fn owned<P>(env: &mut Environment<P>, build: Build) -> anyhow::Result<OwnedForwarder> {
+    let program = deploy(env, build)?;
+    let owner = initialize(env, program).await?;
+    let forwarder = serve(env, program).await?;
+    Ok(OwnedForwarder { forwarder, owner })
 }
 
 /// The local environment with the previous release deployed, initialized
@@ -155,7 +169,7 @@ async fn local_with(build: Build) -> anyhow::Result<(LocalEnv, LocalForwarder)> 
 /// its owner to this release's production build, as a cluster's forwarder
 /// is. The config is still in the previous layout: `migrate_config` has not
 /// run.
-pub async fn upgraded_from_the_previous_release() -> anyhow::Result<(LocalEnv, LocalForwarder)> {
+pub async fn upgraded_from_the_previous_release() -> anyhow::Result<(LocalEnv, OwnedForwarder)> {
     let (mut env, program) = deployed(Build::Previous).await?;
     let payer = env.protocol_adapter.payer.pubkey();
 
@@ -185,14 +199,14 @@ pub async fn upgraded_from_the_previous_release() -> anyhow::Result<(LocalEnv, L
     upgrade(&env, &program, &owner, FORWARDER_SO)
         .await
         .context("the owner failed to upgrade the previous release")?;
-    Ok((env, LocalForwarder { forwarder, owner }))
+    Ok((env, OwnedForwarder { forwarder, owner }))
 }
 
 /// `local`, upgraded in place by the owner to `build`, the emergency-migrating
 /// build (`FORWARDER_EMERGENCY_MIGRATING_SO`) or its development build, as
 /// after a flaw in a circuit version of the transfer resource; its
 /// `reinitialize` has not run.
-pub async fn upgraded_to(build: &[u8]) -> anyhow::Result<(LocalEnv, LocalForwarder)> {
+pub async fn upgraded_to(build: &[u8]) -> anyhow::Result<(LocalEnv, OwnedForwarder)> {
     let (env, local) = local().await?;
     upgrade(&env, &local.forwarder.program, &local.owner, build)
         .await
@@ -204,7 +218,7 @@ pub async fn upgraded_to(build: &[u8]) -> anyhow::Result<(LocalEnv, LocalForward
 /// its `upgrade`, the owner writing and paying for the buffer. The program
 /// data first grows to hold `code`, as `ops.sh upgrade` extends it: by the
 /// shortfall, at least the loader's minimum extension.
-async fn upgrade<P>(
+pub async fn upgrade<P>(
     env: &Environment<P>,
     program: &Pubkey,
     owner: &Keypair,
@@ -285,6 +299,23 @@ pub async fn e2e() -> anyhow::Result<(
     Ok((env, forwarder))
 }
 
+/// The e2e environment (`E2E_RUNTIME`) with the production forwarder
+/// deployed at its local address and initialized by a test owner, on either
+/// runtime: a test of the owner's operations (an upgrade, `reinitialize`)
+/// needs the owner's key, which devnet's forwarder's owner keeps.
+#[cfg(feature = "e2e")]
+pub async fn e2e_owned() -> anyhow::Result<(
+    anoma_pa_solana_integration_test::envs::e2e::Environment,
+    OwnedForwarder,
+)> {
+    use anoma_pa_solana_integration_test::envs::e2e::{E2eConfig, Environment};
+
+    let e2e_config = E2eConfig::from_env().context("failed to parse e2e test config")?;
+    let mut env = Environment::setup(&e2e_config).await?;
+    let owned = owned(&mut env, Build::Production).await?;
+    Ok((env, owned))
+}
+
 /// Has the forwarder `program` serve a new mint on `env`: the mint, its
 /// escrow, a user holding `USER_TOKENS` who has approved the escrow authority
 /// to move them, and the submitter registered with the adapter.
@@ -319,6 +350,7 @@ async fn serve_mint<P>(
         program,
         mint,
         user,
+        logic: PhantomData,
     })
 }
 
@@ -484,7 +516,7 @@ pub async fn config<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::Result
 /// `local` with the development build, whose config the owner then puts
 /// (`dev_set_config_version`) one below this build's CONFIG_VERSION, as an
 /// earlier build would have left it: the config `reinitialize` rotates once.
-pub async fn local_below_this_builds_version() -> anyhow::Result<(LocalEnv, LocalForwarder)> {
+pub async fn local_below_this_builds_version() -> anyhow::Result<(LocalEnv, OwnedForwarder)> {
     let (env, local) = local_with(Build::Development).await?;
     set_config_version(&env, &local, CONFIG_VERSION - 1).await?;
     Ok((env, local))
@@ -494,7 +526,7 @@ pub async fn local_below_this_builds_version() -> anyhow::Result<(LocalEnv, Loca
 /// builds' `dev_set_config_version`.
 pub async fn set_config_version<P>(
     env: &Environment<P>,
-    local: &LocalForwarder,
+    local: &OwnedForwarder,
     version: u64,
 ) -> anyhow::Result<()> {
     let (program, owner) = (local.forwarder.program, local.owner.pubkey());
@@ -566,7 +598,18 @@ pub struct ProvenWrap {
     pub signed_message: Vec<u8>,
 }
 
-impl Forwarder {
+impl<L: Logic> Forwarder<L> {
+    /// The forwarder once its `reinitialize` moved it to the logic `M`.
+    pub fn serving<M: Logic>(self) -> Forwarder<M> {
+        Forwarder {
+            submitter: self.submitter,
+            program: self.program,
+            mint: self.mint,
+            user: self.user,
+            logic: PhantomData,
+        }
+    }
+
     /// A wrap of `amount` from the user into a resource `owner` holds, under
     /// the forwarder nonce `nonce`, proven on `env`. `seed` makes its
     /// resources distinct from every other wrap's.
@@ -627,7 +670,7 @@ impl Forwarder {
         ed25519_ix_index: u8,
         seed: &str,
     ) -> anyhow::Result<fixtures::WrapData> {
-        fixtures::wrap(
+        fixtures::wrap::<L>(
             self.program,
             self.mint,
             &self.user,
@@ -675,7 +718,8 @@ impl Forwarder {
             .protocol_adapter
             .commitment_tree
             .path_to(wrapped.commitment())?;
-        let unwrap = fixtures::unwrap(self.program, self.mint, wrapped, owner, recipient, path)?;
+        let unwrap =
+            fixtures::unwrap::<L>(self.program, self.mint, wrapped, owner, recipient, path)?;
         prove_actions(env, &[unwrap]).await
     }
 

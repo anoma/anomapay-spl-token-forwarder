@@ -15,7 +15,7 @@ use anomapay_spl_token_forwarder_client::{
 };
 use anomapay_spl_token_forwarder_integration_test::refusal::NOT_THE_OWNER;
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, FORWARDER_SO, LocalForwarder, config, events, executable_hash,
+    self, FORWARDER_SO, OwnedForwarder, config, events, executable_hash,
 };
 use solana_keypair::Keypair;
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
@@ -28,7 +28,7 @@ use surfpool_sdk::Pubkey;
 /// check, so it changes nothing.
 async fn reinitialize_as(
     env: &LocalEnv,
-    local: &LocalForwarder,
+    local: &OwnedForwarder,
     signer: &Keypair,
 ) -> anyhow::Result<Signature> {
     env.send(

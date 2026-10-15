@@ -15,7 +15,7 @@ use anomapay_spl_token_forwarder_client::{
 use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
 use anomapay_spl_token_forwarder_integration_test::refusal::{balances, refuses};
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, LocalForwarder, balance, create_mint, events, fund, mint_to, token_account,
+    self, OwnedForwarder, balance, create_mint, events, fund, mint_to, token_account,
 };
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -32,7 +32,7 @@ const DESTINATION: usize = 6;
 
 /// The local environment after a wrap settled: the forwarder, the wrapped
 /// resource, and its owner.
-async fn wrapped() -> anyhow::Result<(LocalEnv, LocalForwarder, Resource, ShieldedOwner)> {
+async fn wrapped() -> anyhow::Result<(LocalEnv, OwnedForwarder, Resource, ShieldedOwner)> {
     let (mut env, local) = setup::local().await?;
     let owner = ShieldedOwner::seeded("unwrap/owner");
     let wrapped = local

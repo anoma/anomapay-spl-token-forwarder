@@ -12,7 +12,7 @@ use anomapay_spl_token_forwarder_client::{
 };
 use anomapay_spl_token_forwarder_integration_test::refusal::{NOT_THE_OWNER, balances};
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, LocalForwarder, balance, create_mint, mint_to, token_account,
+    self, OwnedForwarder, balance, create_mint, mint_to, token_account,
 };
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
@@ -63,7 +63,7 @@ async fn nonce_bitmaps(env: &LocalEnv, program: &Pubkey) -> anyhow::Result<Vec<P
 /// recipient's.
 async fn funded_escrow(
     env: &LocalEnv,
-    local: &LocalForwarder,
+    local: &OwnedForwarder,
     recipient: &Pubkey,
 ) -> anyhow::Result<(Pubkey, Pubkey, Pubkey)> {
     let program = local.forwarder.program;
@@ -76,7 +76,7 @@ async fn funded_escrow(
 }
 
 /// The local environment with the adapter paused by its owner.
-async fn paused() -> anyhow::Result<(LocalEnv, LocalForwarder)> {
+async fn paused() -> anyhow::Result<(LocalEnv, OwnedForwarder)> {
     let (mut env, local) = setup::local().await?;
     env.protocol_adapter.pause().await?;
     Ok((env, local))

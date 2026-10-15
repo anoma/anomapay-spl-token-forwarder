@@ -13,6 +13,7 @@ use anomapay_spl_token_forwarder_integration_test::refusal::balances;
 use anomapay_spl_token_forwarder_integration_test::setup;
 use anyhow::Context;
 use k256::elliptic_curve::sec1::ToEncodedPoint;
+use transfer_library::TransferLogic;
 use transfer_witness::calculate_label_ref;
 
 /// 100 tokens at the mint's 6 decimals.
@@ -53,7 +54,7 @@ async fn settles_a_wrap_proven_against_a_kind_table_once_the_owner_installs_its_
 
     let owner = ShieldedOwner::seeded("kind-table/owner");
     let nonce = 1;
-    let wrap = fixtures::wrap(
+    let wrap = fixtures::wrap::<TransferLogic>(
         forwarder.program,
         forwarder.mint,
         &forwarder.user,

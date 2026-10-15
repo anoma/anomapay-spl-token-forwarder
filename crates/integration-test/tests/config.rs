@@ -10,7 +10,7 @@ use anomapay_spl_token_forwarder_client::{
     CONFIG_VERSION, derive_forwarder_config_pda, encode_unwrap_forwarder_input, reinitialize_ix,
 };
 use anomapay_spl_token_forwarder_integration_test::logic::{logic_ref, random_logic_ref};
-use anomapay_spl_token_forwarder_integration_test::setup::{self, LocalForwarder, config};
+use anomapay_spl_token_forwarder_integration_test::setup::{self, OwnedForwarder, config};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -24,7 +24,7 @@ fn random_ref() -> [u8; 32] {
 /// the config as it was.
 async fn refuses_reinitialize(
     env: &LocalEnv,
-    local: &LocalForwarder,
+    local: &OwnedForwarder,
     signer: &Keypair,
     logic_ref: [u8; 32],
     error: &'static str,
