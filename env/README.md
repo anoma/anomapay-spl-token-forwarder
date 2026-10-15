@@ -2,8 +2,12 @@
 
 The forwarder reads its address at compile time, and so does the adapter
 crate it builds against: their `declare_id!`s take
-`FORWARDER_PROGRAM_ID` and `PROTOCOL_ADAPTER_PROGRAM_ID`. The scripts
-export both from the files here:
+`FORWARDER_PROGRAM_ID` and `PROTOCOL_ADAPTER_PROGRAM_ID`. The
+emergency-migrating build also reads `LEGACY_FORWARDER_PROGRAM_ID`, the
+cluster's legacy SPL token forwarder whose resources it migrates too, or the
+zero key (`11111111111111111111111111111111`) where none exists, as the EVM
+draft takes the chain's legacy ERC20 forwarder. The scripts export all three
+from the files here:
 
 - `localnet.env`: the addresses on a local runtime, where the tests load the
   forwarder and the adapter.

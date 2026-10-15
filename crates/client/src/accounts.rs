@@ -37,6 +37,15 @@ impl NonceBitmapAccount {
     }
 }
 
+/// The emergency-migrating build's record of one resource's migration
+/// (`MigrationRecord`), as the EVM draft's `isNullifierMigrated` answers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MigrationRecordAccount {
+    pub migrated: bool,
+    /// The canonical bump of the record's address.
+    pub bump: u8,
+}
+
 /// Errors produced by the account decoders.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AccountDecodeError {
@@ -99,6 +108,24 @@ pub fn decode_config(data: &[u8]) -> Result<ConfigAccount, AccountDecodeError> {
     })
 }
 
+/// Decode the emergency-migrating build's `VulnerableLogicRefs` account:
+/// the logic refs whose resources can emergency-migrate, as the EVM draft's
+/// `isLogicRefVulnerable` answers for each.
+pub fn decode_vulnerable_logic_refs(data: &[u8]) -> Result<Vec<[u8; 32]>, AccountDecodeError> {
+    let mut c = fields(data, "VulnerableLogicRefs")?;
+    let count = c.u32_le("logic_refs")?;
+    (0..count).map(|_| Ok(c.array_32("logic_refs")?)).collect()
+}
+
+/// Decode the emergency-migrating build's `MigrationRecord` account.
+pub fn decode_migration_record(data: &[u8]) -> Result<MigrationRecordAccount, AccountDecodeError> {
+    let mut c = fields(data, "MigrationRecord")?;
+    Ok(MigrationRecordAccount {
+        migrated: c.u8("migrated")? != 0,
+        bump: c.u8("bump")?,
+    })
+}
+
 /// Decode a `NonceBitmap` account.
 pub fn decode_nonce_bitmap(data: &[u8]) -> Result<NonceBitmapAccount, AccountDecodeError> {
     let mut c = fields(data, "NonceBitmap")?;
@@ -137,6 +164,66 @@ mod tests {
                 serde_json::from_value(account["discriminator"].clone()).unwrap();
             assert_eq!(anchor_account_disc(name).to_vec(), expected, "{name}");
         }
+    }
+
+    #[test]
+    /// The emergency-migrating build's IDL declares the migration record
+    /// (`init_migration_record` creates it). It does not declare the
+    /// vulnerable logic refs, which `reinitialize` creates by hand; the
+    /// program's unit tests check this decoder against its serialization.
+    fn the_emergency_migrating_idl_declares_the_migration_record_the_decoder_reads() {
+        let idl = crate::idl::emergency_migrating_idl();
+        let fields: Vec<(String, String)> = crate::idl::fields(&idl, "MigrationRecord")
+            .iter()
+            .map(|f| (f["name"].to_string(), f["type"].to_string()))
+            .collect();
+        assert_eq!(
+            fields,
+            [
+                ("\"migrated\"".to_string(), "\"bool\"".to_string()),
+                ("\"bump\"".to_string(), "\"u8\"".to_string())
+            ]
+        );
+        let account = idl["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["name"] == "MigrationRecord")
+            .unwrap();
+        let expected: Vec<u8> = serde_json::from_value(account["discriminator"].clone()).unwrap();
+        assert_eq!(anchor_account_disc("MigrationRecord").to_vec(), expected);
+    }
+
+    #[test]
+    fn the_emergency_migrating_accounts_decode_to_their_fields() {
+        let mut listed = anchor_account_disc("VulnerableLogicRefs").to_vec();
+        listed.extend(2u32.to_le_bytes());
+        listed.extend([[7; 32], [8; 32]].concat());
+        assert_eq!(
+            decode_vulnerable_logic_refs(&listed),
+            Ok(vec![[7; 32], [8; 32]])
+        );
+        assert_eq!(
+            decode_vulnerable_logic_refs(&listed[..listed.len() - 1]),
+            Err(AccountDecodeError::Truncated {
+                field: "logic_refs"
+            })
+        );
+
+        let record = [anchor_account_disc("MigrationRecord").as_slice(), &[1, 253]].concat();
+        assert_eq!(
+            decode_migration_record(&record),
+            Ok(MigrationRecordAccount {
+                migrated: true,
+                bump: 253
+            })
+        );
+        assert_eq!(
+            decode_migration_record(&listed),
+            Err(AccountDecodeError::WrongDiscriminator {
+                expected: "MigrationRecord"
+            })
+        );
     }
 
     #[test]

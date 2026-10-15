@@ -57,6 +57,10 @@ The release before this one stored an emergency committee and an emergency calle
 
 `migrate_config` keeps the adapter, the logic ref, the version and the owner, and returns the rent the smaller account no longer needs to the owner. Until it runs, wraps and unwraps settle, since both layouts start with the adapter and the logic ref, and every owner-only instruction refuses the config with `ConfigNotMigrated`; a second run fails with `NotPreviousLayout`.
 
+## After a flaw in a circuit version
+
+When a circuit version of the transfer resource lets false proofs pass, the adapter's owner denies its logic ref and the forwarder's owner upgrades the forwarder to the emergency-migrating build, whose resources with that logic ref then migrate to a fixed version without moving tokens. [EMERGENCY_MIGRATION.md](EMERGENCY_MIGRATION.md) is the procedure and its limits.
+
 ## Retiring the forwarder
 
 Retirement closes accounts for good, so on a live cluster it is done by hand. The closing instructions recover the rent of accounts EVM storage does not have, so they have no EVM counterpart; they are the owner's, who can already replace the program's code, and each refuses while the adapter is not paused. Once the adapter is paused, the owner signs, in order: `close_nonce_bitmaps_batch` over every nonce bitmap the forwarder owns (closing them ends wrap replay protection; the forwarder cannot be initialized again, its upgrade authority being its own PDA), `close_escrow` for each mint's escrow (drains it to a token account the owner names and closes it), then `close_config`, which also ends the forwarder's ownership: with no config, neither `upgrade` nor `reinitialize` can run. The program stays on chain, its upgrade authority its own PDA.

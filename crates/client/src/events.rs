@@ -39,7 +39,33 @@ pub struct InitializedEvent {
     pub version: u64,
 }
 
-/// One decoded SPL Token Forwarder event.
+/// The emergency-migrating build's `reinitialize` replaced the logic ref
+/// `previous_logic_ref` with `new_logic_ref`, as the EVM draft's
+/// `LogicRefReplaced`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LogicRefReplacedEvent {
+    pub previous_logic_ref: [u8; 32],
+    pub new_logic_ref: [u8; 32],
+}
+
+/// The emergency-migrating build migrated the resource with `nullifier`
+/// and the logic ref `vulnerable_logic_ref`, whose token's mint is `token`,
+/// as the EVM draft's `Migrated`. No tokens moved.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MigratedEvent {
+    pub token: [u8; 32],
+    pub vulnerable_logic_ref: [u8; 32],
+    pub nullifier: [u8; 32],
+}
+
+/// The emergency-migrating build's `reinitialize` listed `logic_ref` as
+/// vulnerable, as the EVM draft's `VulnerableLogicRefListed`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VulnerableLogicRefListedEvent {
+    pub logic_ref: [u8; 32],
+}
+
+/// One decoded SPL Token Forwarder event, of either build.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ForwarderEvent {
     Wrapped(WrappedEvent),
@@ -47,6 +73,9 @@ pub enum ForwarderEvent {
     Initialized(InitializedEvent),
     OwnershipTransferred(OwnershipTransferredEvent),
     Upgraded(UpgradedEvent),
+    LogicRefReplaced(LogicRefReplacedEvent),
+    Migrated(MigratedEvent),
+    VulnerableLogicRefListed(VulnerableLogicRefListedEvent),
 }
 
 /// Decode the instruction data of one SPL Token Forwarder event self-invocation.
@@ -78,6 +107,21 @@ fn forwarder_event_body(
         ForwarderEvent::OwnershipTransferred(decode_ownership_transferred(c)?)
     } else if disc == anchor_event_disc("Upgraded") {
         ForwarderEvent::Upgraded(decode_upgraded(c)?)
+    } else if disc == anchor_event_disc("LogicRefReplaced") {
+        ForwarderEvent::LogicRefReplaced(LogicRefReplacedEvent {
+            previous_logic_ref: c.array_32("previous_logic_ref")?,
+            new_logic_ref: c.array_32("new_logic_ref")?,
+        })
+    } else if disc == anchor_event_disc("Migrated") {
+        ForwarderEvent::Migrated(MigratedEvent {
+            token: c.array_32("token")?,
+            vulnerable_logic_ref: c.array_32("vulnerable_logic_ref")?,
+            nullifier: c.array_32("nullifier")?,
+        })
+    } else if disc == anchor_event_disc("VulnerableLogicRefListed") {
+        ForwarderEvent::VulnerableLogicRefListed(VulnerableLogicRefListedEvent {
+            logic_ref: c.array_32("logic_ref")?,
+        })
     } else {
         return Err(EventDecodeError::UnknownDiscriminator(disc));
     })
@@ -131,17 +175,39 @@ mod tests {
                     executable_hash: [5; 32],
                 }),
             ),
+            (
+                event("LogicRefReplaced", &[&[1; 32], &[2; 32]]),
+                ForwarderEvent::LogicRefReplaced(LogicRefReplacedEvent {
+                    previous_logic_ref: [1; 32],
+                    new_logic_ref: [2; 32],
+                }),
+            ),
+            (
+                event("Migrated", &[&[1; 32], &[2; 32], &[3; 32]]),
+                ForwarderEvent::Migrated(MigratedEvent {
+                    token: [1; 32],
+                    vulnerable_logic_ref: [2; 32],
+                    nullifier: [3; 32],
+                }),
+            ),
+            (
+                event("VulnerableLogicRefListed", &[&[4; 32]]),
+                ForwarderEvent::VulnerableLogicRefListed(VulnerableLogicRefListedEvent {
+                    logic_ref: [4; 32],
+                }),
+            ),
         ];
         for (data, expected) in &cases {
             assert_eq!(&decode_forwarder_event_instruction(data).unwrap(), expected);
         }
-        // The cases are the IDL's events: a variant for an event the program
-        // no longer emits fails here.
+        // The cases are the events of the emergency-migrating build, which
+        // emits the production build's and its own: a variant for an event
+        // neither build emits fails here.
         let decoded: std::collections::BTreeSet<String> = cases
             .iter()
             .map(|(_, e)| format!("{e:?}").split('(').next().unwrap().to_string())
             .collect();
-        let idl = crate::idl::idl();
+        let idl = crate::idl::emergency_migrating_idl();
         let declared: std::collections::BTreeSet<String> = idl["events"]
             .as_array()
             .unwrap()
@@ -167,12 +233,13 @@ mod tests {
         }
     }
 
-    /// The decoder reads every event the IDL declares field by field, in the
+    /// The decoder reads every event the emergency-migrating build's IDL
+    /// declares (the production build's and its own) field by field, in the
     /// IDL's order and widths: a body that ends inside a field names that
     /// field, and the whole body decodes.
     #[test]
     fn every_event_the_idl_declares_decodes_its_fields_in_order() {
-        let idl = crate::idl::idl();
+        let idl = crate::idl::emergency_migrating_idl();
         for e in idl["events"].as_array().unwrap() {
             let name = e["name"].as_str().unwrap();
             let mut body = Vec::new();

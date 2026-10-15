@@ -8,17 +8,23 @@ use solana_rpc_client::nonblocking::rpc_client::RpcClient;
 
 use crate::settlement::settlement_calls;
 
-/// The submitter's view of the forwarder `program`: `payer` pays for the
-/// accounts a call needs created. Everything else comes from the call, a
-/// wrap's signature included.
+/// The submitter's view of the forwarder `program`, which settlements of
+/// the adapter `protocol_adapter` call: `payer` pays for the accounts a call
+/// needs created. Everything else comes from the call, a wrap's signature
+/// included.
 pub struct SplTokenForwarder {
     pub program: Pubkey,
+    protocol_adapter: Pubkey,
     payer: Pubkey,
 }
 
 impl SplTokenForwarder {
-    pub fn new(program: Pubkey, payer: Pubkey) -> Self {
-        Self { program, payer }
+    pub fn new(program: Pubkey, protocol_adapter: Pubkey, payer: Pubkey) -> Self {
+        Self {
+            program,
+            protocol_adapter,
+            payer,
+        }
     }
 }
 
@@ -32,6 +38,7 @@ impl Forwarder for SplTokenForwarder {
         Box::pin(async move {
             Ok(settlement_calls(
                 &self.program,
+                &self.protocol_adapter,
                 &self.payer,
                 calls,
                 preceding_start,

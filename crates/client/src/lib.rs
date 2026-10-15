@@ -1,7 +1,9 @@
 //! Client bindings for the AnomaPay SPL Token Forwarder: the instructions it
 //! takes, the CPI segments a settlement passes it, its wire formats (the wrap
-//! authorization message, the wrap and unwrap inputs) and its events. The
-//! adapter's own bindings are anoma-pa-solana-client's.
+//! authorization message, the wrap, unwrap and migrate inputs) and its
+//! events. The emergency-migrating build's instructions are in
+//! [`emergency_migrating`]. The adapter's own bindings are
+//! anoma-pa-solana-client's.
 
 pub mod accounts;
 pub mod constants;
@@ -9,6 +11,8 @@ pub mod events;
 pub mod input;
 pub mod wrap_message;
 
+#[cfg(feature = "solana")]
+pub mod emergency_migrating;
 #[cfg(feature = "solana")]
 pub mod forwarder;
 #[cfg(feature = "solana")]
@@ -21,16 +25,18 @@ pub mod settlement;
 pub mod submitter;
 
 pub use accounts::{
-    decode_config, decode_nonce_bitmap, AccountDecodeError, ConfigAccount, NonceBitmapAccount,
+    decode_config, decode_migration_record, decode_nonce_bitmap, decode_vulnerable_logic_refs,
+    AccountDecodeError, ConfigAccount, MigrationRecordAccount, NonceBitmapAccount,
 };
 pub use constants::*;
 pub use events::{
-    decode_forwarder_event_instruction, ForwarderEvent, InitializedEvent, UnwrappedEvent,
-    WrappedEvent,
+    decode_forwarder_event_instruction, ForwarderEvent, InitializedEvent, LogicRefReplacedEvent,
+    MigratedEvent, UnwrappedEvent, VulnerableLogicRefListedEvent, WrappedEvent,
 };
 pub use input::{
-    decode_forwarder_input, encode_unwrap_forwarder_input, encode_wrap_forwarder_input,
-    ForwarderInput, InputError, UnwrapInput, WrapInput, OP_UNWRAP, OP_WRAP,
+    decode_forwarder_input, encode_migrate_forwarder_input, encode_unwrap_forwarder_input,
+    encode_wrap_forwarder_input, ForwarderInput, InputError, MigrateEntry, MigrateInput,
+    UnwrapInput, WrapInput, OP_MIGRATE, OP_UNWRAP, OP_WRAP,
 };
 pub use wrap_message::{sha256, WrapMessage, WRAP_MESSAGE_LEN};
 
@@ -57,6 +63,15 @@ mod idl {
         serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/idl/spl_token_forwarder.json"
+        )))
+        .unwrap()
+    }
+
+    /// The emergency-migrating build's IDL.
+    pub(crate) fn emergency_migrating_idl() -> serde_json::Value {
+        serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/idl/emergency_migrating_spl_token_forwarder.json"
         )))
         .unwrap()
     }

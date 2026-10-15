@@ -271,7 +271,7 @@ pub fn close_config_ix(
 /// The head of every forwarder CPI segment: the forwarder (segment marker),
 /// its config, the instructions sysvar, then the forwarder's event authority
 /// and the forwarder again, which its CPI events need.
-fn forwarder_segment_head(forwarder_program: &Pubkey) -> [AccountMeta; 5] {
+pub(crate) fn forwarder_segment_head(forwarder_program: &Pubkey) -> [AccountMeta; 5] {
     [
         AccountMeta::new_readonly(*forwarder_program, false),
         AccountMeta::new_readonly(derive_forwarder_config_pda(forwarder_program).0, false),

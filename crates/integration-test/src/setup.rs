@@ -35,6 +35,15 @@ use anomapay_spl_token_forwarder_client::submitter::SplTokenForwarder;
 /// the local addresses (`dev.sh test-program`), production and development.
 pub const FORWARDER_SO: &[u8] = include_bytes!("../programs/spl_token_forwarder.so");
 const FORWARDER_DEV_SO: &[u8] = include_bytes!("../programs/spl_token_forwarder_dev.so");
+/// The emergency-migrating build (`dev.sh test-program`), to which an owner
+/// upgrades the forwarder after a flaw in a circuit version.
+pub const FORWARDER_EMERGENCY_MIGRATING_SO: &[u8] =
+    include_bytes!("../programs/spl_token_forwarder_emergency_migrating.so");
+/// The emergency-migrating build with the development features
+/// (`dev_set_config_version`), with which a test runs `reinitialize` again
+/// as a later implementation's.
+pub const FORWARDER_EMERGENCY_MIGRATING_DEV_SO: &[u8] =
+    include_bytes!("../programs/spl_token_forwarder_emergency_migrating_dev.so");
 /// The previous release's production build, whose config held an emergency
 /// committee and caller: where an in-place upgrade to this release starts.
 const PREVIOUS_FORWARDER_SO: &[u8] = include_bytes!("../programs/previous/spl_token_forwarder.so");
@@ -173,15 +182,65 @@ pub async fn upgraded_from_the_previous_release() -> anyhow::Result<(LocalEnv, L
         .context("failed to initialize the previous release")?;
     let forwarder = serve(&mut env, program).await?;
 
-    give_sol(&env, &owner.pubkey(), 1_000_000_000)?;
-    let buffer = env.write_buffer(FORWARDER_SO, owner.pubkey()).await?;
-    env.send(
-        &upgrade_ixs(&program, &owner.pubkey(), &buffer, &owner.pubkey()),
-        &[&owner],
-    )
-    .await
-    .context("the owner failed to upgrade the previous release")?;
+    upgrade(&env, &program, &owner, FORWARDER_SO)
+        .await
+        .context("the owner failed to upgrade the previous release")?;
     Ok((env, LocalForwarder { forwarder, owner }))
+}
+
+/// `local`, upgraded in place by the owner to `build`, the emergency-migrating
+/// build (`FORWARDER_EMERGENCY_MIGRATING_SO`) or its development build, as
+/// after a flaw in a circuit version of the transfer resource; its
+/// `reinitialize` has not run.
+pub async fn upgraded_to(build: &[u8]) -> anyhow::Result<(LocalEnv, LocalForwarder)> {
+    let (env, local) = local().await?;
+    upgrade(&env, &local.forwarder.program, &local.owner, build)
+        .await
+        .context("the owner failed to upgrade the forwarder")?;
+    Ok((env, local))
+}
+
+/// The forwarder `program`'s owner upgrades it in place to `code`, through
+/// its `upgrade`, the owner writing and paying for the buffer. The program
+/// data first grows to hold `code`, as `ops.sh upgrade` extends it: by the
+/// shortfall, at least the loader's minimum extension.
+async fn upgrade<P>(
+    env: &Environment<P>,
+    program: &Pubkey,
+    owner: &Keypair,
+    code: &[u8],
+) -> anyhow::Result<()> {
+    give_sol(env, &owner.pubkey(), 1_000_000_000)?;
+    let program_data = env
+        .protocol_adapter
+        .rpc
+        .get_account_data(&anoma_pa_solana_client::derive_program_data_address(
+            program,
+        ))
+        .await
+        .with_context(|| format!("{program} has no program data"))?;
+    let held = program_data.len() - UpgradeableLoaderState::size_of_programdata_metadata();
+    if code.len() > held {
+        let shortfall = u32::try_from(code.len() - held)?
+            .max(solana_loader_v3_interface::instruction::MINIMUM_EXTEND_PROGRAM_BYTES);
+        env.send(
+            &[solana_loader_v3_interface::instruction::extend_program(
+                program,
+                Some(&owner.pubkey()),
+                shortfall,
+            )],
+            &[owner],
+        )
+        .await
+        .context("failed to extend the program data")?;
+    }
+    let buffer = env.write_buffer(code, owner.pubkey()).await?;
+    env.send(
+        &upgrade_ixs(program, &owner.pubkey(), &buffer, &owner.pubkey()),
+        &[owner],
+    )
+    .await?;
+    Ok(())
 }
 
 /// The e2e environment (`E2E_RUNTIME`) with the forwarder: on its own
@@ -246,7 +305,11 @@ async fn serve_mint<P>(
     let user = Keypair::new();
     fund(env, &program, &mint, &user, USER_TOKENS).await?;
 
-    let submitter = Arc::new(SplTokenForwarder::new(program, payer));
+    let submitter = Arc::new(SplTokenForwarder::new(
+        program,
+        env.protocol_adapter.program,
+        payer,
+    ));
     env.protocol_adapter
         .forwarders
         .register(program, submitter.clone());
@@ -423,10 +486,21 @@ pub async fn config<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::Result
 /// earlier build would have left it: the config `reinitialize` rotates once.
 pub async fn local_below_this_builds_version() -> anyhow::Result<(LocalEnv, LocalForwarder)> {
     let (env, local) = local_with(Build::Development).await?;
+    set_config_version(&env, &local, CONFIG_VERSION - 1).await?;
+    Ok((env, local))
+}
+
+/// The owner sets the config's version to `version` with the development
+/// builds' `dev_set_config_version`.
+pub async fn set_config_version<P>(
+    env: &Environment<P>,
+    local: &LocalForwarder,
+    version: u64,
+) -> anyhow::Result<()> {
     let (program, owner) = (local.forwarder.program, local.owner.pubkey());
     let mut data = anchor_instruction_disc("dev_set_config_version").to_vec();
-    data.extend_from_slice(&(CONFIG_VERSION - 1).to_le_bytes());
-    let lower = Instruction {
+    data.extend_from_slice(&version.to_le_bytes());
+    let set = Instruction {
         program_id: program,
         accounts: vec![
             AccountMeta::new_readonly(owner, true),
@@ -434,10 +508,10 @@ pub async fn local_below_this_builds_version() -> anyhow::Result<(LocalEnv, Loca
         ],
         data,
     };
-    env.send(&[lower], &[&local.owner])
+    env.send(&[set], &[&local.owner])
         .await
-        .context("failed to lower the config's version")?;
-    Ok((env, local))
+        .context("failed to set the config's version")?;
+    Ok(())
 }
 
 /// The forwarder `program`'s events in the transaction `executed`, in the

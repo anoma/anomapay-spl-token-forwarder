@@ -15,11 +15,15 @@ use anchor_lang::solana_program::program::invoke_signed;
 use solana_instructions_sysvar as ix_sysvar;
 
 pub mod ed25519;
+#[cfg(feature = "emergency-migrating")]
+pub mod emergency_migrating;
 mod error;
 pub mod state;
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "emergency-migrating")]
+pub use emergency_migrating::*;
 pub use error::ErrorCode;
 use protocol_adapter::state::UPGRADE_AUTHORITY_SEED;
 pub use state::*;
@@ -139,6 +143,7 @@ pub mod spl_token_forwarder {
     /// Resources under the previous ref leave through the new one once the
     /// kind table lists the previous version as its alias: a transaction
     /// converts them, and the new resource unwraps.
+    #[cfg(not(feature = "emergency-migrating"))]
     pub fn reinitialize(ctx: Context<OwnerOnly>, logic_ref: [u8; 32]) -> Result<()> {
         let config = &mut ctx.accounts.config;
         require!(
@@ -151,6 +156,36 @@ pub mod spl_token_forwarder {
         emit_cpi!(Initialized {
             version: CONFIG_VERSION
         });
+        Ok(())
+    }
+
+    /// The emergency-migrating build's `reinitialize`, as the EVM draft's
+    /// `reinitialize(newLogicRef, vulnerableLogicRefs)`: once, after the
+    /// owner upgrades the forwarder in place to this build, the owner lists
+    /// the vulnerable logic refs, at least one, each denied on both of the
+    /// adapter's denylists, and sets the logic ref, on neither, or keeps it.
+    /// Emits `VulnerableLogicRefListed` per ref, `LogicRefReplaced` when the
+    /// logic ref changes, then `Initialized`.
+    #[cfg(feature = "emergency-migrating")]
+    pub fn reinitialize(
+        ctx: Context<Reinitialize>,
+        new_logic_ref: [u8; 32],
+        vulnerable_logic_refs: Vec<[u8; 32]>,
+    ) -> Result<()> {
+        emergency_migrating::reinitialize(ctx, new_logic_ref, vulnerable_logic_refs)
+    }
+
+    /// Create the migration record of the resource with `nullifier`, paid by
+    /// whoever signs, unless it exists, when it does nothing. Permissionless,
+    /// as `init_nonce_bitmap`: the record holds nothing but whether the
+    /// resource migrated, and a migration requires it to exist, since the
+    /// adapter forwards no signer that could pay for it.
+    #[cfg(feature = "emergency-migrating")]
+    pub fn init_migration_record(
+        ctx: Context<InitMigrationRecord>,
+        _nullifier: [u8; 32],
+    ) -> Result<()> {
+        ctx.accounts.migration_record.bump = ctx.bumps.migration_record;
         Ok(())
     }
 
@@ -324,6 +359,8 @@ pub mod spl_token_forwarder {
         match *op {
             OP_WRAP => execute_wrap(&ctx, operand)?,
             OP_UNWRAP => execute_unwrap(&ctx, operand)?,
+            #[cfg(feature = "emergency-migrating")]
+            OP_MIGRATE => emergency_migrating::migrate(&ctx, operand)?,
             _ => return Err(ErrorCode::UnknownOperation.into()),
         }
 
@@ -444,16 +481,10 @@ fn require_token_account(token_account: &AccountInfo, mint: &Pubkey, owner: &Pub
     Ok(())
 }
 
-/// Every closing instruction requires the adapter to be paused: the state
-/// account's address derives from the configured adapter, and the paused
-/// flag is read through the adapter's type.
+/// Every closing instruction requires the adapter to be paused.
 fn require_paused_adapter(config: &Config, pa_state: &AccountInfo) -> Result<()> {
     require!(
-        pa_state.key() == derive_pa_state_pda(&config.protocol_adapter).0,
-        ErrorCode::InvalidPaState
-    );
-    require!(
-        pa_is_paused(&pa_state.try_borrow_data()?)?,
+        read_pa_state(config, pa_state)?.paused,
         ErrorCode::ProtocolAdapterNotPaused
     );
     Ok(())
@@ -716,6 +747,55 @@ pub struct OwnerOnly<'info> {
 
     #[account(mut, address = CONFIG_PDA)]
     pub config: Account<'info, Config>,
+}
+
+/// The emergency-migrating build's `reinitialize`: the owner, who pays for
+/// the listed refs, the config, the vulnerable logic refs, created at the
+/// first incident, and the adapter's state, whose denylists it checks.
+#[cfg(feature = "emergency-migrating")]
+#[event_cpi]
+#[derive(Accounts)]
+pub struct Reinitialize<'info> {
+    #[account(
+        mut,
+        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
+        constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
+    )]
+    pub authority: Signer<'info>,
+
+    #[account(mut, address = CONFIG_PDA)]
+    pub config: Account<'info, Config>,
+
+    /// CHECK: The vulnerable logic refs, which the seeds pin: empty until
+    /// the first incident's `reinitialize` creates them, which grows them at
+    /// every later one.
+    #[account(mut, seeds = [VULNERABLE_LOGIC_REFS_SEED], bump)]
+    pub vulnerable_logic_refs: UncheckedAccount<'info>,
+
+    /// CHECK: The adapter's state, which `read_pa_state` checks against the
+    /// config's adapter.
+    pub pa_state: UncheckedAccount<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[cfg(feature = "emergency-migrating")]
+#[derive(Accounts)]
+#[instruction(nullifier: [u8; 32])]
+pub struct InitMigrationRecord<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = MigrationRecord::ACCOUNT_SIZE,
+        seeds = [MIGRATION_RECORD_SEED, nullifier.as_ref()],
+        bump
+    )]
+    pub migration_record: Account<'info, MigrationRecord>,
+
+    pub system_program: Program<'info, System>,
 }
 
 #[event_cpi]

@@ -11,6 +11,10 @@ pub const OP_WRAP: u8 = 0;
 /// Op byte prepended to `UnwrapInput`-shaped instruction data.
 pub const OP_UNWRAP: u8 = 1;
 
+/// Op byte prepended to `MigrateInput`-shaped instruction data, which only
+/// the emergency-migrating build accepts.
+pub const OP_MIGRATE: u8 = 2;
+
 /// Build the 186-byte forwarder instruction data for the wrap `input`.
 ///
 /// Layout: `op(1) + token_mint(32) + amount_le(8) + user(32) + nonce_le(8) +
@@ -46,12 +50,59 @@ pub fn encode_unwrap_forwarder_input(
     buf
 }
 
+/// Build the forwarder instruction data for the migration `input`, which
+/// the emergency-migrating build accepts.
+///
+/// Layout: `op(1) + token_mint(32) + quantity_le(8) +
+/// entry_count_le_u32(4)`, then per entry `nullifier(32) +
+/// commitment_tree_root(32) + vulnerable_logic_ref(32) + forwarder(32)`:
+/// the Borsh encoding of the program's `MigrateInput` after the op byte.
+pub fn encode_migrate_forwarder_input(input: &MigrateInput) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(1 + 32 + 8 + 4 + 128 * input.entries.len());
+    buf.push(OP_MIGRATE);
+    buf.extend_from_slice(&input.token_mint);
+    buf.extend_from_slice(&input.quantity.to_le_bytes());
+    let count = u32::try_from(input.entries.len()).expect("a batch holds fewer than 2^32 entries");
+    buf.extend_from_slice(&count.to_le_bytes());
+    for entry in &input.entries {
+        buf.extend_from_slice(&entry.nullifier);
+        buf.extend_from_slice(&entry.commitment_tree_root);
+        buf.extend_from_slice(&entry.vulnerable_logic_ref);
+        buf.extend_from_slice(&entry.forwarder);
+    }
+    buf
+}
+
 /// A forwarder call's instruction data, decoded: what a submitter reads from
 /// the call a proof commits to supply its accounts.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ForwarderInput {
     Wrap(WrapInput),
     Unwrap(UnwrapInput),
+    Migrate(MigrateInput),
+}
+
+/// A migration's input, the EVM draft's `(IERC20 token, uint128 quantity,
+/// MigrateEntry[] entries)`: the forwarder records the entries' nullifiers,
+/// which moves no tokens. `quantity` is the batch's total in SPL Token's
+/// width, which the trigger's logic checks and the forwarder does not read.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MigrateInput {
+    pub token_mint: [u8; 32],
+    pub quantity: u64,
+    pub entries: Vec<MigrateEntry>,
+}
+
+/// One resource of a migration batch, as the EVM draft's `MigrateEntry`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MigrateEntry {
+    pub nullifier: [u8; 32],
+    /// The commitment tree root the resource is proven against.
+    pub commitment_tree_root: [u8; 32],
+    /// The resource's logic ref, which the forwarder lists as vulnerable.
+    pub vulnerable_logic_ref: [u8; 32],
+    /// The forwarder in the resource's label.
+    pub forwarder: [u8; 32],
 }
 
 /// A wrap's input: the forwarder escrows `amount` of `token_mint` from
@@ -109,7 +160,8 @@ pub struct UnwrapInput {
 /// The instruction data is not a wrap's or an unwrap's.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InputError {
-    /// The op byte is neither `OP_WRAP` nor `OP_UNWRAP`, or there is none.
+    /// The op byte is none of `OP_WRAP`, `OP_UNWRAP` and `OP_MIGRATE`, or
+    /// there is none.
     UnknownOp(Option<u8>),
     /// The input after the op byte has the wrong length for its op.
     Length { op: u8, len: usize },
@@ -146,6 +198,35 @@ fn read_wrap(input: &mut Cursor) -> Result<WrapInput, Truncated> {
     })
 }
 
+/// A migration's input after the op byte, which must end with its last
+/// entry; None when it holds fewer or more bytes than its entry count
+/// names.
+fn read_migrate(input: &[u8]) -> Option<MigrateInput> {
+    let mut cursor = Cursor::new(input, 0);
+    let token_mint = cursor.array_32("token_mint").ok()?;
+    let quantity = cursor.u64_le("quantity").ok()?;
+    let count = cursor.u32_le("entry_count").ok()? as usize;
+    if cursor.remaining() != 128 * count {
+        return None;
+    }
+    let mut entry = || -> Result<MigrateEntry, Truncated> {
+        Ok(MigrateEntry {
+            nullifier: cursor.array_32("nullifier")?,
+            commitment_tree_root: cursor.array_32("commitment_tree_root")?,
+            vulnerable_logic_ref: cursor.array_32("vulnerable_logic_ref")?,
+            forwarder: cursor.array_32("forwarder")?,
+        })
+    };
+    let entries = (0..count)
+        .map(|_| entry().expect("the remaining bytes hold every entry"))
+        .collect();
+    Some(MigrateInput {
+        token_mint,
+        quantity,
+        entries,
+    })
+}
+
 fn read_unwrap(input: &mut Cursor) -> Result<UnwrapInput, Truncated> {
     Ok(UnwrapInput {
         token_mint: input.array_32("token_mint")?,
@@ -165,6 +246,12 @@ pub fn decode_forwarder_input(data: &[u8]) -> Result<ForwarderInput, InputError>
         OP_UNWRAP if input.len() == 72 => Ok(ForwarderInput::Unwrap(
             read_unwrap(&mut cursor).expect("a 72-byte input holds every unwrap field"),
         )),
+        OP_MIGRATE => read_migrate(input)
+            .map(ForwarderInput::Migrate)
+            .ok_or(InputError::Length {
+                op,
+                len: input.len(),
+            }),
         OP_WRAP | OP_UNWRAP => Err(InputError::Length {
             op,
             len: input.len(),
@@ -258,5 +345,70 @@ mod tests {
             decode_forwarder_input(&[]),
             Err(InputError::UnknownOp(None))
         );
+    }
+
+    fn migrate_input(entries: usize) -> MigrateInput {
+        MigrateInput {
+            token_mint: [1; 32],
+            quantity: 300,
+            entries: (0..entries as u8)
+                .map(|i| MigrateEntry {
+                    nullifier: [10 + i; 32],
+                    commitment_tree_root: [20 + i; 32],
+                    vulnerable_logic_ref: [30 + i; 32],
+                    forwarder: [40 + i; 32],
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn migrate_input_layout_is_the_header_then_128_bytes_per_entry() {
+        let bytes = encode_migrate_forwarder_input(&migrate_input(2));
+        // Pin the wire layout field by field: the emergency-migrating
+        // build's Borsh `MigrateInput` parses these bytes after the op byte,
+        // and the trigger's logic commits them.
+        assert_eq!(bytes.len(), 1 + 32 + 8 + 4 + 2 * 128);
+        assert_eq!(bytes[0], OP_MIGRATE);
+        assert_eq!(&bytes[1..33], &[1u8; 32], "token_mint");
+        assert_eq!(
+            u64::from_le_bytes(bytes[33..41].try_into().unwrap()),
+            300,
+            "quantity (LE)"
+        );
+        assert_eq!(
+            u32::from_le_bytes(bytes[41..45].try_into().unwrap()),
+            2,
+            "entry count (LE)"
+        );
+        assert_eq!(&bytes[45..77], &[10u8; 32], "first nullifier");
+        assert_eq!(&bytes[77..109], &[20u8; 32], "first root");
+        assert_eq!(&bytes[109..141], &[30u8; 32], "first logic ref");
+        assert_eq!(&bytes[141..173], &[40u8; 32], "first forwarder");
+        assert_eq!(&bytes[173..205], &[11u8; 32], "second nullifier");
+    }
+
+    #[test]
+    fn the_decoder_reads_a_migration_of_exactly_its_entries() {
+        for entries in [0, 1, 3] {
+            let bytes = encode_migrate_forwarder_input(&migrate_input(entries));
+            assert_eq!(
+                decode_forwarder_input(&bytes),
+                Ok(ForwarderInput::Migrate(migrate_input(entries)))
+            );
+        }
+        let bytes = encode_migrate_forwarder_input(&migrate_input(2));
+        for wrong in [
+            &bytes[..bytes.len() - 1],
+            &[bytes.as_slice(), &[0]].concat(),
+        ] {
+            assert_eq!(
+                decode_forwarder_input(wrong),
+                Err(InputError::Length {
+                    op: OP_MIGRATE,
+                    len: wrong.len() - 1
+                })
+            );
+        }
     }
 }

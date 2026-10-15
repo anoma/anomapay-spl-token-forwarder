@@ -75,17 +75,42 @@ impl PreviousConfig {
 /// The config version this build initializes to and reinitializes to, as
 /// the `n` of an OpenZeppelin `reinitializer(n)`. A build that rotates the
 /// logic ref raises it by one, so its `reinitialize` runs once.
+#[cfg(not(feature = "emergency-migrating"))]
 #[constant]
 pub const CONFIG_VERSION: u64 = 5;
 
-/// Whether the Protocol Adapter is paused, read from its state account
-/// through the adapter's own account type. Data that is not a PA state
-/// account (wrong discriminator, truncated, unknown layout) is an error,
-/// never "not paused".
-pub fn pa_is_paused(pa_state_data: &[u8]) -> Result<bool> {
-    let state = PAStateAccount::try_deserialize(&mut &pa_state_data[..])
+/// The config version the emergency-migrating build reinitializes to: one
+/// more than the release it upgrades, as the EVM draft's `reinitializer(2)`
+/// is one more than `ERC20Forwarder.initialize`'s version, so its
+/// `reinitialize` runs once.
+#[cfg(feature = "emergency-migrating")]
+#[constant]
+pub const CONFIG_VERSION: u64 = 6;
+
+/// The adapter's state, read from `pa_state` through the adapter's own
+/// account type: the account must be the state account of the adapter the
+/// config names.
+pub fn read_pa_state(config: &Config, pa_state: &AccountInfo) -> Result<PAStateAccount> {
+    require_keys_eq!(
+        pa_state.key(),
+        derive_pa_state_pda(&config.protocol_adapter).0,
+        crate::ErrorCode::InvalidPaState
+    );
+    decode_pa_state(&pa_state.try_borrow_data()?)
+}
+
+/// A PA state account's data, decoded through the adapter's own account
+/// type. Data that is not a PA state account in the layout the adapter this
+/// build pairs with writes (wrong discriminator, truncated, another schema
+/// version) is an error, never a state.
+pub fn decode_pa_state(data: &[u8]) -> Result<PAStateAccount> {
+    let state = PAStateAccount::try_deserialize(&mut &data[..])
         .map_err(|_| crate::ErrorCode::InvalidPaState)?;
-    Ok(state.paused)
+    require!(
+        state.schema_version == protocol_adapter::state::SCHEMA_VERSION,
+        crate::ErrorCode::InvalidPaState
+    );
+    Ok(state)
 }
 
 /// Derive the PA state PDA address from the PA program ID.

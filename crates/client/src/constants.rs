@@ -8,6 +8,14 @@ pub const FORWARDER_WRAP_NUM_ACCOUNTS: u8 = 10;
 /// (`build_unwrap_forwarder_accounts`).
 pub const FORWARDER_UNWRAP_NUM_ACCOUNTS: u8 = 9;
 
+/// The number of accounts in the forwarder CPI segment of a migration of
+/// `entries` resources (`emergency_migrating::build_migrate_forwarder_accounts`):
+/// the segment head, the adapter's state and the vulnerable logic refs, then
+/// three per entry. None when it exceeds the `u8` an external call commits.
+pub fn forwarder_migrate_num_accounts(entries: usize) -> Option<u8> {
+    u8::try_from(entries.checked_mul(3)?.checked_add(7)?).ok()
+}
+
 /// Nonces per nonce-bitmap account. The bitmap for `nonce` is the one for
 /// word `nonce / NONCES_PER_WORD`.
 pub const NONCES_PER_WORD: u64 = 256;

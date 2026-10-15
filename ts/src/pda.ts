@@ -49,6 +49,36 @@ export function deriveNonceBitmapPda(
   );
 }
 
+/** Derive the emergency-migrating build's vulnerable logic refs. Seed: `["vulnerable_logic_refs"]`. */
+export function deriveVulnerableLogicRefsPda(forwarderProgram: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([new TextEncoder().encode("vulnerable_logic_refs")], forwarderProgram);
+}
+
+/** Derive the emergency-migrating build's record of the resource with `nullifier`. Seed: `["migration_record", nullifier]`. */
+export function deriveMigrationRecordPda(forwarderProgram: PublicKey, nullifier: Uint8Array): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([new TextEncoder().encode("migration_record"), nullifier], forwarderProgram);
+}
+
+/** Derive the adapter's state account, which a migration reads. Seed: `["pa_state"]`. */
+export function derivePaStatePda(protocolAdapter: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([new TextEncoder().encode("pa_state")], protocolAdapter);
+}
+
+/** Derive the adapter's marker of the historical root `root`. Seed: `["root", pa_state, root]`. */
+export function deriveAdapterRootMarkerPda(protocolAdapter: PublicKey, root: Uint8Array): [PublicKey, number] {
+  const [paState] = derivePaStatePda(protocolAdapter);
+  return PublicKey.findProgramAddressSync([new TextEncoder().encode("root"), paState.toBuffer(), root], protocolAdapter);
+}
+
+/** Derive the adapter's marker of the spent nullifier `nullifier`. Seed: `["nullifier", pa_state, nullifier]`. */
+export function deriveAdapterNullifierPda(protocolAdapter: PublicKey, nullifier: Uint8Array): [PublicKey, number] {
+  const [paState] = derivePaStatePda(protocolAdapter);
+  return PublicKey.findProgramAddressSync(
+    [new TextEncoder().encode("nullifier"), paState.toBuffer(), nullifier],
+    protocolAdapter,
+  );
+}
+
 /**
  * Derive a program's event authority PDA. Seed: `["__event_authority"]`.
  *
