@@ -1,5 +1,5 @@
 //! Wraps and unwraps through the forwarder, settled by the adapter, on the
-//! local environment and a devnet fork.
+//! local environment and the e2e environment.
 
 use anoma_pa_solana_integration_test::envs::common::environment::Environment;
 use anoma_pa_testkit::environment::Prover;

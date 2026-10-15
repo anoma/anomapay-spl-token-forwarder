@@ -41,7 +41,7 @@ Escrow, nonce bitmaps and the committee are untouched. The instruction emits `In
 
 ## Checking a devnet deployment with a wrap and an unwrap
 
-`./scripts/dev.sh integration-test --e2e` settles a wrap and an unwrap with real proofs on a fork of devnet, against the forwarder and the adapter devnet runs and the state they hold (`crates/integration-test/tests/wrap_unwrap.rs`). It needs `DEVNET_RPC_URL` and the proving queue (`QUEUE_BASE_URL`, `QUEUE_AUTH_TOKEN`); it checks first that the devnet forwarder serves the devnet adapter and the logic ref the tests build.
+`./scripts/dev.sh integration-test --e2e` settles a wrap and an unwrap with real proofs (`crates/integration-test/tests/wrap_unwrap.rs`), proven by the queue (`QUEUE_BASE_URL`, `QUEUE_AUTH_TOKEN`) or on this machine (`E2E_PROVER=local`). By default it runs on a local runtime, where devnet's Groth16 verifier checks the proofs and the forwarder is deployed and initialized for the logic ref the tests build. With `E2E_RUNTIME=devnet` and `DEVNET_RPC_URL` it runs on a fork of devnet, against the forwarder and the adapter devnet runs and the state they hold; it checks first that the devnet forwarder serves the devnet adapter and that logic ref.
 
 ## Upgrading the forwarder
 
