@@ -1,7 +1,6 @@
 //! The forwarder on one of the adapter harness's environments, as the
 //! ERC20 forwarder's tests add theirs to pa-evm's.
 
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use anoma_pa_solana_client::anchor_instruction_disc;
@@ -68,16 +67,14 @@ fn forwarder_address(env_file: &str) -> anyhow::Result<Pubkey> {
         .with_context(|| format!("FORWARDER_PROGRAM_ID={value} is not base58"))
 }
 
-/// The forwarder on an environment, serving the logic `L`: the submitter
-/// registered with the adapter, a mint it serves, and a user holding the
-/// mint's tokens who has approved the forwarder's escrow authority as
-/// delegate.
-pub struct Forwarder<L = TransferLogic> {
+/// The forwarder on an environment: the submitter registered with the
+/// adapter, a mint it serves, and a user holding the mint's tokens who has
+/// approved the forwarder's escrow authority as delegate.
+pub struct Forwarder {
     pub submitter: Arc<SplTokenForwarder>,
     pub program: Pubkey,
     pub mint: Pubkey,
     pub user: Keypair,
-    logic: PhantomData<L>,
 }
 
 /// The forwarder as a test deploys it: also the owner it was initialized
@@ -257,6 +254,19 @@ pub async fn upgrade<P>(
     Ok(())
 }
 
+/// The e2e environment (`E2E_RUNTIME`), and the runtime it runs on.
+#[cfg(feature = "e2e")]
+async fn e2e_environment() -> anyhow::Result<(
+    anoma_pa_solana_integration_test::envs::e2e::Environment,
+    anoma_pa_solana_integration_test::envs::e2e::E2eRuntime,
+)> {
+    use anoma_pa_solana_integration_test::envs::e2e::{E2eConfig, Environment};
+
+    let e2e_config = E2eConfig::from_env().context("failed to parse e2e test config")?;
+    let env = Environment::setup(&e2e_config).await?;
+    Ok((env, e2e_config.runtime))
+}
+
 /// The e2e environment (`E2E_RUNTIME`) with the forwarder: on its own
 /// runtime, the forwarder deployed and initialized for the adapter and the
 /// transfer resource's logic ref, as the local environment's; on a fork of
@@ -267,16 +277,11 @@ pub async fn e2e() -> anyhow::Result<(
     anoma_pa_solana_integration_test::envs::e2e::Environment,
     Forwarder,
 )> {
-    use anoma_pa_solana_integration_test::envs::e2e::{E2eConfig, E2eRuntime, Environment};
+    use anoma_pa_solana_integration_test::envs::e2e::E2eRuntime;
 
-    let e2e_config = E2eConfig::from_env().context("failed to parse e2e test config")?;
-    let mut env = Environment::setup(&e2e_config).await?;
-    let program = match e2e_config.runtime {
-        E2eRuntime::Local => {
-            let program = deploy(&env, Build::Production)?;
-            initialize(&env, program).await?;
-            program
-        }
+    let (mut env, runtime) = e2e_environment().await?;
+    let forwarder = match runtime {
+        E2eRuntime::Local => owned(&mut env, Build::Production).await?.forwarder,
         E2eRuntime::Devnet { .. } => {
             let program = forwarder_address(DEVNET)?;
             let config = config(&env, &program).await?;
@@ -292,10 +297,9 @@ pub async fn e2e() -> anyhow::Result<(
                 anoma_rm_risc0::Digest::from_bytes(config.logic_ref),
                 crate::logic::logic_ref()
             );
-            program
+            serve(&mut env, program).await?
         }
     };
-    let forwarder = serve(&mut env, program).await?;
     Ok((env, forwarder))
 }
 
@@ -308,10 +312,7 @@ pub async fn e2e_owned() -> anyhow::Result<(
     anoma_pa_solana_integration_test::envs::e2e::Environment,
     OwnedForwarder,
 )> {
-    use anoma_pa_solana_integration_test::envs::e2e::{E2eConfig, Environment};
-
-    let e2e_config = E2eConfig::from_env().context("failed to parse e2e test config")?;
-    let mut env = Environment::setup(&e2e_config).await?;
+    let (mut env, _) = e2e_environment().await?;
     let owned = owned(&mut env, Build::Production).await?;
     Ok((env, owned))
 }
@@ -350,7 +351,6 @@ async fn serve_mint<P>(
         program,
         mint,
         user,
-        logic: PhantomData,
     })
 }
 
@@ -598,18 +598,14 @@ pub struct ProvenWrap {
     pub signed_message: Vec<u8>,
 }
 
-impl<L: Logic> Forwarder<L> {
-    /// The forwarder once its `reinitialize` moved it to the logic `M`.
-    pub fn serving<M: Logic>(self) -> Forwarder<M> {
-        Forwarder {
-            submitter: self.submitter,
-            program: self.program,
-            mint: self.mint,
-            user: self.user,
-            logic: PhantomData,
-        }
-    }
+/// A proven migration and the resource of the emergency-migrating logic it
+/// creates.
+pub struct ProvenMigration {
+    pub tx: Transaction,
+    pub created: Resource,
+}
 
+impl Forwarder {
     /// A wrap of `amount` from the user into a resource `owner` holds, under
     /// the forwarder nonce `nonce`, proven on `env`. `seed` makes its
     /// resources distinct from every other wrap's.
@@ -670,7 +666,7 @@ impl<L: Logic> Forwarder<L> {
         ed25519_ix_index: u8,
         seed: &str,
     ) -> anyhow::Result<fixtures::WrapData> {
-        fixtures::wrap::<L>(
+        fixtures::wrap(
             self.program,
             self.mint,
             &self.user,
@@ -702,18 +698,16 @@ impl<L: Logic> Forwarder<L> {
         Ok(wrap.created)
     }
 
-    /// An unwrap of `wrapped`, a resource `owner` holds in the adapter's
-    /// commitment tree, to `recipient`'s token account, proven on `env`.
-    pub async fn prove_unwrap<P>(
+    /// An unwrap of `wrapped`, a resource of the logic `L` that `owner`
+    /// holds in the adapter's commitment tree, to `recipient`'s token
+    /// account, proven on `env`.
+    pub async fn prove_unwrap<L: Logic, P: Prover>(
         &self,
         env: &Environment<P>,
         wrapped: Resource,
         owner: &ShieldedOwner,
         recipient: Pubkey,
-    ) -> anyhow::Result<Transaction>
-    where
-        P: Prover,
-    {
+    ) -> anyhow::Result<Transaction> {
         let path = env
             .protocol_adapter
             .commitment_tree
@@ -723,19 +717,46 @@ impl<L: Logic> Forwarder<L> {
         prove_actions(env, &[unwrap]).await
     }
 
+    /// `owner` unwraps `wrapped`, a resource of the logic `L` holding
+    /// `amount`, to a fresh recipient, settled on `env`: the escrow releases
+    /// `amount` to the recipient's token account.
+    pub async fn unwraps<L: Logic, P: Prover>(
+        &self,
+        env: &mut Environment<P>,
+        wrapped: Resource,
+        owner: &ShieldedOwner,
+        amount: u64,
+    ) -> anyhow::Result<()> {
+        let escrow = self.escrow_account();
+        let escrow_before = balance(env, &escrow).await?;
+        let recipient = Keypair::new().pubkey();
+        let tx = self
+            .prove_unwrap::<L, P>(env, wrapped, owner, recipient)
+            .await?;
+        execute_tx(env, tx).await?;
+        let received = balance(env, &get_associated_token_address(&recipient, &self.mint)).await?;
+        anyhow::ensure!(
+            received == amount,
+            "the unwrap released {received} to the recipient, not {amount}"
+        );
+        let escrow_after = balance(env, &escrow).await?;
+        anyhow::ensure!(
+            escrow_after == escrow_before - amount,
+            "the escrow holds {escrow_after} after the unwrap, not {escrow_before} - {amount}"
+        );
+        Ok(())
+    }
+
     /// The user wraps `amount` into a resource a shielded owner holds, then
     /// the owner unwraps it to a fresh recipient, both settled on `env`: the
     /// user's tokens move into escrow, then out to the recipient. `seed`
     /// makes the resources distinct from every other wrap's.
-    pub async fn wraps_then_unwraps<P>(
+    pub async fn wraps_then_unwraps<P: Prover>(
         &self,
         env: &mut Environment<P>,
         amount: u64,
         seed: &str,
-    ) -> anyhow::Result<()>
-    where
-        P: Prover,
-    {
+    ) -> anyhow::Result<()> {
         let owner = ShieldedOwner::seeded(&format!("{seed}/owner"));
         let (user, escrow) = (self.user_account(), self.escrow_account());
         let user_before = balance(env, &user).await?;
@@ -747,13 +768,31 @@ impl<L: Logic> Forwarder<L> {
         anyhow::ensure!(balance(env, &user).await? == user_before - amount);
         anyhow::ensure!(balance(env, &escrow).await? == escrow_before + amount);
 
-        let recipient = Keypair::new().pubkey();
-        let tx = self.prove_unwrap(env, wrapped, &owner, recipient).await?;
-        execute_tx(env, tx).await?;
-        let recipient_account = get_associated_token_address(&recipient, &self.mint);
-        anyhow::ensure!(balance(env, &recipient_account).await? == amount);
-        anyhow::ensure!(balance(env, &escrow).await? == escrow_before);
-        Ok(())
+        self.unwraps::<TransferLogic, P>(env, wrapped, &owner, amount)
+            .await
+    }
+
+    /// A migration of `wrapped`, resources under this forwarder's label that
+    /// `owner` holds in the adapter's commitment tree, into one resource of
+    /// the emergency-migrating logic `owner` holds, proven on `env`. `seed`
+    /// makes its resources distinct from every other migration's.
+    pub async fn prove_migration<P: Prover>(
+        &self,
+        env: &Environment<P>,
+        wrapped: &[Resource],
+        owner: &ShieldedOwner,
+        seed: &str,
+    ) -> anyhow::Result<ProvenMigration> {
+        let tree = &env.protocol_adapter.commitment_tree;
+        let wrapped = wrapped
+            .iter()
+            .map(|resource| Ok((*resource, tree.path_to(resource.commitment())?)))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let migration = fixtures::migrate(self.program, self.mint, wrapped, owner, seed)?;
+        Ok(ProvenMigration {
+            tx: prove_actions(env, &[migration.witnesses]).await?,
+            created: migration.created,
+        })
     }
 
     /// Has `env`'s adapter pass this forwarder's calls what `rewrite` makes

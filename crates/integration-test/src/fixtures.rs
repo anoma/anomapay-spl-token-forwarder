@@ -1,6 +1,6 @@
 //! AnomaPay wrap, unwrap and migration actions, built with
 //! anomapay-solana-resource's action builders and wrapped as pa-testkit
-//! action witnesses. Each is of a logic `L` the forwarder serves.
+//! action witnesses.
 
 use anoma_pa_testkit::witness::ActionWitnesses;
 use anoma_rm_risc0::Digest;
@@ -11,16 +11,16 @@ use anoma_rm_risc0::resource::Resource;
 use anoma_rm_risc0_gadgets::authority::{AuthoritySigningKey, AuthorityVerifyingKey};
 use anoma_rm_risc0_gadgets::encryption::{SecretKey, generate_public_key};
 use anyhow::Context;
+use emergency_migrating_transfer_library::EmergencyMigratingTransferLogic;
 use emergency_migrating_transfer_library::action::migrate as migrate_action;
-use emergency_migrating_transfer_witness::{
-    EMERGENCY_MIGRATING_AUTH_SIGNATURE_DOMAIN, MigrateEntry,
-};
+use emergency_migrating_transfer_witness::MigrateEntry;
 use k256::AffinePoint;
 use k256::elliptic_curve::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 use surfpool_sdk::Pubkey;
+use transfer_library::TransferLogic;
 use transfer_library::action::{self, ComplianceParams, Owner, TransferAction, WrapAuth};
 use transfer_witness::{LabelInfo, ValueInfo, WrapAuthInfo};
 
@@ -65,6 +65,14 @@ impl ShieldedOwner {
             },
             auth_sk,
         }
+    }
+}
+
+/// The label of the forwarder `forwarder`'s resources of `mint`.
+fn label(forwarder: Pubkey, mint: Pubkey) -> LabelInfo {
+    LabelInfo {
+        forwarder_program_id: forwarder.to_bytes(),
+        spl_token_mint: mint.to_bytes(),
     }
 }
 
@@ -113,10 +121,10 @@ pub struct WrapTerms {
 }
 
 /// A wrap through the forwarder `forwarder` of `terms.amount` of `mint`,
-/// from `user`'s token account into a resource of `L` that `owner` holds,
-/// proven against `kind_table`. `seed` makes the action's resources distinct
-/// from every other test's.
-pub fn wrap<L: Logic>(
+/// from `user`'s token account into a resource `owner` holds, proven against
+/// `kind_table`. `seed` makes the action's resources distinct from every
+/// other test's.
+pub fn wrap(
     forwarder: Pubkey,
     mint: Pubkey,
     user: &Keypair,
@@ -125,11 +133,8 @@ pub fn wrap<L: Logic>(
     kind_table: &KindTable,
     seed: &str,
 ) -> anyhow::Result<WrapData> {
-    let wrap = action::wrap::<L>(
-        LabelInfo {
-            forwarder_program_id: forwarder.to_bytes(),
-            spl_token_mint: mint.to_bytes(),
-        },
+    let wrap = action::wrap::<TransferLogic>(
+        label(forwarder, mint),
         terms.amount,
         label_hash(&format!("{seed}/ephemeral-nonce")),
         owner.keys.clone(),
@@ -181,10 +186,7 @@ pub fn unwrap<L: Logic>(
     path: MerklePath,
 ) -> anyhow::Result<ActionWitnesses> {
     let unwrap = action::unwrap::<L>(
-        LabelInfo {
-            forwarder_program_id: forwarder.to_bytes(),
-            spl_token_mint: mint.to_bytes(),
-        },
+        label(forwarder, mint),
         wrapped,
         owner.keys.clone(),
         recipient.to_bytes(),
@@ -219,26 +221,32 @@ pub struct MigrationData {
     pub created: Resource,
 }
 
-/// A migration of `entries`, resources `owner` holds, into one resource of
-/// the emergency-migrating logic `recipient` holds, under the label of
-/// `forwarder` and `mint`. `seed` makes the action's resources distinct from
-/// every other test's.
+/// A migration of `wrapped`, resources `owner` holds under the label of
+/// `forwarder` and `mint`, each with its path in the adapter's commitment
+/// tree, into one resource of the emergency-migrating logic `owner` holds.
+/// `seed` makes the action's resources distinct from every other test's.
 pub fn migrate(
     forwarder: Pubkey,
     mint: Pubkey,
-    entries: Vec<MigrateEntry>,
+    wrapped: Vec<(Resource, MerklePath)>,
     owner: &ShieldedOwner,
-    recipient: &ShieldedOwner,
     seed: &str,
 ) -> anyhow::Result<MigrationData> {
-    let migration = migrate_action(
-        LabelInfo {
+    let entries = wrapped
+        .into_iter()
+        .map(|(resource, path)| MigrateEntry {
+            resource,
+            nf_key: owner.keys.nf_key.clone(),
+            path,
+            value_info: owner.keys.value.clone(),
             forwarder_program_id: forwarder.to_bytes(),
-            spl_token_mint: mint.to_bytes(),
-        },
+        })
+        .collect();
+    let migration = migrate_action(
+        label(forwarder, mint),
         entries,
         label_hash(&format!("{seed}/ephemeral-nonce")),
-        recipient.keys.clone(),
+        owner.keys.clone(),
         label_hash(&format!("{seed}/rand-seed")),
     )
     .map_err(|e| anyhow::anyhow!("{e:?}"))
@@ -248,9 +256,10 @@ pub fn migrate(
         .action_tree_root()
         .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to compute the migration's action tree root")?;
-    let auth_sig = owner
-        .auth_sk
-        .sign(EMERGENCY_MIGRATING_AUTH_SIGNATURE_DOMAIN, root.as_bytes());
+    let auth_sig = owner.auth_sk.sign(
+        auth_signature_domain::<EmergencyMigratingTransferLogic>(),
+        root.as_bytes(),
+    );
     let action = migration
         .action(
             auth_sig,

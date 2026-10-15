@@ -31,10 +31,11 @@ anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "8897446
 anomapay-spl-token-forwarder-client = { path = "../client", features = ["rpc"] }
 anoma-rm-risc0 = { version = "=2.0.0-rc.7", default-features = false, features = ["transaction"] }
 anoma-rm-risc0-gadgets = "=2.0.0-rc.7"
-# The AnomaPay transfer resource whose logic ref (25ff6c33) the forwarder
-# serves, and its emergency-migrating logic (66dc8661), which the
-# emergency-migrating build moves to: another build has another logic ref,
-# which a forwarder configured for this one refuses.
+# The AnomaPay transfer resource whose logic ref (`TOKEN_TRANSFER_ID`) the
+# forwarder serves, and its emergency-migrating logic
+# (`EMERGENCY_MIGRATING_TOKEN_TRANSFER_ID`), which the emergency-migrating
+# build moves to: another build has another logic ref, which a forwarder
+# configured for this one refuses.
 emergency_migrating_transfer_library = { git = "https://github.com/anoma/anomapay-solana-resource", rev = "1cfe98b1836f57a4062419dccf08806a4ddfc6e9" }
 emergency_migrating_transfer_witness = { git = "https://github.com/anoma/anomapay-solana-resource", rev = "1cfe98b1836f57a4062419dccf08806a4ddfc6e9" }
 transfer_library = { git = "https://github.com/anoma/anomapay-solana-resource", rev = "1cfe98b1836f57a4062419dccf08806a4ddfc6e9" }

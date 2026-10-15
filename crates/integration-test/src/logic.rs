@@ -7,10 +7,8 @@ use anoma_rm_risc0::Digest;
 use anoma_rm_risc0::logic_instance::LogicInstance;
 use anoma_rm_risc0::logic_proof::LogicProver;
 use anyhow::Context;
-use emergency_migrating_transfer_library::EmergencyMigratingTransferLogic;
-use emergency_migrating_transfer_witness::EmergencyMigratingCall;
 use transfer_library::{TOKEN_TRANSFER_ID, TransferLogic};
-use transfer_witness::{ForwarderCall, ForwarderInfo, LogicCircuit};
+use transfer_witness::{ForwarderCall, LogicCircuit, TokenTransferWitness};
 
 /// A logic the forwarder serves: the transfer resource's, or one that
 /// extends it (the emergency-migrating logic), whose flows the resource's
@@ -21,12 +19,12 @@ pub trait Logic: LogicProver<Witness: LogicCircuit> + From<TransferLogic> + 'sta
     type Call: ForwarderCall;
 }
 
-impl Logic for TransferLogic {
-    type Call = ForwarderInfo;
-}
-
-impl Logic for EmergencyMigratingTransferLogic {
-    type Call = EmergencyMigratingCall;
+impl<L, C> Logic for L
+where
+    L: LogicProver<Witness = TokenTransferWitness<C>> + From<TransferLogic> + 'static,
+    C: ForwarderCall,
+{
+    type Call = C;
 }
 
 /// The domain owners of `L`'s resources sign under.

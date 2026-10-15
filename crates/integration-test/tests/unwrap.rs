@@ -20,6 +20,7 @@ use anomapay_spl_token_forwarder_integration_test::setup::{
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 use spl_associated_token_account_interface::address::get_associated_token_address;
+use transfer_library::TransferLogic;
 
 /// 100 tokens at the mint's 6 decimals: what the wrap escrows and the unwrap
 /// releases.
@@ -52,7 +53,7 @@ async fn settles_an_unwrap_the_recipient_receives_the_tokens_from_escrow() -> an
     let escrow_before = balance(&env, &escrow).await?;
 
     let tx = forwarder
-        .prove_unwrap(&env, wrapped, &owner, recipient)
+        .prove_unwrap::<TransferLogic, _>(&env, wrapped, &owner, recipient)
         .await?;
     let executed = env.protocol_adapter.settled(tx).await?;
 
@@ -82,7 +83,7 @@ async fn refuses_an_unwrap_to_a_token_account_the_recipient_does_not_own() -> an
     let (mut env, local, wrapped, owner) = wrapped().await?;
     let forwarder = &local.forwarder;
     let tx = forwarder
-        .prove_unwrap(&env, wrapped, &owner, Keypair::new().pubkey())
+        .prove_unwrap::<TransferLogic, _>(&env, wrapped, &owner, Keypair::new().pubkey())
         .await?;
     let user_account = forwarder.user_account();
     let unmoved = [forwarder.escrow_account(), user_account];
@@ -113,7 +114,7 @@ async fn refuses_an_unwrap_whose_source_the_escrow_does_not_own() -> anyhow::Res
     )
     .await?;
     let tx = forwarder
-        .prove_unwrap(&env, wrapped, &owner, Keypair::new().pubkey())
+        .prove_unwrap::<TransferLogic, _>(&env, wrapped, &owner, Keypair::new().pubkey())
         .await?;
     let unmoved = [other, forwarder.escrow_account()];
     refuses(
@@ -141,7 +142,7 @@ async fn refuses_an_unwrap_that_draws_another_mints_escrow() -> anyhow::Result<(
     mint_to(&env, &other_mint, &escrow_other, AMOUNT).await?;
     let recipient_other = token_account(&env, &recipient, &other_mint).await?;
     let tx = forwarder
-        .prove_unwrap(&env, wrapped, &owner, recipient)
+        .prove_unwrap::<TransferLogic, _>(&env, wrapped, &owner, recipient)
         .await?;
     let unmoved = [escrow_other, recipient_other, forwarder.escrow_account()];
     refuses(
@@ -167,7 +168,7 @@ async fn refuses_an_unwrap_whose_recipient_is_the_escrow_authority() -> anyhow::
     let forwarder = &local.forwarder;
     let (escrow_authority, _) = derive_forwarder_escrow_authority(&forwarder.program);
     let tx = forwarder
-        .prove_unwrap(&env, wrapped, &owner, escrow_authority)
+        .prove_unwrap::<TransferLogic, _>(&env, wrapped, &owner, escrow_authority)
         .await?;
     let unmoved = [forwarder.escrow_account()];
     refuses(
