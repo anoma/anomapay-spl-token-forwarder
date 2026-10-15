@@ -13,6 +13,7 @@ use anomapay_spl_token_forwarder_client::{
     ForwarderEvent, derive_forwarder_config_pda, reinitialize_ix, renounce_ownership_ix,
     transfer_ownership_ix, upgrade_ixs,
 };
+use anomapay_spl_token_forwarder_integration_test::refusal::NOT_THE_OWNER;
 use anomapay_spl_token_forwarder_integration_test::setup::{
     self, FORWARDER_SO, LocalForwarder, config, events, executable_hash,
 };
@@ -40,9 +41,6 @@ async fn reinitialize_as(
     )
     .await
 }
-
-const NOT_THE_OWNER: &str =
-    "AnchorError caused by account: authority. Error Code: OwnableUnauthorizedAccount.";
 
 #[tokio::test(flavor = "multi_thread")]
 async fn transfer_ownership_refuses_a_signer_that_is_not_the_owner() -> anyhow::Result<()> {

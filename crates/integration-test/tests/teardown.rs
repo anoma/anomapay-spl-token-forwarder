@@ -10,7 +10,7 @@ use anomapay_spl_token_forwarder_client::{
     close_config_ix, close_escrow_ix, close_nonce_bitmaps_batch_ix, derive_forwarder_config_pda,
     derive_forwarder_escrow_authority, derive_nonce_bitmap_pda, init_nonce_bitmap_ix,
 };
-use anomapay_spl_token_forwarder_integration_test::refusal::balances;
+use anomapay_spl_token_forwarder_integration_test::refusal::{NOT_THE_OWNER, balances};
 use anomapay_spl_token_forwarder_integration_test::setup::{
     self, LocalForwarder, balance, create_mint, mint_to, token_account,
 };
@@ -24,8 +24,6 @@ use surfpool_sdk::Pubkey;
 
 /// What a test escrows of a fresh mint: 500 tokens at 6 decimals.
 const ESCROWED: u64 = 500_000_000;
-
-const NOT_THE_OWNER: &str = "Error Code: OwnableUnauthorizedAccount.";
 
 fn pa_state(env: &LocalEnv) -> Pubkey {
     derive_pa_state_pda(&env.protocol_adapter.program).0

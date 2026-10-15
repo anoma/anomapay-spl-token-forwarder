@@ -6,11 +6,11 @@ use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::executed::Executed;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
 use anomapay_spl_token_forwarder_client::{
-    CONFIG_VERSION, ConfigAccount, ForwarderEvent, derive_forwarder_config_pda, initialize_ix,
+    CONFIG_VERSION, ForwarderEvent, derive_forwarder_config_pda, initialize_ix,
 };
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, Build, config, events, give_sol, upgrade_authority,
+    self, Build, config, events, expected_config, give_sol, upgrade_authority,
 };
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
@@ -167,12 +167,7 @@ async fn stores_its_configuration_announces_it_and_hands_the_upgrade_authority_t
     let signature = env.send(&[initialize(&env, &program, &owner)], &[]).await?;
 
     let config = config(&env, &program).await?;
-    let expected = ConfigAccount {
-        protocol_adapter: env.protocol_adapter.program.to_bytes(),
-        logic_ref: logic_ref().into(),
-        version: CONFIG_VERSION,
-        owner: owner.to_bytes(),
-    };
+    let expected = expected_config(&env, &owner);
     anyhow::ensure!(
         config == expected,
         "the config is {config:?}, not {expected:?}"

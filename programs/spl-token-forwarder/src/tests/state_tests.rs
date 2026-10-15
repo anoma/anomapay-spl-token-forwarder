@@ -334,6 +334,11 @@ fn nonce_bitmap_account_is_discriminator_word_and_bump() {
 #[test]
 fn config_is_discriminator_adapter_logic_ref_version_and_owner() {
     assert_eq!(Config::ACCOUNT_SIZE, 8 + 32 * 2 + 8 + 32);
+    assert_eq!(
+        Config::ACCOUNT_SIZE,
+        anomapay_spl_token_forwarder_client::constants::CONFIG_ACCOUNT_SIZE,
+        "the client's size is the program's"
+    );
 }
 
 /// The previous release's config, as it wrote it: the discriminator, the

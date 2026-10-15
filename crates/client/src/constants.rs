@@ -17,6 +17,10 @@ pub const NONCES_PER_WORD: u64 = 256;
 /// bitmap yet.
 pub const NONCE_BITMAP_ACCOUNT_SIZE: usize = 8 + 32 + 1;
 
+/// Size of the config account: the Anchor discriminator, the adapter, the
+/// logic ref, the version and the owner.
+pub const CONFIG_ACCOUNT_SIZE: usize = 8 + 32 + 32 + 8 + 32;
+
 /// The config version this build of the forwarder initializes to and
 /// reinitializes to (the `n` of an OpenZeppelin `reinitializer(n)`).
 pub const CONFIG_VERSION: u64 = 5;

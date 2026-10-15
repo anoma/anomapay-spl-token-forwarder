@@ -433,11 +433,10 @@
         "owner, who signs.",
         "",
         "The Solana counterpart of the initialization data an EVM upgrade",
-        "(`upgradeToAndCall`) carries for a layout change. Until it runs, this",
-        "release reads the adapter and logic ref, which both layouts start",
-        "with, so `forward_call` serves; it reads the version and owner from",
-        "the previous layout's committee and caller bytes, for which no one",
-        "holds a key, so every owner-only instruction is refused."
+        "(`upgradeToAndCall`) carries for a layout change. Until it runs,",
+        "`forward_call` serves, reading the adapter and logic ref both layouts",
+        "start with, and every owner-only instruction refuses the config",
+        "(`ConfigNotMigrated`)."
       ],
       "discriminator": [
         92,
@@ -983,6 +982,11 @@
       "code": 6030,
       "name": "NotPreviousLayout",
       "msg": "The config is not in the previous release's layout"
+    },
+    {
+      "code": 6031,
+      "name": "ConfigNotMigrated",
+      "msg": "The config is in a previous release's layout - run migrate_config first"
     }
   ],
   "types": [

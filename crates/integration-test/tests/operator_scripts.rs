@@ -3,14 +3,12 @@
 //! installs the scripts' dependencies and builds the types they import.
 
 use anoma_pa_solana_client::derive_upgrade_authority_pda;
-use anomapay_spl_token_forwarder_client::{
-    CONFIG_VERSION, ConfigAccount, derive_forwarder_escrow_authority,
-};
+use anomapay_spl_token_forwarder_client::{CONFIG_VERSION, derive_forwarder_escrow_authority};
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::scripts::{hex, run_script};
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, Build, FORWARDER_SO, balance, config, executable_hash, give_sol, new_mint,
-    upgrade_authority,
+    self, Build, FORWARDER_SO, balance, config, executable_hash, expected_config, give_sol,
+    new_mint, upgrade_authority,
 };
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -47,12 +45,7 @@ async fn init_initializes_a_deployed_forwarder_as_requested() -> anyhow::Result<
     );
 
     let stored = config(&env, &program).await?;
-    let expected = ConfigAccount {
-        protocol_adapter: env.protocol_adapter.program.to_bytes(),
-        logic_ref: logic_ref().into(),
-        version: CONFIG_VERSION,
-        owner: owner.to_bytes(),
-    };
+    let expected = expected_config(&env, &owner);
     anyhow::ensure!(
         stored == expected,
         "the config is {stored:?}, not {expected:?}"
@@ -157,12 +150,7 @@ async fn migrate_config_rewrites_the_upgraded_config() -> anyhow::Result<()> {
         "{ran}"
     );
     let stored = config(&env, &program).await?;
-    let expected = ConfigAccount {
-        protocol_adapter: env.protocol_adapter.program.to_bytes(),
-        logic_ref: logic_ref().into(),
-        version: CONFIG_VERSION,
-        owner: owner.pubkey().to_bytes(),
-    };
+    let expected = expected_config(&env, &owner.pubkey());
     anyhow::ensure!(
         stored == expected,
         "the config is {stored:?}, not {expected:?}"

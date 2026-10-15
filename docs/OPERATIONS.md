@@ -55,7 +55,7 @@ The release before this one stored an emergency committee and an emergency calle
 ./scripts/dev.sh forwarder migrate-config --cluster <c>                # owner wallet
 ```
 
-`migrate_config` keeps the adapter, the logic ref, the version and the owner, and returns the rent the smaller account no longer needs to the owner. Until it runs, wraps and unwraps settle, since both layouts start with the adapter and the logic ref, and every owner-only instruction is refused; a second run fails with `NotPreviousLayout`.
+`migrate_config` keeps the adapter, the logic ref, the version and the owner, and returns the rent the smaller account no longer needs to the owner. Until it runs, wraps and unwraps settle, since both layouts start with the adapter and the logic ref, and every owner-only instruction refuses the config with `ConfigNotMigrated`; a second run fails with `NotPreviousLayout`.
 
 ## Retiring the forwarder
 

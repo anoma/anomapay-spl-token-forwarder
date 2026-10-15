@@ -11,6 +11,10 @@ use surfpool_sdk::Pubkey;
 
 use crate::setup::{Forwarder, balance};
 
+/// The refusal of an owner-only instruction signed by anyone but the owner.
+pub const NOT_THE_OWNER: &str =
+    "AnchorError caused by account: authority. Error Code: OwnableUnauthorizedAccount.";
+
 /// The token balances of `accounts`.
 pub async fn balances<P>(env: &Environment<P>, accounts: &[Pubkey]) -> anyhow::Result<Vec<u64>> {
     let mut amounts = Vec::with_capacity(accounts.len());

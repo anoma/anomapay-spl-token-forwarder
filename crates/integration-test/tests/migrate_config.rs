@@ -1,19 +1,17 @@
 //! The in-place upgrade from the previous release, whose config held an
 //! emergency committee and caller: until the owner's `migrate_config`, the
-//! upgraded forwarder serves wraps and unwraps and refuses every owner-only
-//! instruction; the migration keeps the config's values in this release's
-//! layout, returns the freed rent to the owner, and runs once.
+//! upgraded forwarder serves wraps and unwraps and every owner-only
+//! instruction refuses the config; the migration keeps the config's values
+//! in this release's layout, returns the freed rent to the owner, and runs
+//! once.
 
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
-use anoma_pa_testkit::execute_tx;
 use anomapay_spl_token_forwarder_client::{
-    CONFIG_VERSION, ConfigAccount, derive_forwarder_config_pda, migrate_config_ix,
+    CONFIG_ACCOUNT_SIZE, decode_config, derive_forwarder_config_pda, migrate_config_ix,
     transfer_ownership_ix,
 };
-use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
-use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
-use anomapay_spl_token_forwarder_integration_test::setup::{self, LocalForwarder, balance, config};
+use anomapay_spl_token_forwarder_integration_test::setup::{self, config, expected_config};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 use surfpool_sdk::Pubkey;
@@ -21,62 +19,30 @@ use surfpool_sdk::Pubkey;
 /// 100 tokens at the mint's 6 decimals.
 const AMOUNT: u64 = 100_000_000;
 
-/// The config's size in this release's layout: the discriminator, the
-/// adapter, the logic ref, the version and the owner.
-const CONFIG_SIZE: usize = 8 + 32 + 32 + 8 + 32;
+/// `migrate_config`'s refusal of a signer other than the owner the previous
+/// layout records, which it reads in its handler.
+const NOT_THE_PREVIOUS_OWNER: &str = "Error Code: OwnableUnauthorizedAccount.";
 
-const NOT_THE_OWNER: &str = "Error Code: OwnableUnauthorizedAccount.";
-
-/// The config account's (size, lamports).
-async fn config_account(env: &LocalEnv, program: &Pubkey) -> anyhow::Result<(usize, u64)> {
+/// The config account's data and lamports.
+async fn config_account(env: &LocalEnv, program: &Pubkey) -> anyhow::Result<(Vec<u8>, u64)> {
     let account = env
         .protocol_adapter
         .rpc
         .get_account(&derive_forwarder_config_pda(program).0)
         .await?;
-    Ok((account.data.len(), account.lamports))
-}
-
-/// The user wraps `AMOUNT` and the shielded owner unwraps it to a fresh
-/// recipient, both settled through the adapter.
-async fn wrap_then_unwrap(
-    env: &mut LocalEnv,
-    local: &LocalForwarder,
-    seed: &str,
-) -> anyhow::Result<()> {
-    let forwarder = &local.forwarder;
-    let owner = ShieldedOwner::seeded(&format!("{seed}/owner"));
-    let wrapped = forwarder
-        .wrap(env, &owner, AMOUNT, 1, &format!("{seed}/wrap"))
-        .await?;
-    let recipient = Keypair::new().pubkey();
-    let tx = forwarder
-        .prove_unwrap(env, wrapped, &owner, recipient)
-        .await?;
-    execute_tx(env, tx).await?;
-    let received = balance(
-        env,
-        &spl_associated_token_account_interface::address::get_associated_token_address(
-            &recipient,
-            &forwarder.mint,
-        ),
-    )
-    .await?;
-    anyhow::ensure!(
-        received == AMOUNT,
-        "the recipient holds {received}, not {AMOUNT}"
-    );
-    Ok(())
+    Ok((account.data, account.lamports))
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn before_the_migration_the_upgraded_forwarder_serves_and_refuses_its_owner()
 -> anyhow::Result<()> {
     let (mut env, local) = setup::upgraded_from_the_previous_release().await?;
-    wrap_then_unwrap(&mut env, &local, "before-migration").await?;
-    // The owner the previous layout records is read from bytes no key holds.
+    local
+        .forwarder
+        .wraps_then_unwraps(&mut env, AMOUNT, "before-migration")
+        .await?;
     let (program, owner) = (local.forwarder.program, &local.owner);
-    expect_integration_panic(Needle::Static(NOT_THE_OWNER))(
+    expect_integration_panic(Needle::Static("Error Code: ConfigNotMigrated."))(
         env.send(
             &[transfer_ownership_ix(
                 &program,
@@ -94,46 +60,31 @@ async fn the_migration_keeps_the_configs_values_and_returns_the_freed_rent_to_th
 -> anyhow::Result<()> {
     let (mut env, local) = setup::upgraded_from_the_previous_release().await?;
     let (program, owner) = (local.forwarder.program, &local.owner);
+    let rpc = &env.protocol_adapter.rpc;
     let (_, lamports_before) = config_account(&env, &program).await?;
-    let owner_before = env
-        .protocol_adapter
-        .rpc
-        .get_balance(&owner.pubkey())
-        .await?;
+    let owner_before = rpc.get_balance(&owner.pubkey()).await?;
 
     env.send(&[migrate_config_ix(&program, &owner.pubkey())], &[owner])
         .await?;
 
-    let stored = config(&env, &program).await?;
-    let expected = ConfigAccount {
-        protocol_adapter: env.protocol_adapter.program.to_bytes(),
-        logic_ref: logic_ref().into(),
-        version: CONFIG_VERSION,
-        owner: owner.pubkey().to_bytes(),
-    };
+    let (data, lamports) = config_account(&env, &program).await?;
+    let stored = decode_config(&data)?;
+    let expected = expected_config(&env, &owner.pubkey());
     anyhow::ensure!(
         stored == expected,
         "the config is {stored:?}, not {expected:?}"
     );
-    let (size, lamports) = config_account(&env, &program).await?;
-    let rent = env
-        .protocol_adapter
-        .rpc
-        .get_minimum_balance_for_rent_exemption(CONFIG_SIZE)
+    let rent = rpc
+        .get_minimum_balance_for_rent_exemption(CONFIG_ACCOUNT_SIZE)
         .await?;
     anyhow::ensure!(
-        size == CONFIG_SIZE && lamports == rent,
-        "the config holds {size} bytes and {lamports} lamports, not {CONFIG_SIZE} and its rent {rent}"
+        lamports == rent,
+        "the config holds {lamports} lamports, not its rent {rent}"
     );
-    let owner_after = env
-        .protocol_adapter
-        .rpc
-        .get_balance(&owner.pubkey())
-        .await?;
+    let gained = rpc.get_balance(&owner.pubkey()).await? - owner_before;
     anyhow::ensure!(
-        owner_after - owner_before == lamports_before - rent,
-        "the owner gained {}, not the freed {}",
-        owner_after - owner_before,
+        gained == lamports_before - rent,
+        "the owner gained {gained}, not the freed {}",
         lamports_before - rent
     );
 
@@ -149,7 +100,10 @@ async fn the_migration_keeps_the_configs_values_and_returns_the_freed_rent_to_th
     )
     .await?;
     anyhow::ensure!(config(&env, &program).await?.owner == new_owner.pubkey().to_bytes());
-    wrap_then_unwrap(&mut env, &local, "after-migration").await
+    local
+        .forwarder
+        .wraps_then_unwraps(&mut env, AMOUNT, "after-migration")
+        .await
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -157,7 +111,7 @@ async fn the_migration_refuses_anyone_but_the_owner() -> anyhow::Result<()> {
     let (env, local) = setup::upgraded_from_the_previous_release().await?;
     let stranger = Keypair::new();
     setup::give_sol(&env, &stranger.pubkey(), 1_000_000_000)?;
-    expect_integration_panic(Needle::Static(NOT_THE_OWNER))(
+    expect_integration_panic(Needle::Static(NOT_THE_PREVIOUS_OWNER))(
         env.send(
             &[migrate_config_ix(
                 &local.forwarder.program,

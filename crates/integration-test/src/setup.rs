@@ -80,6 +80,8 @@ pub enum Build {
     /// With the development features' instructions
     /// (`dev_set_config_version`).
     Development,
+    /// The previous release's production build.
+    Previous,
 }
 
 /// The local environment with the forwarder `build` deployed, its upgrade
@@ -98,6 +100,7 @@ fn deploy<P>(env: &Environment<P>, build: Build) -> anyhow::Result<Pubkey> {
     let so = match build {
         Build::Production => FORWARDER_SO,
         Build::Development => FORWARDER_DEV_SO,
+        Build::Previous => PREVIOUS_FORWARDER_SO,
     };
     env.deploy_program(program, so, env.protocol_adapter.payer.pubkey())?;
     Ok(program)
@@ -144,10 +147,8 @@ async fn local_with(build: Build) -> anyhow::Result<(LocalEnv, LocalForwarder)> 
 /// is. The config is still in the previous layout: `migrate_config` has not
 /// run.
 pub async fn upgraded_from_the_previous_release() -> anyhow::Result<(LocalEnv, LocalForwarder)> {
-    let mut env = LocalEnv::setup_bare().await?;
-    let program = forwarder_address(LOCALNET)?;
+    let (mut env, program) = deployed(Build::Previous).await?;
     let payer = env.protocol_adapter.payer.pubkey();
-    env.deploy_program(program, PREVIOUS_FORWARDER_SO, payer)?;
 
     // The previous release's initialize took the committee between the
     // logic ref and the owner, over the same accounts.
@@ -394,6 +395,17 @@ pub fn give_sol<P>(env: &Environment<P>, to: &Pubkey, lamports: u64) -> anyhow::
         .with_context(|| format!("failed to fund {to} with {lamports} lamports"))
 }
 
+/// The config `initialize` stores on `env` for the adapter, the transfer
+/// resource's logic ref and `owner`.
+pub fn expected_config<P>(env: &Environment<P>, owner: &Pubkey) -> ConfigAccount {
+    ConfigAccount {
+        protocol_adapter: env.protocol_adapter.program.to_bytes(),
+        logic_ref: crate::logic::logic_ref().into(),
+        version: CONFIG_VERSION,
+        owner: owner.to_bytes(),
+    }
+}
+
 /// The forwarder `program`'s config on `env`.
 pub async fn config<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::Result<ConfigAccount> {
     let (config, _) = derive_forwarder_config_pda(program);
@@ -591,6 +603,39 @@ impl Forwarder {
             .path_to(wrapped.commitment())?;
         let unwrap = fixtures::unwrap(self.program, self.mint, wrapped, owner, recipient, path)?;
         prove_actions(env, &[unwrap]).await
+    }
+
+    /// The user wraps `amount` into a resource a shielded owner holds, then
+    /// the owner unwraps it to a fresh recipient, both settled on `env`: the
+    /// user's tokens move into escrow, then out to the recipient. `seed`
+    /// makes the resources distinct from every other wrap's.
+    pub async fn wraps_then_unwraps<P>(
+        &self,
+        env: &mut Environment<P>,
+        amount: u64,
+        seed: &str,
+    ) -> anyhow::Result<()>
+    where
+        P: Prover,
+    {
+        let owner = ShieldedOwner::seeded(&format!("{seed}/owner"));
+        let (user, escrow) = (self.user_account(), self.escrow_account());
+        let user_before = balance(env, &user).await?;
+        let escrow_before = balance(env, &escrow).await?;
+
+        let wrapped = self
+            .wrap(env, &owner, amount, 1, &format!("{seed}/wrap"))
+            .await?;
+        anyhow::ensure!(balance(env, &user).await? == user_before - amount);
+        anyhow::ensure!(balance(env, &escrow).await? == escrow_before + amount);
+
+        let recipient = Keypair::new().pubkey();
+        let tx = self.prove_unwrap(env, wrapped, &owner, recipient).await?;
+        execute_tx(env, tx).await?;
+        let recipient_account = get_associated_token_address(&recipient, &self.mint);
+        anyhow::ensure!(balance(env, &recipient_account).await? == amount);
+        anyhow::ensure!(balance(env, &escrow).await? == escrow_before);
+        Ok(())
     }
 
     /// Has `env`'s adapter pass this forwarder's calls what `rewrite` makes

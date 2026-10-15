@@ -111,4 +111,9 @@ pub enum ErrorCode {
     /// `migrate_config` found no config in the previous release's layout.
     #[msg("The config is not in the previous release's layout")]
     NotPreviousLayout,
+
+    /// An owner-only instruction found the config in a previous release's
+    /// layout, which `migrate_config` rewrites.
+    #[msg("The config is in a previous release's layout - run migrate_config first")]
+    ConfigNotMigrated,
 }

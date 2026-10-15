@@ -161,11 +161,10 @@ pub mod spl_token_forwarder {
     /// owner, who signs.
     ///
     /// The Solana counterpart of the initialization data an EVM upgrade
-    /// (`upgradeToAndCall`) carries for a layout change. Until it runs, this
-    /// release reads the adapter and logic ref, which both layouts start
-    /// with, so `forward_call` serves; it reads the version and owner from
-    /// the previous layout's committee and caller bytes, for which no one
-    /// holds a key, so every owner-only instruction is refused.
+    /// (`upgradeToAndCall`) carries for a layout change. Until it runs,
+    /// `forward_call` serves, reading the adapter and logic ref both layouts
+    /// start with, and every owner-only instruction refuses the config
+    /// (`ConfigNotMigrated`).
     pub fn migrate_config(ctx: Context<MigrateConfig>) -> Result<()> {
         let config = &ctx.accounts.config;
         let previous = {
@@ -709,7 +708,10 @@ pub struct Version {}
 #[event_cpi]
 #[derive(Accounts)]
 pub struct OwnerOnly<'info> {
-    #[account(constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount)]
+    #[account(
+        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
+        constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
+    )]
     pub authority: Signer<'info>,
 
     #[account(mut, address = CONFIG_PDA)]
@@ -719,7 +721,10 @@ pub struct OwnerOnly<'info> {
 #[event_cpi]
 #[derive(Accounts)]
 pub struct UpgradeProgram<'info> {
-    #[account(constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount)]
+    #[account(
+        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
+        constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
+    )]
     pub authority: Signer<'info>,
 
     #[account(address = CONFIG_PDA)]
@@ -761,7 +766,10 @@ pub struct UpgradeProgram<'info> {
 #[cfg(feature = "dev-config-version")]
 #[derive(Accounts)]
 pub struct DevSetConfigVersion<'info> {
-    #[account(constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount)]
+    #[account(
+        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
+        constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
+    )]
     pub authority: Signer<'info>,
 
     #[account(mut, address = CONFIG_PDA)]
@@ -822,7 +830,8 @@ pub struct CloseEscrow<'info> {
     /// The owner, who receives the closed escrow ATA's rent.
     #[account(
         mut,
-        constraint = config.owner == authority.key() @ ErrorCode::OwnableUnauthorizedAccount
+        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
+        constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
     )]
     pub authority: Signer<'info>,
 
@@ -855,15 +864,14 @@ pub struct CloseEscrow<'info> {
 #[derive(Accounts)]
 pub struct CloseConfig<'info> {
     /// The owner, who receives the config's rent.
-    #[account(mut)]
-    pub authority: Signer<'info>,
-
     #[account(
         mut,
-        address = CONFIG_PDA,
-        constraint = config.owner == authority.key() @ ErrorCode::OwnableUnauthorizedAccount,
-        close = authority
+        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
+        constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
     )]
+    pub authority: Signer<'info>,
+
+    #[account(mut, address = CONFIG_PDA, close = authority)]
     pub config: Account<'info, Config>,
 
     /// CHECK: Checked by require_paused_adapter in the handler.
@@ -875,7 +883,8 @@ pub struct CloseNonceBitmaps<'info> {
     /// The owner, who receives the closed bitmaps' rent.
     #[account(
         mut,
-        constraint = config.owner == authority.key() @ ErrorCode::OwnableUnauthorizedAccount
+        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
+        constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
     )]
     pub authority: Signer<'info>,
 
