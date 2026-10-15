@@ -15,9 +15,6 @@ pub struct ConfigAccount {
     pub protocol_adapter: [u8; 32],
     /// The logic ref of the resource whose calls the forwarder accepts.
     pub logic_ref: [u8; 32],
-    pub emergency_committee: [u8; 32],
-    /// All zeros until the committee names one.
-    pub emergency_caller: [u8; 32],
     /// The version `initialize` or `reinitialize` last recorded.
     pub version: u64,
     /// All zeros once renounced.
@@ -84,8 +81,6 @@ pub fn decode_config(data: &[u8]) -> Result<ConfigAccount, AccountDecodeError> {
     Ok(ConfigAccount {
         protocol_adapter: c.array_32("protocol_adapter")?,
         logic_ref: c.array_32("logic_ref")?,
-        emergency_committee: c.array_32("emergency_committee")?,
-        emergency_caller: c.array_32("emergency_caller")?,
         version: c.u64_le("version")?,
         owner: c.array_32("owner")?,
     })
@@ -115,14 +110,7 @@ mod tests {
         };
         assert_eq!(
             fields_of("Config"),
-            [
-                "protocol_adapter",
-                "logic_ref",
-                "emergency_committee",
-                "emergency_caller",
-                "version",
-                "owner"
-            ]
+            ["protocol_adapter", "logic_ref", "version", "owner"]
         );
         assert_eq!(fields_of("NonceBitmap"), ["bits", "bump"]);
         for name in ["Config", "NonceBitmap"] {
@@ -141,7 +129,7 @@ mod tests {
     #[test]
     fn each_account_decodes_to_its_fields() {
         let mut config = anchor_account_disc("Config").to_vec();
-        for field in [[1; 32], [2; 32], [3; 32], [4; 32]] {
+        for field in [[1; 32], [2; 32]] {
             config.extend(field);
         }
         config.extend(3u64.to_le_bytes());
@@ -151,8 +139,6 @@ mod tests {
             Ok(ConfigAccount {
                 protocol_adapter: [1; 32],
                 logic_ref: [2; 32],
-                emergency_committee: [3; 32],
-                emergency_caller: [4; 32],
                 version: 3,
                 owner: [5; 32],
             })

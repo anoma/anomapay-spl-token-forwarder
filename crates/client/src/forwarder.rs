@@ -15,7 +15,6 @@ use anoma_pa_solana_client::{
 };
 
 use crate::constants::NONCES_PER_WORD;
-use crate::input::UnwrapInput;
 use crate::pda::{
     derive_forwarder_config_pda, derive_forwarder_escrow_authority, derive_nonce_bitmap_pda,
 };
@@ -27,20 +26,17 @@ pub fn nonce_word_index(nonce: u64) -> u64 {
 
 /// Build the forwarder's `initialize`: `authority`, the program's upgrade
 /// authority, binds the forwarder to `protocol_adapter` and `logic_ref` with
-/// its emergency committee and owner, and hands the upgrade authority to the
-/// program.
+/// its owner, and hands the upgrade authority to the program.
 pub fn initialize_ix(
     forwarder_program: &Pubkey,
     authority: &Pubkey,
     protocol_adapter: &Pubkey,
     logic_ref: [u8; 32],
-    emergency_committee: &Pubkey,
     initial_owner: &Pubkey,
 ) -> Instruction {
     let mut data = anchor_instruction_disc("initialize").to_vec();
     data.extend_from_slice(protocol_adapter.as_ref());
     data.extend_from_slice(&logic_ref);
-    data.extend_from_slice(emergency_committee.as_ref());
     data.extend_from_slice(initial_owner.as_ref());
     Instruction {
         program_id: *forwarder_program,
@@ -186,74 +182,26 @@ pub fn version_ix(forwarder_program: &Pubkey) -> Instruction {
     }
 }
 
-/// Build the forwarder's `set_emergency_caller`: the emergency committee
-/// names the one emergency caller, once, while the adapter whose state is
-/// `pa_state` is paused.
-pub fn set_emergency_caller_ix(
-    forwarder_program: &Pubkey,
-    committee: &Pubkey,
-    pa_state: &Pubkey,
-    new_emergency_caller: &Pubkey,
-) -> Instruction {
-    let mut data = anchor_instruction_disc("set_emergency_caller").to_vec();
-    data.extend_from_slice(new_emergency_caller.as_ref());
+/// Build the forwarder's `migrate_config`: after the in-place upgrade to
+/// this release, `owner`, the owner the previous release's config records,
+/// rewrites the config into this release's layout.
+pub fn migrate_config_ix(forwarder_program: &Pubkey, owner: &Pubkey) -> Instruction {
     Instruction {
         program_id: *forwarder_program,
         accounts: vec![
-            AccountMeta::new_readonly(*committee, true),
+            AccountMeta::new(*owner, true),
             AccountMeta::new(derive_forwarder_config_pda(forwarder_program).0, false),
-            AccountMeta::new_readonly(*pa_state, false),
-            AccountMeta::new_readonly(derive_event_authority_pda(forwarder_program).0, false),
-            AccountMeta::new_readonly(*forwarder_program, false),
         ],
-        data,
-    }
-}
-
-/// Build the forwarder's `forward_emergency_call`: while the adapter whose
-/// state is `pa_state` is paused, the emergency caller releases
-/// `withdraw.amount` of `withdraw.token_mint` from escrow to
-/// `withdraw.recipient`'s token account.
-pub fn forward_emergency_call_ix(
-    forwarder_program: &Pubkey,
-    caller: &Pubkey,
-    pa_state: &Pubkey,
-    withdraw: &UnwrapInput,
-) -> Instruction {
-    let input = [
-        withdraw.token_mint.as_slice(),
-        &withdraw.amount.to_le_bytes(),
-        &withdraw.recipient,
-    ]
-    .concat();
-    let mut data = anchor_instruction_disc("forward_emergency_call").to_vec();
-    data.extend_from_slice(&(input.len() as u32).to_le_bytes());
-    data.extend_from_slice(&input);
-    let mut accounts = vec![
-        AccountMeta::new(*caller, true),
-        AccountMeta::new_readonly(derive_forwarder_config_pda(forwarder_program).0, false),
-        AccountMeta::new_readonly(*pa_state, false),
-        AccountMeta::new_readonly(derive_event_authority_pda(forwarder_program).0, false),
-        AccountMeta::new_readonly(*forwarder_program, false),
-    ];
-    accounts.extend(escrow_release_accounts(
-        forwarder_program,
-        &Pubkey::new_from_array(withdraw.recipient),
-        &Pubkey::new_from_array(withdraw.token_mint),
-    ));
-    Instruction {
-        program_id: *forwarder_program,
-        accounts,
-        data,
+        data: anchor_instruction_disc("migrate_config").to_vec(),
     }
 }
 
 /// Build the forwarder's `close_escrow`: while the adapter whose state is
-/// `pa_state` is paused, the emergency committee drains `mint`'s escrow to
-/// the token account `recipient_ata` and closes it, taking its rent.
+/// `pa_state` is paused, the owner drains `mint`'s escrow to the token
+/// account `recipient_ata` and closes it, taking its rent.
 pub fn close_escrow_ix(
     forwarder_program: &Pubkey,
-    committee: &Pubkey,
+    owner: &Pubkey,
     pa_state: &Pubkey,
     mint: &Pubkey,
     recipient_ata: &Pubkey,
@@ -262,7 +210,7 @@ pub fn close_escrow_ix(
     Instruction {
         program_id: *forwarder_program,
         accounts: vec![
-            AccountMeta::new(*committee, true),
+            AccountMeta::new(*owner, true),
             AccountMeta::new_readonly(derive_forwarder_config_pda(forwarder_program).0, false),
             AccountMeta::new(get_associated_token_address(&escrow_authority, mint), false),
             AccountMeta::new_readonly(escrow_authority, false),
@@ -276,16 +224,16 @@ pub fn close_escrow_ix(
 }
 
 /// Build the forwarder's `close_nonce_bitmaps_batch`: while the adapter
-/// whose state is `pa_state` is paused, the emergency committee closes the
-/// nonce bitmaps `bitmaps`, taking their rent.
+/// whose state is `pa_state` is paused, the owner closes the nonce bitmaps
+/// `bitmaps`, taking their rent.
 pub fn close_nonce_bitmaps_batch_ix(
     forwarder_program: &Pubkey,
-    committee: &Pubkey,
+    owner: &Pubkey,
     pa_state: &Pubkey,
     bitmaps: &[Pubkey],
 ) -> Instruction {
     let mut accounts = vec![
-        AccountMeta::new(*committee, true),
+        AccountMeta::new(*owner, true),
         AccountMeta::new_readonly(derive_forwarder_config_pda(forwarder_program).0, false),
         AccountMeta::new_readonly(*pa_state, false),
     ];
@@ -302,17 +250,17 @@ pub fn close_nonce_bitmaps_batch_ix(
 }
 
 /// Build the forwarder's `close_config`: while the adapter whose state is
-/// `pa_state` is paused, the emergency committee closes the config, taking
-/// its rent. The forwarder serves nothing after it.
+/// `pa_state` is paused, the owner closes the config, taking its rent. The
+/// forwarder serves nothing after it.
 pub fn close_config_ix(
     forwarder_program: &Pubkey,
-    committee: &Pubkey,
+    owner: &Pubkey,
     pa_state: &Pubkey,
 ) -> Instruction {
     Instruction {
         program_id: *forwarder_program,
         accounts: vec![
-            AccountMeta::new(*committee, true),
+            AccountMeta::new(*owner, true),
             AccountMeta::new(derive_forwarder_config_pda(forwarder_program).0, false),
             AccountMeta::new_readonly(*pa_state, false),
         ],
@@ -330,26 +278,6 @@ fn forwarder_segment_head(forwarder_program: &Pubkey) -> [AccountMeta; 5] {
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
         AccountMeta::new_readonly(derive_event_authority_pda(forwarder_program).0, false),
         AccountMeta::new_readonly(*forwarder_program, false),
-    ]
-}
-
-/// The accounts of a release from `token_mint`'s escrow to `recipient`'s
-/// token account, in the order the forwarder reads them: the escrow's token
-/// account, the recipient's, the escrow authority and the token program.
-fn escrow_release_accounts(
-    forwarder_program: &Pubkey,
-    recipient: &Pubkey,
-    token_mint: &Pubkey,
-) -> [AccountMeta; 4] {
-    let (escrow_authority, _) = derive_forwarder_escrow_authority(forwarder_program);
-    [
-        AccountMeta::new(
-            get_associated_token_address(&escrow_authority, token_mint),
-            false,
-        ),
-        AccountMeta::new(get_associated_token_address(recipient, token_mint), false),
-        AccountMeta::new_readonly(escrow_authority, false),
-        AccountMeta::new_readonly(spl_token_interface::id(), false),
     ]
 }
 
@@ -388,12 +316,17 @@ pub fn build_unwrap_forwarder_accounts(
     recipient: &Pubkey,
     token_mint: &Pubkey,
 ) -> Vec<AccountMeta> {
+    let (escrow_authority, _) = derive_forwarder_escrow_authority(forwarder_program);
     let mut accounts = forwarder_segment_head(forwarder_program).to_vec();
-    accounts.extend(escrow_release_accounts(
-        forwarder_program,
-        recipient,
-        token_mint,
-    ));
+    accounts.extend([
+        AccountMeta::new(
+            get_associated_token_address(&escrow_authority, token_mint),
+            false,
+        ),
+        AccountMeta::new(get_associated_token_address(recipient, token_mint), false),
+        AccountMeta::new_readonly(escrow_authority, false),
+        AccountMeta::new_readonly(spl_token_interface::id(), false),
+    ]);
     accounts
 }
 
@@ -591,22 +524,13 @@ mod tests {
     #[test]
     fn initialize_matches_the_forwarders_idl() {
         let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
-        let (authority, adapter, committee, owner) = (
-            Pubkey::new_unique(),
+        let (authority, adapter, owner) = (
             Pubkey::new_unique(),
             Pubkey::new_unique(),
             Pubkey::new_unique(),
         );
-        let ix = initialize_ix(
-            &forwarder, &authority, &adapter, [7; 32], &committee, &owner,
-        );
-        let args = [
-            adapter.to_bytes().as_slice(),
-            &[7; 32],
-            &committee.to_bytes(),
-            &owner.to_bytes(),
-        ]
-        .concat();
+        let ix = initialize_ix(&forwarder, &authority, &adapter, [7; 32], &owner);
+        let args = [adapter.to_bytes().as_slice(), &[7; 32], &owner.to_bytes()].concat();
         let by_name = assert_matches_the_forwarders_idl(&ix, "initialize", &args);
         assert_eq!(by_name("authority"), authority);
         assert_eq!(ix.accounts.len(), 8);
@@ -670,28 +594,30 @@ mod tests {
     }
 
     #[test]
-    fn the_committee_instructions_match_the_forwarders_idl() {
+    fn migrate_config_matches_the_forwarders_idl() {
         let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
-        let (committee, pa_state, caller, mint, recipient_ata) = (
-            Pubkey::new_unique(),
+        let owner = Pubkey::new_unique();
+        let ix = migrate_config_ix(&forwarder, &owner);
+        let by_name = assert_matches_the_forwarders_idl(&ix, "migrate_config", &[]);
+        assert_eq!(by_name("owner"), owner);
+        assert_eq!(by_name("config"), derive_forwarder_config_pda(&forwarder).0);
+        assert_eq!(ix.accounts.len(), 2);
+    }
+
+    #[test]
+    fn the_closing_instructions_match_the_forwarders_idl() {
+        let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
+        let (owner, pa_state, mint, recipient_ata) = (
             Pubkey::new_unique(),
             Pubkey::new_unique(),
             Pubkey::new_unique(),
             Pubkey::new_unique(),
         );
 
-        let ix = set_emergency_caller_ix(&forwarder, &committee, &pa_state, &caller);
-        let by_name =
-            assert_matches_the_forwarders_idl(&ix, "set_emergency_caller", caller.as_ref());
-        assert_eq!(by_name("committee"), committee);
-        assert_eq!(by_name("pa_state"), pa_state);
-        assert_event_accounts(&by_name, &forwarder);
-        assert_eq!(ix.accounts.len(), 5);
-
-        let ix = close_escrow_ix(&forwarder, &committee, &pa_state, &mint, &recipient_ata);
+        let ix = close_escrow_ix(&forwarder, &owner, &pa_state, &mint, &recipient_ata);
         let by_name = assert_matches_the_forwarders_idl(&ix, "close_escrow", &[]);
         let escrow_authority = derive_forwarder_escrow_authority(&forwarder).0;
-        assert_eq!(by_name("authority"), committee);
+        assert_eq!(by_name("authority"), owner);
         assert_eq!(
             by_name("escrow_ata"),
             get_associated_token_address(&escrow_authority, &mint)
@@ -701,16 +627,16 @@ mod tests {
         assert_eq!(by_name("pa_state"), pa_state);
         assert_eq!(ix.accounts.len(), 8);
 
-        let ix = close_config_ix(&forwarder, &committee, &pa_state);
+        let ix = close_config_ix(&forwarder, &owner, &pa_state);
         let by_name = assert_matches_the_forwarders_idl(&ix, "close_config", &[]);
-        assert_eq!(by_name("authority"), committee);
+        assert_eq!(by_name("authority"), owner);
         assert_eq!(by_name("pa_state"), pa_state);
         assert_eq!(ix.accounts.len(), 3);
 
         let bitmaps = [Pubkey::new_unique(), Pubkey::new_unique()];
-        let ix = close_nonce_bitmaps_batch_ix(&forwarder, &committee, &pa_state, &bitmaps);
+        let ix = close_nonce_bitmaps_batch_ix(&forwarder, &owner, &pa_state, &bitmaps);
         let by_name = assert_matches_the_forwarders_idl(&ix, "close_nonce_bitmaps_batch", &[]);
-        assert_eq!(by_name("authority"), committee);
+        assert_eq!(by_name("authority"), owner);
         assert_eq!(by_name("pa_state"), pa_state);
         assert_eq!(
             ix.accounts[3..].to_vec(),
@@ -718,44 +644,6 @@ mod tests {
                 .map(|bitmap| AccountMeta::new(bitmap, false))
                 .to_vec(),
             "the bitmaps, writable, as remaining accounts"
-        );
-    }
-
-    #[test]
-    fn forward_emergency_call_matches_the_forwarders_idl() {
-        let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
-        let (caller, pa_state, mint, recipient) = (
-            Pubkey::new_unique(),
-            Pubkey::new_unique(),
-            Pubkey::new_unique(),
-            Pubkey::new_unique(),
-        );
-        let withdraw = UnwrapInput {
-            token_mint: mint.to_bytes(),
-            amount: 5,
-            recipient: recipient.to_bytes(),
-        };
-        let ix = forward_emergency_call_ix(&forwarder, &caller, &pa_state, &withdraw);
-        let operand = [mint.as_ref(), &5u64.to_le_bytes(), recipient.as_ref()].concat();
-        let args = [(operand.len() as u32).to_le_bytes().as_slice(), &operand].concat();
-        let by_name = assert_matches_the_forwarders_idl(&ix, "forward_emergency_call", &args);
-        assert_eq!(by_name("caller"), caller);
-        assert_eq!(by_name("pa_state"), pa_state);
-        assert_event_accounts(&by_name, &forwarder);
-
-        let escrow_authority = derive_forwarder_escrow_authority(&forwarder).0;
-        assert_eq!(
-            ix.accounts[5..].to_vec(),
-            vec![
-                AccountMeta::new(
-                    get_associated_token_address(&escrow_authority, &mint),
-                    false
-                ),
-                AccountMeta::new(get_associated_token_address(&recipient, &mint), false),
-                AccountMeta::new_readonly(escrow_authority, false),
-                AccountMeta::new_readonly(spl_token_interface::id(), false),
-            ],
-            "the escrow ATA, recipient ATA, escrow authority and token program follow"
         );
     }
 }

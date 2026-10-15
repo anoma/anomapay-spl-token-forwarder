@@ -37,11 +37,6 @@ pub enum ErrorCode {
     #[msg("The caller is not the protocol adapter")]
     ProtocolAdapterMismatch,
 
-    /// The signer is not the emergency committee or the emergency caller an
-    /// emergency instruction requires.
-    #[msg("Unauthorized caller")]
-    UnauthorizedCaller,
-
     /// The EVM forwarder's `LogicRefMismatch`: the calling resource's logic
     /// ref is not the one this forwarder serves.
     #[msg("The calling resource's logic ref is not this forwarder's")]
@@ -65,21 +60,11 @@ pub enum ErrorCode {
     #[msg("Ed25519 message mismatch")]
     Ed25519MessageMismatch,
 
-    #[msg("Emergency caller already set")]
-    EmergencyCallerAlreadySet,
-
-    #[msg("Emergency caller not set")]
-    EmergencyCallerNotSet,
-
-    #[msg("Protocol Adapter not paused - cannot perform emergency operations")]
+    #[msg("Protocol Adapter not paused - cannot close the forwarder's accounts")]
     ProtocolAdapterNotPaused,
 
     #[msg("Invalid PA state account - does not match derived PDA from protocol_adapter")]
     InvalidPaState,
-
-    /// A zero emergency committee or emergency caller.
-    #[msg("Zero address not allowed")]
-    ZeroAddressNotAllowed,
 
     /// The EVM forwarder's `ZeroProtocolAdapterNotAllowed`.
     #[msg("Zero protocol adapter not allowed")]
@@ -122,4 +107,8 @@ pub enum ErrorCode {
 
     #[msg("Unauthorized: the signer does not hold the authority this instruction requires")]
     Unauthorized,
+
+    /// `migrate_config` found no config in the previous release's layout.
+    #[msg("The config is not in the previous release's layout")]
+    NotPreviousLayout,
 }

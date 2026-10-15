@@ -39,25 +39,6 @@ export interface UnwrappedEvent {
 }
 
 /**
- * The emergency committee (`setBy`) named `emergencyCaller` as the forwarder's
- * emergency caller, as the EVM V1 forwarder's `EmergencyCallerSet`.
- */
-export interface EmergencyCallerSetEvent {
-  name: "EmergencyCallerSet";
-  emergencyCaller: Uint8Array;
-  setBy: Uint8Array;
-}
-
-/** The emergency caller (`caller`) moved `amount` of `tokenMint` from escrow to `to`. */
-export interface EmergencyWithdrawEvent {
-  name: "EmergencyWithdraw";
-  tokenMint: Uint8Array;
-  to: Uint8Array;
-  amount: bigint;
-  caller: Uint8Array;
-}
-
-/**
  * `initialize` or `reinitialize` set the forwarder's configuration to
  * `version`, as OpenZeppelin Initializable's `Initialized(version)`.
  */
@@ -90,8 +71,6 @@ export interface UpgradedEvent {
 export type ForwarderEvent =
   | WrappedEvent
   | UnwrappedEvent
-  | EmergencyCallerSetEvent
-  | EmergencyWithdrawEvent
   | InitializedEvent
   | OwnershipTransferredEvent
   | UpgradedEvent;
@@ -143,16 +122,6 @@ const BODY_READERS: { [N in ForwarderEvent["name"]]: (body: Uint8Array) => Extra
     ["token", bytes32],
     ["to", bytes32],
     ["amount", u64],
-  ]),
-  EmergencyCallerSet: bodyReader("EmergencyCallerSet", [
-    ["emergencyCaller", bytes32],
-    ["setBy", bytes32],
-  ]),
-  EmergencyWithdraw: bodyReader("EmergencyWithdraw", [
-    ["tokenMint", bytes32],
-    ["to", bytes32],
-    ["amount", u64],
-    ["caller", bytes32],
   ]),
   Initialized: bodyReader("Initialized", [["version", u64]]),
   OwnershipTransferred: bodyReader("OwnershipTransferred", [

@@ -25,8 +25,8 @@ pub use accounts::{
 };
 pub use constants::*;
 pub use events::{
-    decode_forwarder_event_instruction, EmergencyCallerSetEvent, EmergencyWithdrawEvent,
-    ForwarderEvent, InitializedEvent, UnwrappedEvent, WrappedEvent,
+    decode_forwarder_event_instruction, ForwarderEvent, InitializedEvent, UnwrappedEvent,
+    WrappedEvent,
 };
 pub use input::{
     decode_forwarder_input, encode_unwrap_forwarder_input, encode_wrap_forwarder_input,
@@ -37,10 +37,9 @@ pub use wrap_message::{sha256, WrapMessage, WRAP_MESSAGE_LEN};
 #[cfg(feature = "solana")]
 pub use forwarder::{
     build_unwrap_forwarder_accounts, build_wrap_forwarder_accounts, close_config_ix,
-    close_escrow_ix, close_nonce_bitmaps_batch_ix, forward_emergency_call_ix, init_nonce_bitmap_ix,
-    initialize_ix, nonce_word_index, reinitialize_ix, renounce_ownership_ix,
-    set_emergency_caller_ix, transfer_ownership_ix, upgrade_ixs, version_ix,
-    UPGRADE_COMPUTE_UNIT_LIMIT,
+    close_escrow_ix, close_nonce_bitmaps_batch_ix, init_nonce_bitmap_ix, initialize_ix,
+    migrate_config_ix, nonce_word_index, reinitialize_ix, renounce_ownership_ix,
+    transfer_ownership_ix, upgrade_ixs, version_ix, UPGRADE_COMPUTE_UNIT_LIMIT,
 };
 #[cfg(feature = "solana")]
 pub use pda::{

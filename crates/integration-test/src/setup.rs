@@ -15,7 +15,7 @@ use anoma_rm_risc0::resource::Resource;
 use anomapay_spl_token_forwarder_client::{
     CONFIG_VERSION, ConfigAccount, ForwarderEvent, decode_config,
     decode_forwarder_event_instruction, derive_forwarder_config_pda,
-    derive_forwarder_escrow_authority, initialize_ix, sha256,
+    derive_forwarder_escrow_authority, initialize_ix, sha256, upgrade_ixs,
 };
 use anyhow::Context;
 use solana_instruction::{AccountMeta, Instruction};
@@ -35,6 +35,9 @@ use anomapay_spl_token_forwarder_client::submitter::SplTokenForwarder;
 /// the local addresses (`dev.sh test-program`), production and development.
 pub const FORWARDER_SO: &[u8] = include_bytes!("../programs/spl_token_forwarder.so");
 const FORWARDER_DEV_SO: &[u8] = include_bytes!("../programs/spl_token_forwarder_dev.so");
+/// The previous release's production build, whose config held an emergency
+/// committee and caller: where an in-place upgrade to this release starts.
+const PREVIOUS_FORWARDER_SO: &[u8] = include_bytes!("../programs/previous/spl_token_forwarder.so");
 const LOCALNET: &str = include_str!("../../../env/localnet.env");
 #[cfg(feature = "e2e")]
 const DEVNET: &str = include_str!("../../../env/devnet.env");
@@ -63,12 +66,11 @@ pub struct Forwarder {
     pub user: Keypair,
 }
 
-/// The forwarder as the local environment deploys it: also the owner and
-/// emergency committee it was initialized with.
+/// The forwarder as the local environment deploys it: also the owner it was
+/// initialized with.
 pub struct LocalForwarder {
     pub forwarder: Forwarder,
     pub owner: Keypair,
-    pub committee: Keypair,
 }
 
 /// Which build of the forwarder a local environment deploys.
@@ -102,28 +104,23 @@ fn deploy<P>(env: &Environment<P>, build: Build) -> anyhow::Result<Pubkey> {
 }
 
 /// Initializes the forwarder `program` on `env` for the adapter and the
-/// transfer resource's logic ref, with a new owner and emergency committee,
-/// which it returns.
-async fn initialize<P>(
-    env: &Environment<P>,
-    program: Pubkey,
-) -> anyhow::Result<(Keypair, Keypair)> {
+/// transfer resource's logic ref, with a new owner, which it returns.
+async fn initialize<P>(env: &Environment<P>, program: Pubkey) -> anyhow::Result<Keypair> {
     let payer = env.protocol_adapter.payer.pubkey();
-    let (owner, committee) = (Keypair::new(), Keypair::new());
+    let owner = Keypair::new();
     env.send(
         &[initialize_ix(
             &program,
             &payer,
             &env.protocol_adapter.program,
             crate::logic::logic_ref().into(),
-            &committee.pubkey(),
             &owner.pubkey(),
         )],
         &[],
     )
     .await
     .context("failed to initialize the forwarder")?;
-    Ok((owner, committee))
+    Ok(owner)
 }
 
 /// The local environment with the forwarder deployed and initialized for the
@@ -135,16 +132,55 @@ pub async fn local() -> anyhow::Result<(LocalEnv, LocalForwarder)> {
 /// `local`, with the forwarder `build`.
 async fn local_with(build: Build) -> anyhow::Result<(LocalEnv, LocalForwarder)> {
     let (mut env, program) = deployed(build).await?;
-    let (owner, committee) = initialize(&env, program).await?;
+    let owner = initialize(&env, program).await?;
     let forwarder = serve(&mut env, program).await?;
-    Ok((
-        env,
-        LocalForwarder {
-            forwarder,
-            owner,
-            committee,
-        },
-    ))
+    Ok((env, LocalForwarder { forwarder, owner }))
+}
+
+/// The local environment with the previous release deployed, initialized
+/// for the adapter and the transfer resource's logic ref with a new owner
+/// and emergency committee, and serving a mint; then upgraded in place by
+/// its owner to this release's production build, as a cluster's forwarder
+/// is. The config is still in the previous layout: `migrate_config` has not
+/// run.
+pub async fn upgraded_from_the_previous_release() -> anyhow::Result<(LocalEnv, LocalForwarder)> {
+    let mut env = LocalEnv::setup_bare().await?;
+    let program = forwarder_address(LOCALNET)?;
+    let payer = env.protocol_adapter.payer.pubkey();
+    env.deploy_program(program, PREVIOUS_FORWARDER_SO, payer)?;
+
+    // The previous release's initialize took the committee between the
+    // logic ref and the owner, over the same accounts.
+    let owner = Keypair::new();
+    let mut initialize = initialize_ix(
+        &program,
+        &payer,
+        &env.protocol_adapter.program,
+        crate::logic::logic_ref().into(),
+        &owner.pubkey(),
+    );
+    initialize.data = [
+        anchor_instruction_disc("initialize").as_slice(),
+        env.protocol_adapter.program.as_ref(),
+        &<[u8; 32]>::from(crate::logic::logic_ref()),
+        Keypair::new().pubkey().as_ref(),
+        owner.pubkey().as_ref(),
+    ]
+    .concat();
+    env.send(&[initialize], &[])
+        .await
+        .context("failed to initialize the previous release")?;
+    let forwarder = serve(&mut env, program).await?;
+
+    give_sol(&env, &owner.pubkey(), 1_000_000_000)?;
+    let buffer = env.write_buffer(FORWARDER_SO, owner.pubkey()).await?;
+    env.send(
+        &upgrade_ixs(&program, &owner.pubkey(), &buffer, &owner.pubkey()),
+        &[&owner],
+    )
+    .await
+    .context("the owner failed to upgrade the previous release")?;
+    Ok((env, LocalForwarder { forwarder, owner }))
 }
 
 /// The e2e environment (`E2E_RUNTIME`) with the forwarder: on its own

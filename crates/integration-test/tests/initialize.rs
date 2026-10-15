@@ -18,15 +18,13 @@ use solana_signer::Signer;
 use surfpool_sdk::Pubkey;
 
 /// The forwarder `program`'s initialize by its upgrade authority, the
-/// adapter's payer, for the adapter and the transfer logic, with
-/// `committee` and `owner`.
-fn initialize(env: &LocalEnv, program: &Pubkey, committee: &Pubkey, owner: &Pubkey) -> Instruction {
+/// adapter's payer, for the adapter and the transfer logic, with `owner`.
+fn initialize(env: &LocalEnv, program: &Pubkey, owner: &Pubkey) -> Instruction {
     initialize_ix(
         program,
         &env.protocol_adapter.payer.pubkey(),
         &env.protocol_adapter.program,
         logic_ref().into(),
-        committee,
         owner,
     )
 }
@@ -68,7 +66,6 @@ async fn refuses_an_initialize_signed_by_anyone_but_the_programs_upgrade_authori
         &intruder.pubkey(),
         &env.protocol_adapter.program,
         logic_ref().into(),
-        &Keypair::new().pubkey(),
         &intruder.pubkey(),
     );
     refuses(
@@ -87,12 +84,7 @@ async fn refuses_an_initialize_signed_by_anyone_but_the_programs_upgrade_authori
 async fn refuses_the_upgrade_authority_of_another_programs_program_data() -> anyhow::Result<()> {
     let (env, program) = setup::deployed(Build::Production).await?;
     let other = env.deploy_test_forwarder()?;
-    let mut ix = initialize(
-        &env,
-        &program,
-        &Keypair::new().pubkey(),
-        &Keypair::new().pubkey(),
-    );
+    let mut ix = initialize(&env, &program, &Keypair::new().pubkey());
     let program_data = derive_program_data_address(&program);
     let slot = ix
         .accounts
@@ -114,12 +106,12 @@ async fn refuses_the_upgrade_authority_of_another_programs_program_data() -> any
 #[tokio::test(flavor = "multi_thread")]
 async fn refuses_a_zero_owner() -> anyhow::Result<()> {
     let (env, program) = setup::deployed(Build::Production).await?;
-    let ix = initialize(&env, &program, &Keypair::new().pubkey(), &Pubkey::default());
+    let ix = initialize(&env, &program, &Pubkey::default());
     refuses(&env, &program, ix, &[], "Error Code: OwnableInvalidOwner.").await
 }
 
-// Mirrors ForwarderBase.t.sol and EmergencyMigratableForwarderBase.t.sol:
-// test_constructor_reverts_if_the_{protocol_adapter_address,logic_ref,emergency_committe_address}_is_zero
+// Mirrors ForwarderBase.t.sol:
+// test_constructor_reverts_if_the_{protocol_adapter_address,logic_ref}_is_zero
 
 #[tokio::test(flavor = "multi_thread")]
 async fn refuses_a_zero_protocol_adapter() -> anyhow::Result<()> {
@@ -129,7 +121,6 @@ async fn refuses_a_zero_protocol_adapter() -> anyhow::Result<()> {
         &env.protocol_adapter.payer.pubkey(),
         &Pubkey::default(),
         logic_ref().into(),
-        &Keypair::new().pubkey(),
         &Keypair::new().pubkey(),
     );
     refuses(
@@ -151,7 +142,6 @@ async fn refuses_a_zero_logic_ref() -> anyhow::Result<()> {
         &env.protocol_adapter.program,
         [0; 32],
         &Keypair::new().pubkey(),
-        &Keypair::new().pubkey(),
     );
     refuses(
         &env,
@@ -163,22 +153,7 @@ async fn refuses_a_zero_logic_ref() -> anyhow::Result<()> {
     .await
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn refuses_a_zero_emergency_committee() -> anyhow::Result<()> {
-    let (env, program) = setup::deployed(Build::Production).await?;
-    let ix = initialize(&env, &program, &Pubkey::default(), &Keypair::new().pubkey());
-    refuses(
-        &env,
-        &program,
-        ix,
-        &[],
-        "Error Code: ZeroAddressNotAllowed.",
-    )
-    .await
-}
-
-// Mirrors ForwarderBase.t.sol getProtocolAdapter/getLogicRef and
-// EmergencyMigratableForwarderBase.t.sol emergencyCaller-is-zero-before-set.
+// Mirrors ForwarderBase.t.sol getProtocolAdapter/getLogicRef.
 // Mirrors OpenZeppelin's initializer: the owner is set and announced first
 // (OwnershipTransferred from the zero address), then the config records the
 // version it was initialized at, this build's, and announces it. The upgrade
@@ -188,17 +163,13 @@ async fn refuses_a_zero_emergency_committee() -> anyhow::Result<()> {
 async fn stores_its_configuration_announces_it_and_hands_the_upgrade_authority_to_the_program()
 -> anyhow::Result<()> {
     let (env, program) = setup::deployed(Build::Production).await?;
-    let (committee, owner) = (Keypair::new().pubkey(), Keypair::new().pubkey());
-    let signature = env
-        .send(&[initialize(&env, &program, &committee, &owner)], &[])
-        .await?;
+    let owner = Keypair::new().pubkey();
+    let signature = env.send(&[initialize(&env, &program, &owner)], &[]).await?;
 
     let config = config(&env, &program).await?;
     let expected = ConfigAccount {
         protocol_adapter: env.protocol_adapter.program.to_bytes(),
         logic_ref: logic_ref().into(),
-        emergency_committee: committee.to_bytes(),
-        emergency_caller: [0; 32],
         version: CONFIG_VERSION,
         owner: owner.to_bytes(),
     };

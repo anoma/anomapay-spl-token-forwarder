@@ -46,10 +46,3 @@ export function requireHexBytes(name: string, byteLen: number, what: string): nu
   }
   return Array.from(Buffer.from(hex, "hex"));
 }
-
-/** A token amount in raw units: a non-negative integer. */
-export function requireRawAmount(name: string, what: string): bigint {
-  const raw = requireEnv(name, what);
-  if (!/^\d+$/.test(raw)) throw new Error(`${name} must be a non-negative integer, got "${raw}"`);
-  return BigInt(raw);
-}

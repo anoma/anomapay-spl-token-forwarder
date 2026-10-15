@@ -6,7 +6,6 @@
 import { Program } from "@anchor-lang/core";
 import { ComputeBudgetProgram, PublicKey } from "@solana/web3.js";
 import { SplTokenForwarder } from "../target/types/spl_token_forwarder";
-import { escrowReleaseAccounts } from "../ts/src/forwarder";
 
 /**
  * The most compute units a transaction may use. `upgrade` runs under it,
@@ -14,19 +13,6 @@ import { escrowReleaseAccounts } from "../ts/src/forwarder";
  * before the loader's own work.
  */
 export const MAX_COMPUTE_UNIT_LIMIT = 1_400_000;
-
-/**
- * The 72-byte unwrap operand (token_mint, amount u64 LE, recipient): the
- * whole input of forward_emergency_call, and forward_call's input after
- * the op-code byte.
- */
-export function encodeUnwrapInput(tokenMint: PublicKey, amount: bigint, recipient: PublicKey): Buffer {
-  const operand = Buffer.alloc(72);
-  tokenMint.toBuffer().copy(operand, 0);
-  operand.writeBigUInt64LE(amount, 32);
-  recipient.toBuffer().copy(operand, 40);
-  return operand;
-}
 
 /**
  * The forwarder's `initialize`, signed by `authority`, the program's upgrade
@@ -37,13 +23,19 @@ export function initializeForwarder(
   forwarder: Program<SplTokenForwarder>,
   adapterProgramId: PublicKey,
   logicRef: number[],
-  committee: PublicKey,
   initialOwner: PublicKey,
   authority: PublicKey,
 ) {
-  return forwarder.methods
-    .initialize(adapterProgramId, logicRef, committee, initialOwner)
-    .accountsPartial({ authority });
+  return forwarder.methods.initialize(adapterProgramId, logicRef, initialOwner).accountsPartial({ authority });
+}
+
+/**
+ * The forwarder's `migrate_config`, signed by `owner`, the owner the previous
+ * release's config records: after the in-place upgrade to this release, it
+ * rewrites the config into this release's layout.
+ */
+export function migrateForwarderConfig(forwarder: Program<SplTokenForwarder>, owner: PublicKey) {
+  return forwarder.methods.migrateConfig().accountsPartial({ owner });
 }
 
 /**
@@ -70,21 +62,4 @@ export function upgradeForwarder(
     .upgrade()
     .accountsPartial({ authority, buffer, spill })
     .preInstructions([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_COMPUTE_UNIT_LIMIT })]);
-}
-
-/**
- * `forward_emergency_call` by `caller`: `withdrawal.amount` of
- * `withdrawal.mint` from escrow to `withdrawal.recipient`'s token account,
- * which must exist. Callers add signers and send.
- */
-export function emergencyWithdraw(
-  forwarder: Program<SplTokenForwarder>,
-  paState: PublicKey,
-  caller: PublicKey,
-  withdrawal: { mint: PublicKey; amount: bigint; recipient: PublicKey },
-) {
-  return forwarder.methods
-    .forwardEmergencyCall(encodeUnwrapInput(withdrawal.mint, withdrawal.amount, withdrawal.recipient))
-    .accountsPartial({ caller, paState })
-    .remainingAccounts(escrowReleaseAccounts(forwarder.programId, withdrawal.recipient, withdrawal.mint));
 }

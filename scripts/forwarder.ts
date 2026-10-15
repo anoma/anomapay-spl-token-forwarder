@@ -14,40 +14,34 @@
  *   reinitialize          (owner)     After upgrading the program to a
  *                                     build that raises CONFIG_VERSION:
  *                                     rotate the config's logic ref to
- *                                     STF_LOGIC_REF, once; escrow, nonce
- *                                     bitmaps and the committee are untouched.
- *   emergency-withdraw    (caller)    Move STF_AMOUNT of STF_TOKEN_MINT from
- *                                     escrow to STF_RECIPIENT.
+ *                                     STF_LOGIC_REF, once; escrow and nonce
+ *                                     bitmaps are untouched.
+ *   migrate-config        (owner)     After upgrading the program from the
+ *                                     release whose config held an emergency
+ *                                     committee and caller: rewrite the
+ *                                     config into this release's layout.
  *
- * Closing escrows, nonce bitmaps or the config, and naming the emergency
- * caller, are not commands: on a live cluster they are done by hand
- * (docs/OPERATIONS.md).
+ * Closing escrows, nonce bitmaps or the config are not commands: on a live
+ * cluster they are done by hand (docs/OPERATIONS.md).
  *
  * The program enforces who may do what and when; a refused command fails
- * with the program's error (UnauthorizedCaller, ProtocolAdapterNotPaused,
- * EmergencyCallerAlreadySet, ...).
+ * with the program's error (OwnableUnauthorizedAccount, InvalidInitialization,
+ * NotPreviousLayout, ...).
  *
  * Environment (read per command):
  *   STF_LOGIC_REF           32-byte hex: the resource logic the config
  *                           authorizes (init, reinitialize)
- *   STF_EMERGENCY_COMMITTEE base58 pubkey (init)
  *   STF_OWNER               base58 pubkey of the initial owner (init)
- *   STF_TOKEN_MINT          base58 mint (init optional; emergency-withdraw
- *                           required)
- *   STF_RECIPIENT           base58 owner of the receiving token account
- *                           (emergency-withdraw)
- *   STF_AMOUNT              raw token units (emergency-withdraw)
+ *   STF_TOKEN_MINT          base58 mint (init, optional)
  */
 import * as anchor from "@anchor-lang/core";
 import { confirmedProvider } from "../client/provider";
 import { Program } from "@anchor-lang/core";
-import { PublicKey } from "@solana/web3.js";
 import { getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 import { SplTokenForwarder } from "../target/types/spl_token_forwarder";
-import { emergencyWithdraw, initializeForwarder, reinitializeForwarder } from "../client/instructions";
-import { derivePaStatePda } from "../client/pda";
+import { initializeForwarder, migrateForwarderConfig, reinitializeForwarder } from "../client/instructions";
 import { deriveForwarderConfigPda, deriveForwarderEscrowAuthority } from "../ts/src/pda";
-import { fail, requireHexBytes, requirePubkey, requireRawAmount } from "./cli-utils";
+import { fail, requireHexBytes, requirePubkey } from "./cli-utils";
 
 const provider = confirmedProvider();
 anchor.setProvider(provider);
@@ -57,7 +51,6 @@ const forwarder = anchor.workspace.SplTokenForwarder as Program<SplTokenForwarde
 // The adapter this build of the forwarder pairs with (env/<cluster>.env).
 const adapterProgramId = requirePubkey("PROTOCOL_ADAPTER_PROGRAM_ID", "the protocol adapter the forwarder serves");
 const [configPda] = deriveForwarderConfigPda(forwarder.programId);
-const [paState] = derivePaStatePda(adapterProgramId);
 
 const requireMint = () => requirePubkey("STF_TOKEN_MINT", "the mint whose escrow to operate on");
 
@@ -72,10 +65,6 @@ async function init() {
     32,
     "the 32-byte hex logic ref (verifying key) of the resource logic this forwarder serves",
   );
-  const committee = requirePubkey(
-    "STF_EMERGENCY_COMMITTEE",
-    "the committee that can name an emergency caller and close accounts",
-  );
   const owner = requirePubkey(
     "STF_OWNER",
     "the forwarder's initial owner, who alone upgrades it and rotates its logic ref",
@@ -87,7 +76,6 @@ async function init() {
     const fields: [string, string, string][] = [
       ["adapter", existing.protocolAdapter.toBase58(), adapterProgramId.toBase58()],
       ["logic ref", Buffer.from(existing.logicRef).toString("hex"), Buffer.from(logicRef).toString("hex")],
-      ["committee", existing.emergencyCommittee.toBase58(), committee.toBase58()],
       ["owner", existing.owner.toBase58(), owner.toBase58()],
     ];
     const mismatches = fields.filter(([, stored, requested]) => stored !== requested);
@@ -102,9 +90,8 @@ async function init() {
     console.log(`Initializing config ${configPda.toBase58()}`);
     console.log(`  adapter:   ${adapterProgramId.toBase58()}`);
     console.log(`  logic ref: ${Buffer.from(logicRef).toString("hex")}`);
-    console.log(`  committee: ${committee.toBase58()}`);
     console.log(`  owner:     ${owner.toBase58()}`);
-    await initializeForwarder(forwarder, adapterProgramId, logicRef, committee, owner, wallet.publicKey).rpc();
+    await initializeForwarder(forwarder, adapterProgramId, logicRef, owner, wallet.publicKey).rpc();
     console.log("✅ Config initialized");
   }
 
@@ -133,21 +120,21 @@ async function reinitializeCommand() {
   );
 }
 
-async function withdraw() {
-  const mint = requireMint();
-  const recipient = requirePubkey("STF_RECIPIENT", "the owner of the receiving token account");
-  const amount = requireRawAmount("STF_AMOUNT", "the amount to withdraw, in the token's raw units");
-  await requireConfig();
-  const recipientAta = (await getOrCreateAssociatedTokenAccount(connection, wallet.payer, mint, recipient)).address;
-
-  await emergencyWithdraw(forwarder, paState, wallet.publicKey, { mint, amount, recipient }).rpc();
-  console.log(`✅ Withdrew ${amount} raw units of ${mint.toBase58()} to ${recipientAta.toBase58()}`);
+async function migrateConfigCommand() {
+  // The config is in the previous layout, which this build's types do not
+  // decode: the program checks it and the signer.
+  await migrateForwarderConfig(forwarder, wallet.publicKey).rpc();
+  const config = await requireConfig();
+  console.log(
+    `✅ Config migrated: adapter ${config.protocolAdapter.toBase58()}, logic ref ` +
+      `${Buffer.from(config.logicRef).toString("hex")}, version ${config.version}, owner ${config.owner.toBase58()}`,
+  );
 }
 
 const COMMANDS: Record<string, () => Promise<void>> = {
   init,
   reinitialize: reinitializeCommand,
-  "emergency-withdraw": withdraw,
+  "migrate-config": migrateConfigCommand,
 };
 
 const command = process.argv[2];

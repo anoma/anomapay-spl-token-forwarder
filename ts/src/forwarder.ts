@@ -82,7 +82,7 @@ function forwarderSegmentHead(forwarderProgram: PublicKey): AccountMeta[] {
  * The accounts of a release from `tokenMint`'s escrow to `recipient`'s token
  * account, in the order the forwarder reads them: the escrow's token account,
  * the recipient's, the escrow authority and the token program. They end an
- * unwrap segment and are `forward_emergency_call`'s remaining accounts.
+ * unwrap segment.
  */
 export function escrowReleaseAccounts(
   forwarderProgram: PublicKey,

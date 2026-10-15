@@ -2,28 +2,25 @@
 //! on a cluster does what it says there. Run with `ops.sh script-test`, which
 //! installs the scripts' dependencies and builds the types they import.
 
-use anoma_pa_solana_client::{derive_pa_state_pda, derive_upgrade_authority_pda};
-use anoma_pa_testkit::environment::ProtocolAdapter as _;
+use anoma_pa_solana_client::derive_upgrade_authority_pda;
 use anomapay_spl_token_forwarder_client::{
-    CONFIG_VERSION, ConfigAccount, derive_forwarder_escrow_authority, set_emergency_caller_ix,
+    CONFIG_VERSION, ConfigAccount, derive_forwarder_escrow_authority,
 };
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::scripts::{hex, run_script};
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, Build, FORWARDER_SO, LocalForwarder, balance, config, executable_hash, give_sol, mint_to,
-    new_mint, upgrade_authority,
+    self, Build, FORWARDER_SO, balance, config, executable_hash, give_sol, new_mint,
+    upgrade_authority,
 };
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 use spl_associated_token_account_interface::address::get_associated_token_address;
 use surfpool_sdk::Pubkey;
 
-/// The variables `forwarder init` reads: the transfer logic, `committee`
-/// and `owner`.
-fn init_vars(logic: [u8; 32], committee: &Pubkey, owner: &Pubkey) -> Vec<(&'static str, String)> {
+/// The variables `forwarder init` reads: the transfer logic and `owner`.
+fn init_vars(logic: [u8; 32], owner: &Pubkey) -> Vec<(&'static str, String)> {
     vec![
         ("STF_LOGIC_REF", hex(&logic)),
-        ("STF_EMERGENCY_COMMITTEE", committee.to_string()),
         ("STF_OWNER", owner.to_string()),
     ]
 }
@@ -33,9 +30,9 @@ fn init_vars(logic: [u8; 32], committee: &Pubkey, owner: &Pubkey) -> Vec<(&'stat
 #[tokio::test(flavor = "multi_thread")]
 async fn init_initializes_a_deployed_forwarder_as_requested() -> anyhow::Result<()> {
     let (env, program) = setup::deployed(Build::Production).await?;
-    let (committee, owner) = (Keypair::new().pubkey(), Keypair::new().pubkey());
+    let owner = Keypair::new().pubkey();
     let mint = new_mint(&env).await?;
-    let mut vars = init_vars(logic_ref().into(), &committee, &owner);
+    let mut vars = init_vars(logic_ref().into(), &owner);
     vars.push(("STF_TOKEN_MINT", mint.to_string()));
     let ran = run_script(
         &env,
@@ -53,8 +50,6 @@ async fn init_initializes_a_deployed_forwarder_as_requested() -> anyhow::Result<
     let expected = ConfigAccount {
         protocol_adapter: env.protocol_adapter.program.to_bytes(),
         logic_ref: logic_ref().into(),
-        emergency_committee: committee.to_bytes(),
-        emergency_caller: [0; 32],
         version: CONFIG_VERSION,
         owner: owner.to_bytes(),
     };
@@ -82,11 +77,7 @@ async fn init_initializes_a_deployed_forwarder_as_requested() -> anyhow::Result<
 #[tokio::test(flavor = "multi_thread")]
 async fn init_accepts_an_existing_config_that_holds_the_requested_values() -> anyhow::Result<()> {
     let (env, local) = setup::local().await?;
-    let vars = init_vars(
-        logic_ref().into(),
-        &local.committee.pubkey(),
-        &local.owner.pubkey(),
-    );
+    let vars = init_vars(logic_ref().into(), &local.owner.pubkey());
     let ran = run_script(
         &env,
         &env.protocol_adapter.payer,
@@ -107,11 +98,7 @@ async fn init_accepts_an_existing_config_that_holds_the_requested_values() -> an
 #[tokio::test(flavor = "multi_thread")]
 async fn init_refuses_an_existing_config_that_differs_from_the_request() -> anyhow::Result<()> {
     let (env, local) = setup::local().await?;
-    let vars = init_vars(
-        Keypair::new().pubkey().to_bytes(),
-        &local.committee.pubkey(),
-        &local.owner.pubkey(),
-    );
+    let vars = init_vars(Keypair::new().pubkey().to_bytes(), &local.owner.pubkey());
     let ran = run_script(
         &env,
         &env.protocol_adapter.payer,
@@ -157,54 +144,28 @@ async fn reinitialize_rotates_the_logic_ref() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// With the adapter paused and the caller named, the emergency caller moves
-/// escrowed tokens to a recipient.
+/// After the in-place upgrade from the release with an emergency committee,
+/// the owner's `migrate-config` rewrites the config into this release's
+/// layout, keeping its values.
 #[tokio::test(flavor = "multi_thread")]
-async fn emergency_withdraw_moves_escrowed_tokens_to_the_recipient() -> anyhow::Result<()> {
-    let (mut env, local) = setup::local().await?;
-    let LocalForwarder {
-        forwarder,
-        committee,
-        ..
-    } = &local;
-    let (pa_state, _) = derive_pa_state_pda(&env.protocol_adapter.program);
-    let caller = Keypair::new();
-    env.protocol_adapter.pause().await?;
-    env.send(
-        &[set_emergency_caller_ix(
-            &forwarder.program,
-            &committee.pubkey(),
-            &pa_state,
-            &caller.pubkey(),
-        )],
-        &[committee],
-    )
-    .await?;
-    let escrow = forwarder.escrow_account();
-    mint_to(&env, &forwarder.mint, &escrow, 1_000).await?;
-    // The caller signs and pays, for the recipient's token account too.
-    give_sol(&env, &caller.pubkey(), 1_000_000_000)?;
-
-    let recipient = Keypair::new().pubkey();
-    let ran = run_script(
-        &env,
-        &caller,
-        "forwarder.ts",
-        &["emergency-withdraw"],
-        &[
-            ("STF_TOKEN_MINT", forwarder.mint.to_string()),
-            ("STF_RECIPIENT", recipient.to_string()),
-            ("STF_AMOUNT", "400".to_string()),
-        ],
-    )?;
+async fn migrate_config_rewrites_the_upgraded_config() -> anyhow::Result<()> {
+    let (env, local) = setup::upgraded_from_the_previous_release().await?;
+    let (program, owner) = (local.forwarder.program, &local.owner);
+    let ran = run_script(&env, owner, "forwarder.ts", &["migrate-config"], &[])?;
     anyhow::ensure!(
-        ran.success && ran.stdout.contains("✅ Withdrew 400"),
+        ran.success && ran.stdout.contains("✅ Config migrated"),
         "{ran}"
     );
-    let recipient_account = get_associated_token_address(&recipient, &forwarder.mint);
+    let stored = config(&env, &program).await?;
+    let expected = ConfigAccount {
+        protocol_adapter: env.protocol_adapter.program.to_bytes(),
+        logic_ref: logic_ref().into(),
+        version: CONFIG_VERSION,
+        owner: owner.pubkey().to_bytes(),
+    };
     anyhow::ensure!(
-        balance(&env, &escrow).await? == 600 && balance(&env, &recipient_account).await? == 400,
-        "the withdrawal did not move 400 from escrow to the recipient"
+        stored == expected,
+        "the config is {stored:?}, not {expected:?}"
     );
     Ok(())
 }

@@ -10,9 +10,7 @@ use protocol_adapter::state::{PAStateAccount, PA_STATE_SEED};
 ///
 /// The adapter and logic ref mirror the EVM V2 forwarder's
 /// `ForwarderBaseUpgradeable` state, `version` its `Initializable` version,
-/// and `owner` its `OwnableUpgradeable` owner. The emergency committee and
-/// caller are the EVM V1 forwarder's emergency mechanism, which V2 dropped
-/// (anoma/dos-pm#86).
+/// and `owner` its `OwnableUpgradeable` owner.
 #[account]
 #[derive(InitSpace)]
 pub struct Config {
@@ -20,10 +18,6 @@ pub struct Config {
     pub protocol_adapter: Pubkey,
     /// The logic reference (verifying key) this forwarder handles
     pub logic_ref: [u8; 32],
-    /// Emergency committee that can set emergency_caller
-    pub emergency_committee: Pubkey,
-    /// Emergency caller set by committee (zero = not set)
-    pub emergency_caller: Pubkey,
     /// The version the config was last initialized at, as OpenZeppelin
     /// Initializable's `_initialized`: `initialize` records CONFIG_VERSION,
     /// and `reinitialize` raises it to CONFIG_VERSION once.
@@ -38,6 +32,36 @@ pub struct Config {
 impl Config {
     /// The account's size: the discriminator and the fields.
     pub const ACCOUNT_SIZE: usize = Self::DISCRIMINATOR.len() + Self::INIT_SPACE;
+}
+
+/// The config as the previous release laid it out, which `migrate_config`
+/// rewrites: the fields above with an emergency committee and an emergency
+/// caller between the logic ref and the version.
+#[derive(AnchorDeserialize)]
+pub struct PreviousConfig {
+    pub protocol_adapter: Pubkey,
+    pub logic_ref: [u8; 32],
+    pub emergency_committee: Pubkey,
+    pub emergency_caller: Pubkey,
+    pub version: u64,
+    pub owner: Pubkey,
+}
+
+impl PreviousConfig {
+    /// The previous account's size: the discriminator, which the layouts
+    /// share, and the fields.
+    pub const ACCOUNT_SIZE: usize = Config::ACCOUNT_SIZE + 2 * 32;
+
+    /// The config in this release's layout: the same adapter, logic ref,
+    /// version and owner.
+    pub fn migrated(&self) -> Config {
+        Config {
+            protocol_adapter: self.protocol_adapter,
+            logic_ref: self.logic_ref,
+            version: self.version,
+            owner: self.owner,
+        }
+    }
 }
 
 /// The config version this build initializes to and reinitializes to, as
@@ -244,9 +268,8 @@ impl WrapInput {
     }
 }
 
-/// Unwrap operand of `forward_call` after the op-code byte, and the whole
-/// operand of `forward_emergency_call`: 72 bytes, Borsh-serialized in field
-/// order (token_mint, amount u64 LE, recipient).
+/// Unwrap operand of `forward_call` after the op-code byte: 72 bytes,
+/// Borsh-serialized in field order (token_mint, amount u64 LE, recipient).
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct UnwrapInput {
     pub token_mint: Pubkey,

@@ -1,12 +1,12 @@
 //! Tests for the wire formats, the nonce bitmap, and the adapter-state read.
 
 use crate::state::{
-    base64_of_hash, nonce_to_word_and_bit, pa_is_paused, Config, NonceBitmap, UnwrapInput,
-    WrapInput, WrapMessage, CONFIG_PDA, CONFIG_SEED, ESCROW_AUTHORITY, ESCROW_AUTHORITY_BUMP,
-    ESCROW_SEED, NONCES_PER_WORD, NONCE_BITMAP_SEED, SIGNED_MESSAGE_LEN,
+    base64_of_hash, nonce_to_word_and_bit, pa_is_paused, Config, NonceBitmap, PreviousConfig,
+    UnwrapInput, WrapInput, WrapMessage, CONFIG_PDA, CONFIG_SEED, ESCROW_AUTHORITY,
+    ESCROW_AUTHORITY_BUMP, ESCROW_SEED, NONCES_PER_WORD, NONCE_BITMAP_SEED, SIGNED_MESSAGE_LEN,
 };
 use anchor_lang::prelude::{borsh, Pubkey};
-use anchor_lang::AccountSerialize;
+use anchor_lang::{AccountSerialize, AnchorDeserialize, Discriminator};
 use protocol_adapter::state::PAStateAccount;
 
 /// The compile-time config address is the canonical PDA `initialize`
@@ -329,10 +329,41 @@ fn nonce_bitmap_account_is_discriminator_word_and_bump() {
     );
 }
 
-/// The config is the discriminator, four keys, the version and the owner.
+/// The config is the discriminator, the adapter, the logic ref, the version
+/// and the owner.
 #[test]
-fn config_is_discriminator_four_keys_version_and_owner() {
-    assert_eq!(Config::ACCOUNT_SIZE, 8 + 32 * 4 + 8 + 32);
+fn config_is_discriminator_adapter_logic_ref_version_and_owner() {
+    assert_eq!(Config::ACCOUNT_SIZE, 8 + 32 * 2 + 8 + 32);
+}
+
+/// The previous release's config, as it wrote it: the discriminator, the
+/// adapter, the logic ref, the emergency committee and caller, the version
+/// and the owner. `migrated` keeps the adapter, logic ref, version and owner.
+#[test]
+fn a_previous_config_migrates_to_its_adapter_logic_ref_version_and_owner() {
+    let mut data = Config::DISCRIMINATOR.to_vec();
+    for field in [[1u8; 32], [2; 32], [3; 32], [4; 32]] {
+        data.extend_from_slice(&field);
+    }
+    data.extend_from_slice(&7u64.to_le_bytes());
+    data.extend_from_slice(&[5; 32]);
+    assert_eq!(data.len(), PreviousConfig::ACCOUNT_SIZE);
+
+    let previous = PreviousConfig::try_from_slice(&data[8..]).unwrap();
+    let config = previous.migrated();
+    assert_eq!(config.protocol_adapter, Pubkey::new_from_array([1; 32]));
+    assert_eq!(config.logic_ref, [2; 32]);
+    assert_eq!(config.version, 7);
+    assert_eq!(config.owner, Pubkey::new_from_array([5; 32]));
+
+    let mut written = Vec::new();
+    config.try_serialize(&mut written).unwrap();
+    assert_eq!(written.len(), Config::ACCOUNT_SIZE);
+    assert_eq!(
+        written[..8],
+        data[..8],
+        "the layouts share the discriminator"
+    );
 }
 
 // =============================================================================
