@@ -85,24 +85,29 @@ pub enum Build {
 /// address.
 pub async fn deployed(build: Build) -> anyhow::Result<(LocalEnv, Pubkey)> {
     let env = LocalEnv::setup_bare().await?;
+    let program = deploy(&env, build)?;
+    Ok((env, program))
+}
+
+/// Deploys the forwarder `build` on `env` at its local address, its upgrade
+/// authority the adapter's payer, and not initialized; returns the address.
+fn deploy<P>(env: &Environment<P>, build: Build) -> anyhow::Result<Pubkey> {
     let program = forwarder_address(LOCALNET)?;
     let so = match build {
         Build::Production => FORWARDER_SO,
         Build::Development => FORWARDER_DEV_SO,
     };
     env.deploy_program(program, so, env.protocol_adapter.payer.pubkey())?;
-    Ok((env, program))
+    Ok(program)
 }
 
-/// The local environment with the forwarder deployed and initialized for the
-/// adapter and the transfer resource's logic ref.
-pub async fn local() -> anyhow::Result<(LocalEnv, LocalForwarder)> {
-    local_with(Build::Production).await
-}
-
-/// `local`, with the forwarder `build`.
-async fn local_with(build: Build) -> anyhow::Result<(LocalEnv, LocalForwarder)> {
-    let (mut env, program) = deployed(build).await?;
+/// Initializes the forwarder `program` on `env` for the adapter and the
+/// transfer resource's logic ref, with a new owner and emergency committee,
+/// which it returns.
+async fn initialize<P>(
+    env: &Environment<P>,
+    program: Pubkey,
+) -> anyhow::Result<(Keypair, Keypair)> {
     let payer = env.protocol_adapter.payer.pubkey();
     let (owner, committee) = (Keypair::new(), Keypair::new());
     env.send(
@@ -118,6 +123,19 @@ async fn local_with(build: Build) -> anyhow::Result<(LocalEnv, LocalForwarder)> 
     )
     .await
     .context("failed to initialize the forwarder")?;
+    Ok((owner, committee))
+}
+
+/// The local environment with the forwarder deployed and initialized for the
+/// adapter and the transfer resource's logic ref.
+pub async fn local() -> anyhow::Result<(LocalEnv, LocalForwarder)> {
+    local_with(Build::Production).await
+}
+
+/// `local`, with the forwarder `build`.
+async fn local_with(build: Build) -> anyhow::Result<(LocalEnv, LocalForwarder)> {
+    let (mut env, program) = deployed(build).await?;
+    let (owner, committee) = initialize(&env, program).await?;
     let forwarder = serve(&mut env, program).await?;
     Ok((
         env,
@@ -129,28 +147,44 @@ async fn local_with(build: Build) -> anyhow::Result<(LocalEnv, LocalForwarder)> 
     ))
 }
 
-/// A fork of devnet with the forwarder devnet runs, checked to serve the
-/// devnet adapter and the transfer resource's logic ref.
+/// The e2e environment (`E2E_RUNTIME`) with the forwarder: on its own
+/// runtime, the forwarder deployed and initialized for the adapter and the
+/// transfer resource's logic ref, as the local environment's; on a fork of
+/// devnet, the forwarder devnet runs, checked to serve the devnet adapter and
+/// the transfer resource's logic ref.
 #[cfg(feature = "e2e")]
 pub async fn e2e() -> anyhow::Result<(
     anoma_pa_solana_integration_test::envs::e2e::Environment,
     Forwarder,
 )> {
-    let mut env = anoma_pa_solana_integration_test::envs::e2e::Environment::setup_bare().await?;
-    let program = forwarder_address(DEVNET)?;
-    let config = config(&env, &program).await?;
-    let pa = env.protocol_adapter.program;
-    anyhow::ensure!(
-        config.protocol_adapter == pa.to_bytes(),
-        "the devnet forwarder serves the adapter {}, not {pa}",
-        Pubkey::new_from_array(config.protocol_adapter)
-    );
-    anyhow::ensure!(
-        config.logic_ref == <[u8; 32]>::from(crate::logic::logic_ref()),
-        "the devnet forwarder serves the logic ref {}, the tests build {}",
-        anoma_rm_risc0::Digest::from_bytes(config.logic_ref),
-        crate::logic::logic_ref()
-    );
+    use anoma_pa_solana_integration_test::envs::e2e::{E2eConfig, E2eRuntime, Environment};
+
+    let e2e_config = E2eConfig::from_env().context("failed to parse e2e test config")?;
+    let mut env = Environment::setup(&e2e_config).await?;
+    let program = match e2e_config.runtime {
+        E2eRuntime::Local => {
+            let program = deploy(&env, Build::Production)?;
+            initialize(&env, program).await?;
+            program
+        }
+        E2eRuntime::Devnet { .. } => {
+            let program = forwarder_address(DEVNET)?;
+            let config = config(&env, &program).await?;
+            let pa = env.protocol_adapter.program;
+            anyhow::ensure!(
+                config.protocol_adapter == pa.to_bytes(),
+                "the devnet forwarder serves the adapter {}, not {pa}",
+                Pubkey::new_from_array(config.protocol_adapter)
+            );
+            anyhow::ensure!(
+                config.logic_ref == <[u8; 32]>::from(crate::logic::logic_ref()),
+                "the devnet forwarder serves the logic ref {}, the tests build {}",
+                anoma_rm_risc0::Digest::from_bytes(config.logic_ref),
+                crate::logic::logic_ref()
+            );
+            program
+        }
+    };
     let forwarder = serve(&mut env, program).await?;
     Ok((env, forwarder))
 }

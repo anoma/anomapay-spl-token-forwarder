@@ -32,7 +32,7 @@ Everything runs in the repository's Nix dev shell, which pins the Rust, Solana a
 | `./scripts/dev.sh build-dev` | Development build (the `dev-config-version` instruction enabled) |
 | `./scripts/dev.sh build-release` | Production build; checks its IDL is the development IDL minus the dev-only instruction |
 | `./scripts/dev.sh verify-build` | The deterministic solana-verify build |
-| `./scripts/dev.sh integration-test [--e2e]` | The integration tests on a local runtime; with `--e2e`, their cases on a fork of devnet with real proofs |
+| `./scripts/dev.sh integration-test [--e2e]` | The integration tests on a local runtime; with `--e2e`, their cases with real proofs, on a local runtime (`E2E_RUNTIME=devnet`: on a fork of devnet) |
 | `./scripts/dev.sh test-program [--check]` | Write (or check) the deterministic production and development builds the integration tests load |
 | `./scripts/dev.sh typecheck` | Type-check and format-check the operator scripts against the production IDL's types |
 | `./scripts/dev.sh script-test` | Run the operator scripts against a local runtime |

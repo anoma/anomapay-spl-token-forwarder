@@ -22,8 +22,10 @@ Development:
   verify-build   The deterministic solana-verify build at the local addresses
   integration-test [--e2e]
                  The integration tests on the adapter's harness, locally; with
-                 --e2e, their e2e cases on a fork of devnet (DEVNET_RPC_URL,
-                 QUEUE_BASE_URL, QUEUE_AUTH_TOKEN, read by the harness)
+                 --e2e, their e2e cases with real proofs, locally or, with
+                 E2E_RUNTIME=devnet, on a fork of devnet (DEVNET_RPC_URL;
+                 E2E_PROVER, QUEUE_BASE_URL, QUEUE_AUTH_TOKEN; read by the
+                 harness)
   test-program [--check]
                  Write the deterministic production and development builds
                  to the integration tests' programs/, the binaries they load;
