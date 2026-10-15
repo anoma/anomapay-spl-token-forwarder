@@ -27,12 +27,12 @@ use anomapay_spl_token_forwarder_client::emergency_migrating::{
     derive_migration_record_pda, derive_vulnerable_logic_refs_pda, reinitialize_ix,
 };
 use anomapay_spl_token_forwarder_client::{
-    ForwarderEvent, LogicRefReplacedEvent, MigrateEntry, MigrateInput, MigratedEvent,
-    VulnerableLogicRefListedEvent, decode_migration_record, decode_vulnerable_logic_refs,
-    encode_migrate_forwarder_input, forwarder_migrate_num_accounts,
+    CONFIG_VERSION, ForwarderEvent, LogicRefReplacedEvent, MigrateEntry, MigrateInput,
+    MigratedEvent, VulnerableLogicRefListedEvent, decode_migration_record,
+    decode_vulnerable_logic_refs, encode_migrate_forwarder_input, forwarder_migrate_num_accounts,
 };
 use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
-use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
+use anomapay_spl_token_forwarder_integration_test::logic::{logic_ref, random_logic_ref};
 use anomapay_spl_token_forwarder_integration_test::refusal::{NOT_THE_OWNER, balances};
 use anomapay_spl_token_forwarder_integration_test::setup::{
     self, FORWARDER_EMERGENCY_MIGRATING_DEV_SO, FORWARDER_EMERGENCY_MIGRATING_SO, LocalForwarder,
@@ -47,8 +47,8 @@ use surfpool_sdk::Pubkey;
 const AMOUNT: u64 = 100_000_000;
 
 /// The config version of the emergency-migrating build: one more than the
-/// production build's 5.
-const EMERGENCY_MIGRATING_CONFIG_VERSION: u64 = 6;
+/// production build's.
+const EMERGENCY_MIGRATING_CONFIG_VERSION: u64 = CONFIG_VERSION + 1;
 
 fn bytes(digest: Digest) -> [u8; 32] {
     digest.into()
@@ -119,11 +119,6 @@ async fn is_migrated(
     )
 }
 
-/// A random logic ref no resource has.
-fn random_ref() -> Digest {
-    Digest::from(Keypair::new().pubkey().to_bytes())
-}
-
 /// The emergency-migrating build after an incident in the transfer
 /// resource's circuit.
 struct Incident {
@@ -166,35 +161,44 @@ impl Incident {
             quantity: AMOUNT,
             entries,
         });
-        prove_actions(
-            &self.env,
-            &[passthrough_call(
-                &self.local.forwarder.program,
-                input,
-                count,
-                seed,
-            )?],
-        )
-        .await
+        let call = migrate_call(&self.local.forwarder.program, input, count)?;
+        prove_actions(&self.env, &[passthrough_call(&call, seed)?]).await
+    }
+
+    /// The incident: the adapter's owner denies the transfer logic ref on
+    /// both denylists, and the forwarder's owner reinitializes the
+    /// emergency-migrating build, listing it and moving to the pass-through
+    /// logic.
+    async fn deny_and_reinitialize(&mut self) -> anyhow::Result<()> {
+        deny(&mut self.env, logic_ref()).await?;
+        let ix = reinitialize(&self.env, &self.local, PASSTHROUGH_LOGIC_VK, &[logic_ref()]);
+        self.env.send(&[ix], &[&self.local.owner]).await?;
+        Ok(())
     }
 }
 
-/// A pass-through action calling the forwarder `program` with `input`, a
-/// migration of `entries` resources; the forwarder returns the empty output.
-fn passthrough_call(
+/// The forwarder call of a migration of `entries` resources with `input`;
+/// the forwarder returns the empty output.
+fn migrate_call(
     program: &Pubkey,
     input: Vec<u8>,
     entries: usize,
-    seed: u8,
-) -> anyhow::Result<anoma_pa_testkit::witness::ActionWitnesses> {
-    let call = SolanaExternalCall {
+) -> anyhow::Result<SolanaExternalCall> {
+    Ok(SolanaExternalCall {
         program_id: program.to_bytes(),
         instruction_data: input,
         expected_output: vec![],
         output_mode: OutputMode::ReturnData,
         num_accounts: forwarder_migrate_num_accounts(entries)
             .ok_or_else(|| anyhow::anyhow!("{entries} entries exceed one segment"))?,
-    };
+    })
+}
+
+/// A pass-through action making `call`.
+fn passthrough_call(
+    call: &SolanaExternalCall,
+    seed: u8,
+) -> anyhow::Result<anoma_pa_testkit::witness::ActionWitnesses> {
     Ok(passthrough::build(
         seed,
         vec![bytes_to_words(&call.encode())],
@@ -215,6 +219,14 @@ async fn after_an_incident() -> anyhow::Result<Incident> {
 /// `after_an_incident`, with `build` the emergency-migrating build the
 /// owner upgrades to.
 async fn after_an_incident_on(build: &[u8]) -> anyhow::Result<Incident> {
+    let mut incident = before_the_incident(build).await?;
+    incident.deny_and_reinitialize().await?;
+    Ok(incident)
+}
+
+/// The forwarder upgraded to `build` and the user's wrap of `AMOUNT`, before
+/// the incident's denial and `reinitialize`.
+async fn before_the_incident(build: &[u8]) -> anyhow::Result<Incident> {
     let (mut env, local) = setup::upgraded_to(build).await?;
     let owner = ShieldedOwner::seeded("emergency-migration/owner");
     let wrapped = local
@@ -222,9 +234,6 @@ async fn after_an_incident_on(build: &[u8]) -> anyhow::Result<Incident> {
         .wrap(&mut env, &owner, AMOUNT, 1, "emergency-migration/wrap")
         .await?;
     let root = latest_root(&env).await?;
-    deny(&mut env, logic_ref()).await?;
-    let ix = reinitialize(&env, &local, PASSTHROUGH_LOGIC_VK, &[logic_ref()]);
-    env.send(&[ix], &[&local.owner]).await?;
     Ok(Incident {
         env,
         local,
@@ -256,7 +265,7 @@ async fn reinitialize_replaces_the_logic_ref_lists_the_passed_refs_and_announces
 -> anyhow::Result<()> {
     let (mut env, local) = setup::upgraded_to(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
     let program = local.forwarder.program;
-    let (first, second, new) = (logic_ref(), random_ref(), random_ref());
+    let (first, second, new) = (logic_ref(), random_logic_ref(), random_logic_ref());
     deny(&mut env, first).await?;
     deny(&mut env, second).await?;
     let signature = env
@@ -307,7 +316,7 @@ async fn reinitialize_replaces_the_logic_ref_lists_the_passed_refs_and_announces
 async fn reinitialize_keeps_the_logic_ref_and_lists_the_vulnerable_refs() -> anyhow::Result<()> {
     let (mut env, local) = setup::upgraded_to(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
     let program = local.forwarder.program;
-    let deprecated = random_ref();
+    let deprecated = random_logic_ref();
     deny(&mut env, deprecated).await?;
     let signature = env
         .send(
@@ -359,7 +368,7 @@ async fn reinitialize_refuses_anyone_but_the_owner() -> anyhow::Result<()> {
         &local.forwarder.program,
         &stranger.pubkey(),
         &env.protocol_adapter.program,
-        bytes(random_ref()),
+        bytes(random_logic_ref()),
         &[bytes(logic_ref())],
     );
     refuses_reinitialize(&env, &local, ix, &stranger, NOT_THE_OWNER).await
@@ -372,7 +381,7 @@ async fn reinitialize_runs_once() -> anyhow::Result<()> {
     let (env, local) = (&incident.env, &incident.local);
     expect_integration_panic(Needle::Static("Error Code: InvalidInitialization."))(
         env.send(
-            &[reinitialize(env, local, random_ref(), &[logic_ref()])],
+            &[reinitialize(env, local, random_logic_ref(), &[logic_ref()])],
             &[&local.owner],
         )
         .await,
@@ -388,7 +397,7 @@ async fn reinitialize_runs_once() -> anyhow::Result<()> {
 async fn a_later_incident_keeps_the_earlier_refs_listed_and_migratable() -> anyhow::Result<()> {
     let mut incident = after_an_incident_on(FORWARDER_EMERGENCY_MIGRATING_DEV_SO).await?;
     let program = incident.local.forwarder.program;
-    let later = random_ref();
+    let later = random_logic_ref();
     deny(&mut incident.env, later).await?;
     set_config_version(
         &incident.env,
@@ -414,10 +423,10 @@ async fn a_later_incident_keeps_the_earlier_refs_listed_and_migratable() -> anyh
         &[&local.owner],
     )
     .await?;
+    let refs = listed(env, &program).await?;
     anyhow::ensure!(
-        listed(env, &program).await? == [bytes(logic_ref()), bytes(later)],
-        "the forwarder lists {:02x?}",
-        listed(env, &program).await?
+        refs == [bytes(logic_ref()), bytes(later)],
+        "the forwarder lists {refs:02x?}"
     );
 
     let entry = incident.entry()?;
@@ -447,7 +456,7 @@ async fn reinitialize_refuses_the_zero_logic_ref() -> anyhow::Result<()> {
 #[tokio::test(flavor = "multi_thread")]
 async fn reinitialize_refuses_an_empty_list() -> anyhow::Result<()> {
     let (env, local) = setup::upgraded_to(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
-    let ix = reinitialize(&env, &local, random_ref(), &[]);
+    let ix = reinitialize(&env, &local, random_logic_ref(), &[]);
     refuses_reinitialize(
         &env,
         &local,
@@ -463,7 +472,12 @@ async fn reinitialize_refuses_an_empty_list() -> anyhow::Result<()> {
 async fn reinitialize_refuses_a_ref_listed_twice() -> anyhow::Result<()> {
     let (mut env, local) = setup::upgraded_to(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
     deny(&mut env, logic_ref()).await?;
-    let ix = reinitialize(&env, &local, random_ref(), &[logic_ref(), logic_ref()]);
+    let ix = reinitialize(
+        &env,
+        &local,
+        random_logic_ref(),
+        &[logic_ref(), logic_ref()],
+    );
     refuses_reinitialize(
         &env,
         &local,
@@ -481,9 +495,9 @@ async fn reinitialize_refuses_a_ref_either_denylist_lacks() -> anyhow::Result<()
     let (mut env, local) = setup::upgraded_to(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
     for consumed in [true, false] {
         // Denied on the other list only.
-        let vulnerable = random_ref();
+        let vulnerable = random_logic_ref();
         deny_on(&mut env, vulnerable, &[!consumed]).await?;
-        let ix = reinitialize(&env, &local, random_ref(), &[vulnerable]);
+        let ix = reinitialize(&env, &local, random_logic_ref(), &[vulnerable]);
         refuses_reinitialize(
             &env,
             &local,
@@ -503,7 +517,7 @@ async fn reinitialize_refuses_a_new_ref_either_denylist_holds() -> anyhow::Resul
     let (mut env, local) = setup::upgraded_to(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
     deny(&mut env, logic_ref()).await?;
     for consumed in [true, false] {
-        let new = random_ref();
+        let new = random_logic_ref();
         deny_on(&mut env, new, &[consumed]).await?;
         let ix = reinitialize(&env, &local, new, &[logic_ref()]);
         refuses_reinitialize(
@@ -635,28 +649,19 @@ async fn a_migration_refuses_a_batch_naming_a_resource_twice() -> anyhow::Result
 // nullifier set holds it.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_migration_refuses_a_resource_the_adapter_consumed() -> anyhow::Result<()> {
-    let (mut env, local) = setup::upgraded_to(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
-    let owner = ShieldedOwner::seeded("consumed/owner");
-    let wrapped = local
+    let mut incident = before_the_incident(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
+    let tx = incident
+        .local
         .forwarder
-        .wrap(&mut env, &owner, AMOUNT, 1, "consumed/wrap")
+        .prove_unwrap(
+            &incident.env,
+            incident.wrapped,
+            &incident.owner,
+            Keypair::new().pubkey(),
+        )
         .await?;
-    let root = latest_root(&env).await?;
-    let tx = local
-        .forwarder
-        .prove_unwrap(&env, wrapped, &owner, Keypair::new().pubkey())
-        .await?;
-    execute_tx(&mut env, tx).await?;
-    deny(&mut env, logic_ref()).await?;
-    let ix = reinitialize(&env, &local, PASSTHROUGH_LOGIC_VK, &[logic_ref()]);
-    env.send(&[ix], &[&local.owner]).await?;
-    let mut incident = Incident {
-        env,
-        local,
-        owner,
-        wrapped,
-        root,
-    };
+    execute_tx(&mut incident.env, tx).await?;
+    incident.deny_and_reinitialize().await?;
     let entry = incident.entry()?;
     refuses_migration(
         &mut incident,
@@ -672,7 +677,7 @@ async fn a_migration_refuses_a_resource_the_adapter_consumed() -> anyhow::Result
 #[tokio::test(flavor = "multi_thread")]
 async fn a_migration_refuses_a_logic_ref_the_forwarder_does_not_list() -> anyhow::Result<()> {
     let mut incident = after_an_incident().await?;
-    let unlisted = random_ref();
+    let unlisted = random_logic_ref();
     deny(&mut incident.env, unlisted).await?;
     let entry = MigrateEntry {
         vulnerable_logic_ref: bytes(unlisted),
@@ -805,13 +810,11 @@ async fn a_migration_refuses_trailing_bytes() -> anyhow::Result<()> {
         &program,
         &incident.env.protocol_adapter.program,
         &incident.env.protocol_adapter.payer.pubkey(),
-        &[SolanaExternalCall {
-            program_id: program.to_bytes(),
-            instruction_data: encode_migrate_forwarder_input(&migration),
-            expected_output: vec![],
-            output_mode: OutputMode::ReturnData,
-            num_accounts: forwarder_migrate_num_accounts(1).unwrap(),
-        }],
+        &[migrate_call(
+            &program,
+            encode_migrate_forwarder_input(&migration),
+            1,
+        )?],
         0,
     )?;
     incident
@@ -821,7 +824,8 @@ async fn a_migration_refuses_trailing_bytes() -> anyhow::Result<()> {
         .register(program, std::sync::Arc::new(Fixed(accounts)));
     let mut input = encode_migrate_forwarder_input(&migration);
     input.push(0);
-    let tx = prove_actions(&incident.env, &[passthrough_call(&program, input, 1, 1)?]).await?;
+    let call = migrate_call(&program, input, 1)?;
+    let tx = prove_actions(&incident.env, &[passthrough_call(&call, 1)?]).await?;
     expect_integration_panic(Needle::Static("Error Code: InvalidInputLength."))(
         execute_tx(&mut incident.env, tx).await,
     )?;
@@ -853,13 +857,14 @@ async fn a_migration_refuses_another_account_as_the_adapters_nullifier_marker() 
     let mut incident = after_an_incident().await?;
     let entry = incident.entry()?;
     let tx = incident.prove_migration(vec![entry], 1).await?;
-    // The segment head (5), the adapter's state and the vulnerable logic
-    // refs, then the entry's root marker, nullifier marker and record.
+    // The accounts before the entries, then the entry's root marker,
+    // nullifier marker and record.
     incident
         .local
         .forwarder
         .rewrite(&mut incident.env, |accounts| {
-            accounts.segments[0][8].pubkey = Keypair::new().pubkey();
+            let marker = usize::from(forwarder_migrate_num_accounts(0).unwrap()) + 1;
+            accounts.segments[0][marker].pubkey = Keypair::new().pubkey();
         });
     expect_integration_panic(Needle::Static("Error Code: NullifierPdaMismatch."))(
         execute_tx(&mut incident.env, tx).await,
@@ -893,11 +898,8 @@ async fn the_production_build_refuses_a_migration() -> anyhow::Result<()> {
             forwarder: local.forwarder.program.to_bytes(),
         }],
     });
-    let tx = prove_actions(
-        &env,
-        &[passthrough_call(&local.forwarder.program, input, 1, 1)?],
-    )
-    .await?;
+    let call = migrate_call(&local.forwarder.program, input, 1)?;
+    let tx = prove_actions(&env, &[passthrough_call(&call, 1)?]).await?;
     // The client creates the entry's record with an instruction the
     // production build lacks.
     local

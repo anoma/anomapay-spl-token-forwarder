@@ -1559,9 +1559,9 @@
       "name": "CONFIG_VERSION",
       "docs": [
         "The config version the emergency-migrating build reinitializes to: one",
-        "more than the release it upgrades, as the EVM draft's `reinitializer(2)`",
-        "is one more than `ERC20Forwarder.initialize`'s version, so its",
-        "`reinitialize` runs once."
+        "more than the production build it upgrades, as the EVM draft's",
+        "`reinitializer(2)` is one more than `ERC20Forwarder.initialize`'s",
+        "version, so its `reinitialize` runs once."
       ],
       "type": "u64",
       "value": "6"

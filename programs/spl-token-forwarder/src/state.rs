@@ -72,20 +72,24 @@ impl PreviousConfig {
     }
 }
 
+/// The production build's config version. A build that rotates the logic
+/// ref raises it by one, so its `reinitialize` runs once.
+const PRODUCTION_CONFIG_VERSION: u64 = 5;
+
 /// The config version this build initializes to and reinitializes to, as
 /// the `n` of an OpenZeppelin `reinitializer(n)`. A build that rotates the
 /// logic ref raises it by one, so its `reinitialize` runs once.
 #[cfg(not(feature = "emergency-migrating"))]
 #[constant]
-pub const CONFIG_VERSION: u64 = 5;
+pub const CONFIG_VERSION: u64 = PRODUCTION_CONFIG_VERSION;
 
 /// The config version the emergency-migrating build reinitializes to: one
-/// more than the release it upgrades, as the EVM draft's `reinitializer(2)`
-/// is one more than `ERC20Forwarder.initialize`'s version, so its
-/// `reinitialize` runs once.
+/// more than the production build it upgrades, as the EVM draft's
+/// `reinitializer(2)` is one more than `ERC20Forwarder.initialize`'s
+/// version, so its `reinitialize` runs once.
 #[cfg(feature = "emergency-migrating")]
 #[constant]
-pub const CONFIG_VERSION: u64 = 6;
+pub const CONFIG_VERSION: u64 = PRODUCTION_CONFIG_VERSION + 1;
 
 /// The adapter's state, read from `pa_state` through the adapter's own
 /// account type: the account must be the state account of the adapter the

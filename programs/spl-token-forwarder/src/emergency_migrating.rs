@@ -144,44 +144,26 @@ pub struct VulnerableLogicRefListed {
     pub logic_ref: [u8; 32],
 }
 
-/// The denylist a flag names, in logs: `consumed` names the one for
-/// consumed resources.
-fn denylist(consumed: bool) -> &'static str {
-    if consumed {
-        "consumed"
-    } else {
-        "created"
-    }
-}
-
-/// Both of the adapter's denylists hold `logic_ref`, as the EVM draft's
-/// `_checkLogicRefDenied`: the adapter then neither consumes the resources
-/// this forwarder migrates nor creates new ones.
-fn require_denied(state: &PAStateAccount, logic_ref: &[u8; 32]) -> Result<()> {
+/// Both of the adapter's denylists hold `logic_ref` when `denied`, as the EVM
+/// draft's `_checkLogicRefDenied` requires of a vulnerable logic ref (the
+/// adapter then neither consumes the resources this forwarder migrates nor
+/// creates new ones); neither holds it otherwise, as its
+/// `_checkLogicRefNotDenied` requires of the new logic ref.
+fn require_denial(state: &PAStateAccount, logic_ref: &[u8; 32], denied: bool) -> Result<()> {
     for consumed in [true, false] {
-        if !state.is_logic_ref_denied(logic_ref, consumed) {
+        if state.is_logic_ref_denied(logic_ref, consumed) != denied {
             msg!(
-                "The adapter's denylist for {} resources lacks the logic ref {:02x?}",
-                denylist(consumed),
+                "The adapter's denylist for {} resources {} the logic ref {:02x?}",
+                if consumed { "consumed" } else { "created" },
+                if denied { "lacks" } else { "holds" },
                 logic_ref
             );
-            return err!(ErrorCode::LogicRefNotDenied);
-        }
-    }
-    Ok(())
-}
-
-/// Neither of the adapter's denylists holds `logic_ref`, as the EVM draft's
-/// `_checkLogicRefNotDenied`.
-fn require_not_denied(state: &PAStateAccount, logic_ref: &[u8; 32]) -> Result<()> {
-    for consumed in [true, false] {
-        if state.is_logic_ref_denied(logic_ref, consumed) {
-            msg!(
-                "The adapter's denylist for {} resources holds the logic ref {:02x?}",
-                denylist(consumed),
-                logic_ref
-            );
-            return err!(ErrorCode::LogicRefAlreadyDenied);
+            return Err(if denied {
+                ErrorCode::LogicRefNotDenied
+            } else {
+                ErrorCode::LogicRefAlreadyDenied
+            }
+            .into());
         }
     }
     Ok(())
@@ -288,7 +270,7 @@ pub(crate) fn reinitialize(
         ErrorCode::EmptyVulnerableLogicRefList
     );
     let state = read_pa_state(&ctx.accounts.config, &ctx.accounts.pa_state)?;
-    require_not_denied(&state, &new_logic_ref)?;
+    require_denial(&state, &new_logic_ref, false)?;
 
     // The account holds every listed ref, the earlier incidents' too.
     let account = ctx.accounts.vulnerable_logic_refs.to_account_info();
@@ -296,7 +278,7 @@ pub(crate) fn reinitialize(
         logic_refs: listed(&account)?,
     };
     for logic_ref in vulnerable_logic_refs {
-        require_denied(&state, &logic_ref)?;
+        require_denial(&state, &logic_ref, true)?;
         if listed.logic_refs.contains(&logic_ref) {
             msg!("The logic ref {:02x?} is listed already", logic_ref);
             return err!(ErrorCode::LogicRefAlreadyVulnerable);
@@ -359,7 +341,7 @@ pub(crate) fn migrate<'info>(ctx: &Context<'info, ForwardCall<'info>>, input: &[
     let state = read_pa_state(config, pa_state)?;
     let listed = listed(vulnerable_logic_refs)?;
     for logic_ref in &listed {
-        require_denied(&state, logic_ref)?;
+        require_denial(&state, logic_ref, true)?;
     }
 
     for (i, entry) in migration.entries.iter().enumerate() {

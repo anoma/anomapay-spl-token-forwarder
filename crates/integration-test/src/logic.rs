@@ -9,6 +9,12 @@ use anyhow::Context;
 use transfer_library::{TOKEN_TRANSFER_ELF, TOKEN_TRANSFER_ID, TransferLogic};
 use transfer_witness::LogicCircuit;
 
+/// A logic ref no resource has: 32 random bytes.
+pub fn random_logic_ref() -> Digest {
+    use solana_signer::Signer;
+    Digest::from(solana_keypair::Keypair::new().pubkey().to_bytes())
+}
+
 /// The logic ref of the transfer resource the forwarder serves.
 pub fn logic_ref() -> Digest {
     TOKEN_TRANSFER_ID

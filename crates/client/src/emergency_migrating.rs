@@ -130,36 +130,7 @@ pub fn build_migrate_forwarder_accounts(
 mod tests {
     use super::*;
     use crate::constants::forwarder_migrate_num_accounts;
-
-    /// `ix` carries `name`'s discriminator and `args`, and one account per
-    /// account the emergency-migrating build's IDL declares for it, in
-    /// order. Returns each account's address by its IDL name.
-    fn assert_matches_the_idl<'a>(
-        ix: &'a Instruction,
-        name: &str,
-        args: &[u8],
-    ) -> impl Fn(&str) -> Pubkey + 'a {
-        let idl = crate::idl::emergency_migrating_idl();
-        let declared = idl["instructions"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|i| i["name"] == name)
-            .unwrap_or_else(|| panic!("the IDL declares no {name}"));
-        let names: Vec<String> = declared["accounts"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|a| a["name"].as_str().unwrap().to_string())
-            .collect();
-        assert_eq!(ix.accounts.len(), names.len(), "{name}'s accounts");
-        assert_eq!(
-            ix.data,
-            [anchor_instruction_disc(name).as_slice(), args].concat(),
-            "{name}'s data"
-        );
-        move |account| ix.accounts[names.iter().position(|n| n == account).unwrap()].pubkey
-    }
+    use crate::forwarder::tests::{assert_event_accounts, assert_matches_the_idl};
 
     #[test]
     fn reinitialize_matches_the_idl() {
@@ -173,17 +144,12 @@ mod tests {
             &[2; 32],
         ]
         .concat();
-        let by_name = assert_matches_the_idl(&ix, "reinitialize", &args);
+        let idl = crate::idl::emergency_migrating_idl();
+        let by_name = assert_matches_the_idl(&idl, &ix, "reinitialize", &args);
         assert_eq!(by_name("authority"), owner);
-        assert_eq!(
-            by_name("vulnerable_logic_refs"),
-            derive_vulnerable_logic_refs_pda(&forwarder).0
-        );
         assert_eq!(by_name("pa_state"), derive_pa_state_pda(&adapter).0);
-        assert_eq!(
-            by_name("event_authority"),
-            derive_event_authority_pda(&forwarder).0
-        );
+        assert_event_accounts(&by_name, &forwarder);
+        assert_eq!(ix.accounts.len(), 7);
     }
 
     #[test]
@@ -191,12 +157,14 @@ mod tests {
         let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
         let payer = Pubkey::new_unique();
         let ix = init_migration_record_ix(&forwarder, &payer, &[5; 32]);
-        let by_name = assert_matches_the_idl(&ix, "init_migration_record", &[5; 32]);
+        let idl = crate::idl::emergency_migrating_idl();
+        let by_name = assert_matches_the_idl(&idl, &ix, "init_migration_record", &[5; 32]);
         assert_eq!(by_name("payer"), payer);
         assert_eq!(
             by_name("migration_record"),
             derive_migration_record_pda(&forwarder, &[5; 32]).0
         );
+        assert_eq!(ix.accounts.len(), 3);
     }
 
     #[test]

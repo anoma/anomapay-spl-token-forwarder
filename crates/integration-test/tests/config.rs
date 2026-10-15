@@ -9,15 +9,15 @@ use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
 use anomapay_spl_token_forwarder_client::{
     CONFIG_VERSION, derive_forwarder_config_pda, encode_unwrap_forwarder_input, reinitialize_ix,
 };
-use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
+use anomapay_spl_token_forwarder_integration_test::logic::{logic_ref, random_logic_ref};
 use anomapay_spl_token_forwarder_integration_test::setup::{self, LocalForwarder, config};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 
-/// A logic ref no resource has: 32 random bytes.
+/// A logic ref no resource has.
 fn random_ref() -> [u8; 32] {
-    Keypair::new().pubkey().to_bytes()
+    random_logic_ref().into()
 }
 
 /// Reinitializing to `logic_ref` as `signer` fails with `error` and leaves
