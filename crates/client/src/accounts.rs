@@ -6,7 +6,7 @@
 use anoma_pa_solana_client::cursor::{Cursor, Truncated};
 use anoma_pa_solana_client::{anchor_account_disc, ANCHOR_DISCRIMINATOR_LEN};
 
-use crate::constants::NONCES_PER_WORD;
+use crate::constants::{CONFIG_ACCOUNT_SIZE, NONCES_PER_WORD};
 
 /// The forwarder's configuration (`Config`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -15,9 +15,6 @@ pub struct ConfigAccount {
     pub protocol_adapter: [u8; 32],
     /// The logic ref of the resource whose calls the forwarder accepts.
     pub logic_ref: [u8; 32],
-    pub emergency_committee: [u8; 32],
-    /// All zeros until the committee names one.
-    pub emergency_caller: [u8; 32],
     /// The version `initialize` or `reinitialize` last recorded.
     pub version: u64,
     /// All zeros once renounced.
@@ -47,6 +44,9 @@ pub enum AccountDecodeError {
     WrongDiscriminator { expected: &'static str },
     /// The data ran out while reading the named field.
     Truncated { field: &'static str },
+    /// The account is `actual` bytes long, not its layout's `expected`: a
+    /// config a previous release laid out, until `migrate_config` runs.
+    Length { expected: usize, actual: usize },
 }
 
 impl core::fmt::Display for AccountDecodeError {
@@ -57,6 +57,9 @@ impl core::fmt::Display for AccountDecodeError {
             }
             AccountDecodeError::Truncated { field } => {
                 write!(f, "account truncated while reading {field}")
+            }
+            AccountDecodeError::Length { expected, actual } => {
+                write!(f, "the account is {actual} bytes, not {expected}")
             }
         }
     }
@@ -78,14 +81,19 @@ fn fields<'a>(data: &'a [u8], name: &'static str) -> Result<Cursor<'a>, AccountD
     Ok(Cursor::new(data, ANCHOR_DISCRIMINATOR_LEN))
 }
 
-/// Decode the forwarder's `Config` account.
+/// Decode the forwarder's `Config` account, which must be in this release's
+/// layout.
 pub fn decode_config(data: &[u8]) -> Result<ConfigAccount, AccountDecodeError> {
     let mut c = fields(data, "Config")?;
+    if data.len() != CONFIG_ACCOUNT_SIZE {
+        return Err(AccountDecodeError::Length {
+            expected: CONFIG_ACCOUNT_SIZE,
+            actual: data.len(),
+        });
+    }
     Ok(ConfigAccount {
         protocol_adapter: c.array_32("protocol_adapter")?,
         logic_ref: c.array_32("logic_ref")?,
-        emergency_committee: c.array_32("emergency_committee")?,
-        emergency_caller: c.array_32("emergency_caller")?,
         version: c.u64_le("version")?,
         owner: c.array_32("owner")?,
     })
@@ -115,14 +123,7 @@ mod tests {
         };
         assert_eq!(
             fields_of("Config"),
-            [
-                "protocol_adapter",
-                "logic_ref",
-                "emergency_committee",
-                "emergency_caller",
-                "version",
-                "owner"
-            ]
+            ["protocol_adapter", "logic_ref", "version", "owner"]
         );
         assert_eq!(fields_of("NonceBitmap"), ["bits", "bump"]);
         for name in ["Config", "NonceBitmap"] {
@@ -141,7 +142,7 @@ mod tests {
     #[test]
     fn each_account_decodes_to_its_fields() {
         let mut config = anchor_account_disc("Config").to_vec();
-        for field in [[1; 32], [2; 32], [3; 32], [4; 32]] {
+        for field in [[1; 32], [2; 32]] {
             config.extend(field);
         }
         config.extend(3u64.to_le_bytes());
@@ -151,15 +152,26 @@ mod tests {
             Ok(ConfigAccount {
                 protocol_adapter: [1; 32],
                 logic_ref: [2; 32],
-                emergency_committee: [3; 32],
-                emergency_caller: [4; 32],
                 version: 3,
                 owner: [5; 32],
             })
         );
         assert_eq!(
             decode_config(&config[..config.len() - 1]),
-            Err(AccountDecodeError::Truncated { field: "owner" })
+            Err(AccountDecodeError::Length {
+                expected: CONFIG_ACCOUNT_SIZE,
+                actual: CONFIG_ACCOUNT_SIZE - 1
+            })
+        );
+        // A previous release's config: an emergency committee and caller
+        // between the logic ref and the version.
+        let previous = [&config[..72], &[3; 64], &config[72..]].concat();
+        assert_eq!(
+            decode_config(&previous),
+            Err(AccountDecodeError::Length {
+                expected: CONFIG_ACCOUNT_SIZE,
+                actual: CONFIG_ACCOUNT_SIZE + 64
+            })
         );
 
         let mut bitmap = anchor_account_disc("NonceBitmap").to_vec();

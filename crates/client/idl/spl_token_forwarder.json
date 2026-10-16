@@ -10,8 +10,8 @@
     {
       "name": "close_config",
       "docs": [
-        "Close the config PDA; its rent goes to the committee. Call last.",
-        "Requires the adapter to be paused."
+        "Close the config PDA; its rent goes to the owner, who signs. Call",
+        "last. Requires the adapter to be paused."
       ],
       "discriminator": [
         145,
@@ -27,7 +27,7 @@
         {
           "name": "authority",
           "docs": [
-            "Emergency committee, receives the config's rent."
+            "The owner, who receives the config's rent."
           ],
           "writable": true,
           "signer": true
@@ -47,8 +47,15 @@
       "name": "close_escrow",
       "docs": [
         "Drain a mint's escrow to the recipient and close the escrow token",
-        "account; its rent goes to the committee. Requires the adapter to be",
-        "paused."
+        "account; its rent goes to the owner, who signs. Requires the adapter",
+        "to be paused.",
+        "",
+        "The closing instructions recover the rent of the forwarder's",
+        "accounts, which EVM storage does not hold: they have no EVM",
+        "counterpart. The owner holds them because the owner can already",
+        "replace the program's code (`upgrade`), as the EVM forwarder's owner",
+        "can replace its implementation; the paused adapter keeps them from",
+        "running under live settlements."
       ],
       "discriminator": [
         139,
@@ -64,7 +71,7 @@
         {
           "name": "authority",
           "docs": [
-            "Emergency committee, receives the closed escrow ATA's rent."
+            "The owner, who receives the closed escrow ATA's rent."
           ],
           "writable": true,
           "signer": true
@@ -102,7 +109,7 @@
       "name": "close_nonce_bitmaps_batch",
       "docs": [
         "Close the nonce bitmaps passed as remaining accounts; their rent goes",
-        "to the committee. Requires the adapter to be paused."
+        "to the owner, who signs. Requires the adapter to be paused."
       ],
       "discriminator": [
         212,
@@ -118,7 +125,7 @@
         {
           "name": "authority",
           "docs": [
-            "Emergency committee, receives the closed bitmaps' rent."
+            "The owner, who receives the closed bitmaps' rent."
           ],
           "writable": true,
           "signer": true
@@ -184,50 +191,6 @@
         }
       ],
       "returns": "bytes"
-    },
-    {
-      "name": "forward_emergency_call",
-      "docs": [
-        "Withdraw from escrow while the adapter is paused, as the emergency",
-        "caller. The operand is an `UnwrapInput`. The EVM V1 forwarder's",
-        "forwardEmergencyCall(); V2 has no emergency path (anoma/dos-pm#86)."
-      ],
-      "discriminator": [
-        236,
-        144,
-        86,
-        28,
-        9,
-        25,
-        177,
-        0
-      ],
-      "accounts": [
-        {
-          "name": "caller",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "config",
-          "address": "6wu5mRw8RN1euy4AUsQoHTU5HraEGGXYhmrucG41bMdq"
-        },
-        {
-          "name": "pa_state"
-        },
-        {
-          "name": "event_authority"
-        },
-        {
-          "name": "program"
-        }
-      ],
-      "args": [
-        {
-          "name": "input",
-          "type": "bytes"
-        }
-      ]
     },
     {
       "name": "init_nonce_bitmap",
@@ -310,12 +273,10 @@
     {
       "name": "initialize",
       "docs": [
-        "Initialize the forwarder config, owned by `initial_owner`, with the",
-        "emergency committee.",
+        "Initialize the forwarder config, owned by `initial_owner`.",
         "",
         "As the EVM V2 forwarder's initializer: the owner set (the zero key",
-        "refused) and announced, no zero adapter or logic ref. The committee,",
-        "which has no V2 counterpart, must also be nonzero. Signed by the",
+        "refused) and announced, no zero adapter or logic ref. Signed by the",
         "program's upgrade authority, the deployer, which it hands to the",
         "program's upgrade authority PDA, so from then on only `upgrade`, for",
         "the owner, upgrades the program."
@@ -457,14 +418,56 @@
           }
         },
         {
-          "name": "emergency_committee",
-          "type": "pubkey"
-        },
-        {
           "name": "initial_owner",
           "type": "pubkey"
         }
       ]
+    },
+    {
+      "name": "migrate_config",
+      "docs": [
+        "Rewrite a config the previous release laid out into this release's",
+        "layout, once, after the in-place upgrade to this release: the",
+        "emergency committee and caller go, the adapter, logic ref, version",
+        "and owner stay, and the rent the account no longer needs goes to the",
+        "owner, who signs.",
+        "",
+        "The Solana counterpart of the initialization data an EVM upgrade",
+        "(`upgradeToAndCall`) carries for a layout change. Until it runs,",
+        "`forward_call` serves, reading the adapter and logic ref both layouts",
+        "start with, and every owner-only instruction refuses the config",
+        "(`ConfigNotMigrated`)."
+      ],
+      "discriminator": [
+        92,
+        131,
+        58,
+        105,
+        210,
+        154,
+        224,
+        193
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Receives the rent the smaller account no longer needs."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "cannot read: the address and the program's ownership pin it, and",
+            "the handler checks its size and discriminator."
+          ],
+          "writable": true,
+          "address": "6wu5mRw8RN1euy4AUsQoHTU5HraEGGXYhmrucG41bMdq"
+        }
+      ],
+      "args": []
     },
     {
       "name": "reinitialize",
@@ -554,50 +557,6 @@
         }
       ],
       "args": []
-    },
-    {
-      "name": "set_emergency_caller",
-      "docs": [
-        "Set the emergency caller, once, by the committee while the adapter",
-        "is paused. The EVM V1 forwarder's setEmergencyCaller(); V2 has no",
-        "emergency path (anoma/dos-pm#86)."
-      ],
-      "discriminator": [
-        220,
-        233,
-        248,
-        6,
-        234,
-        58,
-        82,
-        134
-      ],
-      "accounts": [
-        {
-          "name": "committee",
-          "signer": true
-        },
-        {
-          "name": "config",
-          "writable": true,
-          "address": "6wu5mRw8RN1euy4AUsQoHTU5HraEGGXYhmrucG41bMdq"
-        },
-        {
-          "name": "pa_state"
-        },
-        {
-          "name": "event_authority"
-        },
-        {
-          "name": "program"
-        }
-      ],
-      "args": [
-        {
-          "name": "new_emergency_caller",
-          "type": "pubkey"
-        }
-      ]
     },
     {
       "name": "transfer_ownership",
@@ -803,32 +762,6 @@
   ],
   "events": [
     {
-      "name": "EmergencyCallerSet",
-      "discriminator": [
-        23,
-        219,
-        26,
-        66,
-        233,
-        253,
-        158,
-        79
-      ]
-    },
-    {
-      "name": "EmergencyWithdraw",
-      "discriminator": [
-        128,
-        80,
-        236,
-        119,
-        137,
-        129,
-        241,
-        144
-      ]
-    },
-    {
       "name": "Initialized",
       "discriminator": [
         208,
@@ -942,128 +875,118 @@
     },
     {
       "code": 6009,
-      "name": "UnauthorizedCaller",
-      "msg": "Unauthorized caller"
-    },
-    {
-      "code": 6010,
       "name": "LogicRefMismatch",
       "msg": "The calling resource's logic ref is not this forwarder's"
     },
     {
-      "code": 6011,
+      "code": 6010,
       "name": "DeadlineExpired",
       "msg": "Signature deadline has expired"
     },
     {
-      "code": 6012,
+      "code": 6011,
       "name": "NonceAlreadyUsed",
       "msg": "Nonce has already been used (replay attack prevented)"
     },
     {
-      "code": 6013,
+      "code": 6012,
       "name": "Ed25519InstructionNotFound",
       "msg": "Ed25519 instruction not found at specified index"
     },
     {
-      "code": 6014,
+      "code": 6013,
       "name": "InvalidEd25519Instruction",
       "msg": "Invalid Ed25519 instruction format"
     },
     {
-      "code": 6015,
+      "code": 6014,
       "name": "Ed25519PubkeyMismatch",
       "msg": "Ed25519 public key mismatch"
     },
     {
-      "code": 6016,
+      "code": 6015,
       "name": "Ed25519MessageMismatch",
       "msg": "Ed25519 message mismatch"
     },
     {
-      "code": 6017,
-      "name": "EmergencyCallerAlreadySet",
-      "msg": "Emergency caller already set"
-    },
-    {
-      "code": 6018,
-      "name": "EmergencyCallerNotSet",
-      "msg": "Emergency caller not set"
-    },
-    {
-      "code": 6019,
+      "code": 6016,
       "name": "ProtocolAdapterNotPaused",
-      "msg": "Protocol Adapter not paused - cannot perform emergency operations"
+      "msg": "Protocol Adapter not paused - cannot close the forwarder's accounts"
     },
     {
-      "code": 6020,
+      "code": 6017,
       "name": "InvalidPaState",
       "msg": "Invalid PA state account - does not match derived PDA from protocol_adapter"
     },
     {
-      "code": 6021,
-      "name": "ZeroAddressNotAllowed",
-      "msg": "Zero address not allowed"
-    },
-    {
-      "code": 6022,
+      "code": 6018,
       "name": "ZeroProtocolAdapterNotAllowed",
       "msg": "Zero protocol adapter not allowed"
     },
     {
-      "code": 6023,
+      "code": 6019,
       "name": "ZeroLogicRefNotAllowed",
       "msg": "Zero logic ref not allowed"
     },
     {
-      "code": 6024,
+      "code": 6020,
       "name": "InvalidEscrowAuthority",
       "msg": "Invalid escrow authority"
     },
     {
-      "code": 6025,
+      "code": 6021,
       "name": "InvalidNonceBitmapPda",
       "msg": "Invalid nonce bitmap PDA - doesn't match derived address"
     },
     {
-      "code": 6026,
+      "code": 6022,
       "name": "NonceBitmapMissing",
       "msg": "Nonce bitmap account does not exist - create it with init_nonce_bitmap before the wrap"
     },
     {
-      "code": 6027,
+      "code": 6023,
       "name": "TokenTransferFailed",
       "msg": "Token transfer failed - check the SPL Token error in the logs"
     },
     {
-      "code": 6028,
+      "code": 6024,
       "name": "UnwrapToEscrow",
       "msg": "Unwrap recipient is the escrow authority - the tokens would never leave escrow"
     },
     {
-      "code": 6029,
+      "code": 6025,
       "name": "InvalidInitialization",
       "msg": "The config is already at this build's CONFIG_VERSION - rotating the logic ref takes a build that raises it"
     },
     {
-      "code": 6030,
+      "code": 6026,
       "name": "OwnableUnauthorizedAccount",
       "msg": "The signer is not the forwarder's owner"
     },
     {
-      "code": 6031,
+      "code": 6027,
       "name": "OwnableInvalidOwner",
       "msg": "The zero key cannot be the owner"
     },
     {
-      "code": 6032,
+      "code": 6028,
       "name": "InvalidUpgradeBuffer",
       "msg": "Buffer is not a loader buffer holding a program"
     },
     {
-      "code": 6033,
+      "code": 6029,
       "name": "Unauthorized",
       "msg": "Unauthorized: the signer does not hold the authority this instruction requires"
+    },
+    {
+      "code": 6030,
+      "name": "NotPreviousLayout",
+      "msg": "The config is not in the previous release's layout"
+    },
+    {
+      "code": 6031,
+      "name": "ConfigNotMigrated",
+      "msg": "The config is in a previous release's layout - run migrate_config first"
     }
   ],
   "types": [
@@ -1074,9 +997,7 @@
         "",
         "The adapter and logic ref mirror the EVM V2 forwarder's",
         "`ForwarderBaseUpgradeable` state, `version` its `Initializable` version,",
-        "and `owner` its `OwnableUpgradeable` owner. The emergency committee and",
-        "caller are the EVM V1 forwarder's emergency mechanism, which V2 dropped",
-        "(anoma/dos-pm#86)."
+        "and `owner` its `OwnableUpgradeable` owner."
       ],
       "type": {
         "kind": "struct",
@@ -1101,20 +1022,6 @@
             }
           },
           {
-            "name": "emergency_committee",
-            "docs": [
-              "Emergency committee that can set emergency_caller"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "emergency_caller",
-            "docs": [
-              "Emergency caller set by committee (zero = not set)"
-            ],
-            "type": "pubkey"
-          },
-          {
             "name": "version",
             "docs": [
               "The version the config was last initialized at, as OpenZeppelin",
@@ -1131,49 +1038,6 @@
               "(`reinitialize`), and moves or renounces the ownership. The all-zero",
               "key once renounced, which no one can sign for."
             ],
-            "type": "pubkey"
-          }
-        ]
-      }
-    },
-    {
-      "name": "EmergencyCallerSet",
-      "docs": [
-        "The EVM V1 forwarder's `event EmergencyCallerSet(address caller);` (V1 emergency mechanism, anoma/dos-pm#86)."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "emergency_caller",
-            "type": "pubkey"
-          },
-          {
-            "name": "set_by",
-            "type": "pubkey"
-          }
-        ]
-      }
-    },
-    {
-      "name": "EmergencyWithdraw",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "token_mint",
-            "type": "pubkey"
-          },
-          {
-            "name": "to",
-            "type": "pubkey"
-          },
-          {
-            "name": "amount",
-            "type": "u64"
-          },
-          {
-            "name": "caller",
             "type": "pubkey"
           }
         ]

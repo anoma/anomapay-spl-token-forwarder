@@ -32,25 +32,6 @@ pub struct UnwrappedEvent {
     pub amount: u64,
 }
 
-/// The emergency committee (`set_by`) named `emergency_caller` as the
-/// forwarder's emergency caller, as the EVM V1 forwarder's
-/// `EmergencyCallerSet`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct EmergencyCallerSetEvent {
-    pub emergency_caller: [u8; 32],
-    pub set_by: [u8; 32],
-}
-
-/// The emergency caller (`caller`) moved `amount` of `token_mint` from escrow
-/// to `to`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct EmergencyWithdrawEvent {
-    pub token_mint: [u8; 32],
-    pub to: [u8; 32],
-    pub amount: u64,
-    pub caller: [u8; 32],
-}
-
 /// `initialize` or `reinitialize` set the forwarder's configuration to
 /// `version`, as OpenZeppelin Initializable's `Initialized(version)`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -63,8 +44,6 @@ pub struct InitializedEvent {
 pub enum ForwarderEvent {
     Wrapped(WrappedEvent),
     Unwrapped(UnwrappedEvent),
-    EmergencyCallerSet(EmergencyCallerSetEvent),
-    EmergencyWithdraw(EmergencyWithdrawEvent),
     Initialized(InitializedEvent),
     OwnershipTransferred(OwnershipTransferredEvent),
     Upgraded(UpgradedEvent),
@@ -90,18 +69,6 @@ fn forwarder_event_body(
             token: c.array_32("token")?,
             to: c.array_32("to")?,
             amount: c.u64_le("amount")?,
-        })
-    } else if disc == anchor_event_disc("EmergencyCallerSet") {
-        ForwarderEvent::EmergencyCallerSet(EmergencyCallerSetEvent {
-            emergency_caller: c.array_32("emergency_caller")?,
-            set_by: c.array_32("set_by")?,
-        })
-    } else if disc == anchor_event_disc("EmergencyWithdraw") {
-        ForwarderEvent::EmergencyWithdraw(EmergencyWithdrawEvent {
-            token_mint: c.array_32("token_mint")?,
-            to: c.array_32("to")?,
-            amount: c.u64_le("amount")?,
-            caller: c.array_32("caller")?,
         })
     } else if disc == anchor_event_disc("Initialized") {
         ForwarderEvent::Initialized(InitializedEvent {
@@ -145,25 +112,6 @@ mod tests {
                     token: [1; 32],
                     to: [4; 32],
                     amount: 5,
-                }),
-            ),
-            (
-                event("EmergencyCallerSet", &[&[6; 32], &[7; 32]]),
-                ForwarderEvent::EmergencyCallerSet(EmergencyCallerSetEvent {
-                    emergency_caller: [6; 32],
-                    set_by: [7; 32],
-                }),
-            ),
-            (
-                event(
-                    "EmergencyWithdraw",
-                    &[&[1; 32], &[4; 32], &8u64.to_le_bytes(), &[6; 32]],
-                ),
-                ForwarderEvent::EmergencyWithdraw(EmergencyWithdrawEvent {
-                    token_mint: [1; 32],
-                    to: [4; 32],
-                    amount: 8,
-                    caller: [6; 32],
                 }),
             ),
             (

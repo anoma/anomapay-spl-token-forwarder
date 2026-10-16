@@ -28,8 +28,8 @@ solana-sha256-hasher = "3.1"
 # Standard base64 of the signed message hash. 0.21 is the version anchor-lang
 # 1.2.0 requires, so the on-chain graph has one base64.
 base64 = "0.21.7"
-# The adapter's state account type, so the emergency-stopped check reads the
-# lifecycle field through the adapter's own layout instead of byte offsets, and
+# The adapter's state account type, so the closing instructions' paused check
+# reads the flag through the adapter's own layout instead of byte offsets, and
 # the upgrade helpers the adapter shares with its forwarders.
 protocol-adapter = { workspace = true }
 

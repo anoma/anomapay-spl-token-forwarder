@@ -43,21 +43,6 @@ pub struct Unwrapped {
     pub amount: u64,
 }
 
-/// The EVM V1 forwarder's `event EmergencyCallerSet(address caller);` (V1 emergency mechanism, anoma/dos-pm#86).
-#[event]
-pub struct EmergencyCallerSet {
-    pub emergency_caller: Pubkey,
-    pub set_by: Pubkey,
-}
-
-#[event]
-pub struct EmergencyWithdraw {
-    pub token_mint: Pubkey,
-    pub to: Pubkey,
-    pub amount: u64,
-    pub caller: Pubkey,
-}
-
 /// Mirrors OpenZeppelin Initializable: `event Initialized(uint64 version);`
 #[event]
 pub struct Initialized {
@@ -97,12 +82,10 @@ const TOKEN_ACCOUNT_AMOUNT_OFFSET: usize = 64;
 pub mod spl_token_forwarder {
     use super::*;
 
-    /// Initialize the forwarder config, owned by `initial_owner`, with the
-    /// emergency committee.
+    /// Initialize the forwarder config, owned by `initial_owner`.
     ///
     /// As the EVM V2 forwarder's initializer: the owner set (the zero key
-    /// refused) and announced, no zero adapter or logic ref. The committee,
-    /// which has no V2 counterpart, must also be nonzero. Signed by the
+    /// refused) and announced, no zero adapter or logic ref. Signed by the
     /// program's upgrade authority, the deployer, which it hands to the
     /// program's upgrade authority PDA, so from then on only `upgrade`, for
     /// the owner, upgrades the program.
@@ -110,7 +93,6 @@ pub mod spl_token_forwarder {
         ctx: Context<Initialize>,
         protocol_adapter: Pubkey,
         logic_ref: [u8; 32],
-        emergency_committee: Pubkey,
         initial_owner: Pubkey,
     ) -> Result<()> {
         require!(
@@ -122,16 +104,10 @@ pub mod spl_token_forwarder {
             ErrorCode::ZeroProtocolAdapterNotAllowed
         );
         require!(logic_ref != [0u8; 32], ErrorCode::ZeroLogicRefNotAllowed);
-        require!(
-            emergency_committee != Pubkey::default(),
-            ErrorCode::ZeroAddressNotAllowed
-        );
 
         let config = &mut ctx.accounts.config;
         config.protocol_adapter = protocol_adapter;
         config.logic_ref = logic_ref;
-        config.emergency_committee = emergency_committee;
-        config.emergency_caller = Pubkey::default();
         config.version = CONFIG_VERSION;
         config.owner = initial_owner;
         protocol_adapter::upgrade::hand_upgrade_authority_to_program(
@@ -175,6 +151,43 @@ pub mod spl_token_forwarder {
         emit_cpi!(Initialized {
             version: CONFIG_VERSION
         });
+        Ok(())
+    }
+
+    /// Rewrite a config the previous release laid out into this release's
+    /// layout, once, after the in-place upgrade to this release: the
+    /// emergency committee and caller go, the adapter, logic ref, version
+    /// and owner stay, and the rent the account no longer needs goes to the
+    /// owner, who signs.
+    ///
+    /// The Solana counterpart of the initialization data an EVM upgrade
+    /// (`upgradeToAndCall`) carries for a layout change. Until it runs,
+    /// `forward_call` serves, reading the adapter and logic ref both layouts
+    /// start with, and every owner-only instruction refuses the config
+    /// (`ConfigNotMigrated`).
+    pub fn migrate_config(ctx: Context<MigrateConfig>) -> Result<()> {
+        let config = &ctx.accounts.config;
+        let previous = {
+            let data = config.try_borrow_data()?;
+            require!(
+                data.len() == PreviousConfig::ACCOUNT_SIZE
+                    && data.starts_with(Config::DISCRIMINATOR),
+                ErrorCode::NotPreviousLayout
+            );
+            PreviousConfig::try_from_slice(&data[Config::DISCRIMINATOR.len()..])?
+        };
+        require!(
+            ctx.accounts.owner.key() == previous.owner,
+            ErrorCode::OwnableUnauthorizedAccount
+        );
+
+        let refund = config.lamports() - Rent::get()?.minimum_balance(Config::ACCOUNT_SIZE);
+        config.resize(Config::ACCOUNT_SIZE)?;
+        previous
+            .migrated()
+            .try_serialize(&mut &mut config.try_borrow_mut_data()?[..])?;
+        config.sub_lamports(refund)?;
+        ctx.accounts.owner.add_lamports(refund)?;
         Ok(())
     }
 
@@ -317,74 +330,16 @@ pub mod spl_token_forwarder {
         Ok(Vec::new())
     }
 
-    /// Withdraw from escrow while the adapter is paused, as the emergency
-    /// caller. The operand is an `UnwrapInput`. The EVM V1 forwarder's
-    /// forwardEmergencyCall(); V2 has no emergency path (anoma/dos-pm#86).
-    pub fn forward_emergency_call(
-        ctx: Context<ForwardEmergencyCall>,
-        input: Vec<u8>,
-    ) -> Result<()> {
-        require_paused_adapter(&ctx.accounts.config, &ctx.accounts.pa_state)?;
-        let withdraw = UnwrapInput::try_from_bytes(&input)?;
-
-        let [escrow_ata, recipient_ata, escrow_authority, token_program, ..] =
-            ctx.remaining_accounts
-        else {
-            msg!(
-                "Expected 4 remaining accounts for emergency withdraw, got {}",
-                ctx.remaining_accounts.len()
-            );
-            return Err(ErrorCode::InsufficientRemainingAccounts.into());
-        };
-
-        require_token_account(escrow_ata, &withdraw.token_mint, escrow_authority.key)?;
-        require_token_account(recipient_ata, &withdraw.token_mint, &withdraw.recipient)?;
-        transfer_signed_by_escrow(
-            escrow_ata,
-            recipient_ata,
-            escrow_authority,
-            token_program,
-            withdraw.amount,
-        )?;
-
-        emit_cpi!(EmergencyWithdraw {
-            token_mint: withdraw.token_mint,
-            to: withdraw.recipient,
-            amount: withdraw.amount,
-            caller: ctx.accounts.caller.key(),
-        });
-        Ok(())
-    }
-
-    /// Set the emergency caller, once, by the committee while the adapter
-    /// is paused. The EVM V1 forwarder's setEmergencyCaller(); V2 has no
-    /// emergency path (anoma/dos-pm#86).
-    pub fn set_emergency_caller(
-        ctx: Context<SetEmergencyCaller>,
-        new_emergency_caller: Pubkey,
-    ) -> Result<()> {
-        require_paused_adapter(&ctx.accounts.config, &ctx.accounts.pa_state)?;
-        require!(
-            new_emergency_caller != Pubkey::default(),
-            ErrorCode::ZeroAddressNotAllowed
-        );
-        let config = &mut ctx.accounts.config;
-        require!(
-            config.emergency_caller == Pubkey::default(),
-            ErrorCode::EmergencyCallerAlreadySet
-        );
-        config.emergency_caller = new_emergency_caller;
-
-        emit_cpi!(EmergencyCallerSet {
-            emergency_caller: new_emergency_caller,
-            set_by: ctx.accounts.committee.key(),
-        });
-        Ok(())
-    }
-
     /// Drain a mint's escrow to the recipient and close the escrow token
-    /// account; its rent goes to the committee. Requires the adapter to be
-    /// paused.
+    /// account; its rent goes to the owner, who signs. Requires the adapter
+    /// to be paused.
+    ///
+    /// The closing instructions recover the rent of the forwarder's
+    /// accounts, which EVM storage does not hold: they have no EVM
+    /// counterpart. The owner holds them because the owner can already
+    /// replace the program's code (`upgrade`), as the EVM forwarder's owner
+    /// can replace its implementation; the paused adapter keeps them from
+    /// running under live settlements.
     pub fn close_escrow(ctx: Context<CloseEscrow>) -> Result<()> {
         require_paused_adapter(&ctx.accounts.config, &ctx.accounts.pa_state)?;
         let token_mint_key = ctx.accounts.token_mint.key();
@@ -421,15 +376,15 @@ pub mod spl_token_forwarder {
         Ok(())
     }
 
-    /// Close the config PDA; its rent goes to the committee. Call last.
-    /// Requires the adapter to be paused.
+    /// Close the config PDA; its rent goes to the owner, who signs. Call
+    /// last. Requires the adapter to be paused.
     pub fn close_config(ctx: Context<CloseConfig>) -> Result<()> {
         require_paused_adapter(&ctx.accounts.config, &ctx.accounts.pa_state)?;
         Ok(())
     }
 
     /// Close the nonce bitmaps passed as remaining accounts; their rent goes
-    /// to the committee. Requires the adapter to be paused.
+    /// to the owner, who signs. Requires the adapter to be paused.
     pub fn close_nonce_bitmaps_batch<'info>(
         ctx: Context<'info, CloseNonceBitmaps<'info>>,
     ) -> Result<()> {
@@ -489,11 +444,9 @@ fn require_token_account(token_account: &AccountInfo, mint: &Pubkey, owner: &Pub
     Ok(())
 }
 
-/// Every committee and emergency-caller instruction requires the adapter to
-/// be paused (the EVM V1 forwarder's _checkEmergencyStopped() required a
-/// stopped adapter): the state account's
-/// address derives from the configured adapter, and the paused flag is read
-/// through the adapter's type.
+/// Every closing instruction requires the adapter to be paused: the state
+/// account's address derives from the configured adapter, and the paused
+/// flag is read through the adapter's type.
 fn require_paused_adapter(config: &Config, pa_state: &AccountInfo) -> Result<()> {
     require!(
         pa_state.key() == derive_pa_state_pda(&config.protocol_adapter).0,
@@ -545,7 +498,7 @@ fn spl_close_account_ix(
 
 /// Transfer `amount` from `source` to `destination` with the escrow
 /// authority as the signer: as the user's delegate on a wrap, as the escrow
-/// account's owner on an unwrap or emergency withdraw. The SPL Token program
+/// account's owner on an unwrap or a closing drain. The SPL Token program
 /// enforces the delegate approval, the balance and that both accounts hold
 /// the same mint; the transferred amount is exact, so no before/after
 /// balance check is needed.
@@ -700,7 +653,7 @@ fn execute_unwrap(ctx: &Context<ForwardCall>, input: &[u8]) -> Result<()> {
 
 /// The upgrade authority initializes the config, as the EVM proxy runs its
 /// initializer atomically at deployment: whoever initializes names the
-/// adapter the forwarder obeys, the committee and the owner, and hands the
+/// adapter the forwarder obeys and the owner, and hands the
 /// upgrade authority to the program. `Initialized` is a CPI
 /// event: `event_authority` is the account `#[event_cpi]` adds, declared by
 /// its seeds so the IDL lets clients resolve it next to the `program` this
@@ -755,7 +708,10 @@ pub struct Version {}
 #[event_cpi]
 #[derive(Accounts)]
 pub struct OwnerOnly<'info> {
-    #[account(constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount)]
+    #[account(
+        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
+        constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
+    )]
     pub authority: Signer<'info>,
 
     #[account(mut, address = CONFIG_PDA)]
@@ -765,7 +721,10 @@ pub struct OwnerOnly<'info> {
 #[event_cpi]
 #[derive(Accounts)]
 pub struct UpgradeProgram<'info> {
-    #[account(constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount)]
+    #[account(
+        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
+        constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
+    )]
     pub authority: Signer<'info>,
 
     #[account(address = CONFIG_PDA)]
@@ -807,7 +766,10 @@ pub struct UpgradeProgram<'info> {
 #[cfg(feature = "dev-config-version")]
 #[derive(Accounts)]
 pub struct DevSetConfigVersion<'info> {
-    #[account(constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount)]
+    #[account(
+        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
+        constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
+    )]
     pub authority: Signer<'info>,
 
     #[account(mut, address = CONFIG_PDA)]
@@ -848,45 +810,28 @@ pub struct ForwardCall<'info> {
     pub ix_sysvar: UncheckedAccount<'info>,
 }
 
-#[event_cpi]
+/// The owner, as the previous release's config records it, and the config
+/// in that layout, which the handler reads and rewrites.
 #[derive(Accounts)]
-pub struct ForwardEmergencyCall<'info> {
+pub struct MigrateConfig<'info> {
+    /// Receives the rent the smaller account no longer needs.
     #[account(mut)]
-    pub caller: Signer<'info>,
+    pub owner: Signer<'info>,
 
-    #[account(
-        address = CONFIG_PDA,
-        constraint = config.emergency_caller != Pubkey::default() @ ErrorCode::EmergencyCallerNotSet,
-        constraint = config.emergency_caller == caller.key() @ ErrorCode::UnauthorizedCaller,
-    )]
-    pub config: Account<'info, Config>,
-
-    /// CHECK: Checked by require_paused_adapter in the handler.
-    pub pa_state: UncheckedAccount<'info>,
-}
-
-#[event_cpi]
-#[derive(Accounts)]
-pub struct SetEmergencyCaller<'info> {
-    pub committee: Signer<'info>,
-
-    #[account(
-        mut,
-        address = CONFIG_PDA,
-        constraint = config.emergency_committee == committee.key() @ ErrorCode::UnauthorizedCaller
-    )]
-    pub config: Account<'info, Config>,
-
-    /// CHECK: Checked by require_paused_adapter in the handler.
-    pub pa_state: UncheckedAccount<'info>,
+    /// CHECK: The config in the previous layout, which `Account<Config>`
+    /// cannot read: the address and the program's ownership pin it, and
+    /// the handler checks its size and discriminator.
+    #[account(mut, address = CONFIG_PDA, owner = crate::ID)]
+    pub config: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
 pub struct CloseEscrow<'info> {
-    /// Emergency committee, receives the closed escrow ATA's rent.
+    /// The owner, who receives the closed escrow ATA's rent.
     #[account(
         mut,
-        constraint = config.emergency_committee == authority.key() @ ErrorCode::UnauthorizedCaller
+        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
+        constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
     )]
     pub authority: Signer<'info>,
 
@@ -918,16 +863,15 @@ pub struct CloseEscrow<'info> {
 
 #[derive(Accounts)]
 pub struct CloseConfig<'info> {
-    /// Emergency committee, receives the config's rent.
-    #[account(mut)]
-    pub authority: Signer<'info>,
-
+    /// The owner, who receives the config's rent.
     #[account(
         mut,
-        address = CONFIG_PDA,
-        constraint = config.emergency_committee == authority.key() @ ErrorCode::UnauthorizedCaller,
-        close = authority
+        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
+        constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
     )]
+    pub authority: Signer<'info>,
+
+    #[account(mut, address = CONFIG_PDA, close = authority)]
     pub config: Account<'info, Config>,
 
     /// CHECK: Checked by require_paused_adapter in the handler.
@@ -936,10 +880,11 @@ pub struct CloseConfig<'info> {
 
 #[derive(Accounts)]
 pub struct CloseNonceBitmaps<'info> {
-    /// Emergency committee, receives the closed bitmaps' rent.
+    /// The owner, who receives the closed bitmaps' rent.
     #[account(
         mut,
-        constraint = config.emergency_committee == authority.key() @ ErrorCode::UnauthorizedCaller
+        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
+        constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
     )]
     pub authority: Signer<'info>,
 

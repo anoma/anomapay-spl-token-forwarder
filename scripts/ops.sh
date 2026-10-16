@@ -51,7 +51,7 @@ Cluster operations (--cluster required):
                  upgrade (owner wallet) once its upgrade authority is its PDA,
                  else through the loader
   forwarder <cmd>
-                 init, reinitialize, emergency-withdraw. Parameters are STF_*
+                 init, reinitialize, migrate-config. Parameters are STF_*
                  environment variables; see scripts/forwarder.ts.
   idl-publish    Publish the production IDL on chain (the program's canonical
                  Program Metadata IDL account; signer must be the upgrade
@@ -81,8 +81,6 @@ Flags:
 Forwarder initialization parameters (required by forwarder init and a
 localnet deploy, which initializes):
   STF_LOGIC_REF        32-byte hex logic ref the forwarder serves
-  STF_EMERGENCY_COMMITTEE
-                       base58 pubkey of the emergency committee
   STF_OWNER            base58 pubkey of the forwarder's initial owner, who
                        alone upgrades it and rotates its logic ref
   STF_TOKEN_MINT       optional: base58 mint whose escrow ATA to create
@@ -423,10 +421,10 @@ run_ts() {
 }
 
 require_forwarder_init_params() {
-  if [[ -z "${STF_LOGIC_REF:-}" || -z "${STF_EMERGENCY_COMMITTEE:-}" || -z "${STF_OWNER:-}" ]]; then
-    echo "❌ Missing STF_LOGIC_REF, STF_EMERGENCY_COMMITTEE and/or STF_OWNER." >&2
-    echo "   The forwarder config pins the logic ref it serves, the committee" >&2
-    echo "   that can act in an emergency and the owner; there is no safe default." >&2
+  if [[ -z "${STF_LOGIC_REF:-}" || -z "${STF_OWNER:-}" ]]; then
+    echo "❌ Missing STF_LOGIC_REF and/or STF_OWNER." >&2
+    echo "   The forwarder config pins the logic ref it serves and the owner;" >&2
+    echo "   there is no safe default." >&2
     exit 1
   fi
 }

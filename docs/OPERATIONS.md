@@ -1,6 +1,6 @@
 # Operating the SPL token forwarder
 
-The SPL token forwarder holds AnomaPay's wrapped SPL tokens in escrow and executes the wrap and unwrap calls the adapter forwards to it. It has two authorities, both recorded in its config PDA at initialization: the **owner**, which upgrades the program and rotates the logic ref, and the **emergency committee**, which names the emergency caller and closes accounts. The adapter's own procedures (its deployment, owner, pause and kind table) are in the adapter repository's [docs/OPERATIONS.md](https://github.com/anoma/solana-protocol-adapter/blob/anthony/arm-v2-port/solana-pa-prototype/docs/OPERATIONS.md).
+The SPL token forwarder holds AnomaPay's wrapped SPL tokens in escrow and executes the wrap and unwrap calls the adapter forwards to it. Its one authority, recorded in its config PDA at initialization, is the **owner**, which upgrades the program, rotates the logic ref and, while the adapter is paused, closes the forwarder's accounts. The adapter's own procedures (its deployment, owner, pause and kind table) are in the adapter repository's [docs/OPERATIONS.md](https://github.com/anoma/solana-protocol-adapter/blob/anthony/arm-v2-port/solana-pa-prototype/docs/OPERATIONS.md).
 
 Commands run through `./scripts/dev.sh`, which enters the Nix shell; cluster operations take `--cluster <localnet|devnet|mainnet>` (`scripts/ops.sh` lists every flag). devnet and mainnet operations go through the operator's RPC provider: pass `--url <rpc>` or set `DEVNET_RPC_URL` / `MAINNET_RPC_URL`; there is no public-endpoint default. The forwarder's commands take their parameters as `STF_*` environment variables (`scripts/forwarder.ts` lists them).
 
@@ -12,7 +12,6 @@ The forwarder's owner is set by its `initialize` (`STF_OWNER`) and stored in its
 
 ```sh
 export STF_LOGIC_REF=<32-byte hex verifying key of the AnomaPay resource logic>
-export STF_EMERGENCY_COMMITTEE=<base58 pubkey>
 export STF_OWNER=<the owner's pubkey>
 export STF_TOKEN_MINT=<base58 mint>          # optional: also creates the mint's escrow ATA
 ./scripts/dev.sh deploy --cluster devnet     # publishes the IDL, stops before init
@@ -22,7 +21,7 @@ export STF_TOKEN_MINT=<base58 mint>          # optional: also creates the mint's
 
 A first deploy reads the forwarder's keypair path from the uncommitted `env/<cluster>.keys.env` ([env/README.md](../env/README.md)). On devnet and mainnet, `deploy` publishes the forwarder's IDL and stops before `initialize`, for the reason the adapter's deploy does: `initialize` gives the upgrade authority, which alone creates the program's canonical metadata accounts, to the program, so the deployer gives the IDL account to the owner (`program-metadata set-authority`) before initializing. On localnet it initializes at once.
 
-The program's upgrade authority, the deployer, initializes the config, as the EVM proxy runs its initializer at deployment; no other signer can. It hands the upgrade authority to the program's PDA. The config pins the adapter program id (`env/<cluster>.env`), the logic ref, the committee and the owner. A wrap is only executed when the adapter forwards it for a resource carrying that logic ref. One escrow authority, a PDA of the forwarder, owns every mint's escrow: the associated token account of the authority and the mint, as the EVM forwarder holds every token at its own address. `forwarder init` with `STF_TOKEN_MINT` creates a mint's escrow account, and the same command adds further mints later.
+The program's upgrade authority, the deployer, initializes the config, as the EVM proxy runs its initializer at deployment; no other signer can. It hands the upgrade authority to the program's PDA. The config pins the adapter program id (`env/<cluster>.env`), the logic ref and the owner. A wrap is only executed when the adapter forwards it for a resource carrying that logic ref. One escrow authority, a PDA of the forwarder, owns every mint's escrow: the associated token account of the authority and the mint, as the EVM forwarder holds every token at its own address. `forwarder init` with `STF_TOKEN_MINT` creates a mint's escrow account, and the same command adds further mints later.
 
 ## Nonce bitmaps
 
@@ -37,7 +36,7 @@ The logic ref changes whenever the resource circuit is rebuilt. It is rotated as
 STF_LOGIC_REF=<new 32-byte hex verifying key> ./scripts/dev.sh forwarder reinitialize --cluster <c>   # owner wallet
 ```
 
-Escrow, nonce bitmaps and the committee are untouched. The instruction emits `Initialized` with the new version, as OpenZeppelin's reinitializer does; read the new ref from the config account. Resources wrapped under the previous ref leave through the new one once the adapter's kind table lists the previous version as an alias of the new one (anoma/risc0-kind-tables ADR-0008, rule R2): a transaction converts each into a resource under the new ref, which then unwraps. Until that table's commitment is installed (the adapter's `set-kind-table`), they stay in escrow and can neither unwrap nor convert. The emergency path below is for a stopped adapter only.
+Escrow and nonce bitmaps are untouched. The instruction emits `Initialized` with the new version, as OpenZeppelin's reinitializer does; read the new ref from the config account. Resources wrapped under the previous ref leave through the new one once the adapter's kind table lists the previous version as an alias of the new one (anoma/risc0-kind-tables ADR-0008, rule R2): a transaction converts each into a resource under the new ref, which then unwraps. Until that table's commitment is installed (the adapter's `set-kind-table`), they stay in escrow and can neither unwrap nor convert.
 
 ## Checking a devnet deployment with a wrap and an unwrap
 
@@ -47,19 +46,17 @@ Escrow, nonce bitmaps and the committee are untouched. The instruction emits `In
 
 The forwarder is upgraded in place, as the EVM forwarder's proxy is upgraded through `upgradeToAndCall`: the program id, the config, the escrow and the nonce bitmaps stay. The owner upgrades it with `./scripts/dev.sh upgrade --cluster <c>`, which writes the new build to a buffer and calls the forwarder's `upgrade` (before `initialize`, while the deployer's wallet is still the upgrade authority, it upgrades through the loader); `--prebuilt` ships `verify-build`'s deterministic build. A release that changes an account layout ships owner-only migration instructions, the counterpart of the call the EVM owner passes to `upgradeToAndCall`, which run once, right after the upgrade, and a test that runs the upgrade path from the previous build.
 
-## Emergency committee
+### From the release with an emergency committee
 
-The committee and its emergency caller carry over the EVM V1 forwarder's emergency mechanism; the EVM V2 forwarder has none (it relies on its owner's upgrades), and anoma/dos-pm#86 tracks whether this forwarder keeps, replaces or drops it. As built:
-
-Once the adapter is paused (the adapter's `pause`), the committee names an emergency caller, once, and that caller withdraws from escrow directly without going through the adapter:
+The release before this one stored an emergency committee and an emergency caller in the config, the EVM V1 forwarder's emergency mechanism, which the EVM V2 forwarder does not have. This release drops both, so its config is 64 bytes shorter. After the upgrade, the owner rewrites the config once:
 
 ```sh
-STF_TOKEN_MINT=<mint> STF_RECIPIENT=<owner> STF_AMOUNT=<raw units> \
-  ./scripts/dev.sh forwarder emergency-withdraw --cluster <c>                                # caller wallet
+./scripts/dev.sh upgrade --cluster <c>                                 # owner wallet
+./scripts/dev.sh forwarder migrate-config --cluster <c>                # owner wallet
 ```
 
-Naming the emergency caller grants a key the right to withdraw escrowed funds, so, like every authority change on a live cluster, it is done by hand: no repository command or script builds it. The committee constructs and signs the forwarder's `set_emergency_caller(caller)` itself from the IDL (accounts: the committee as signer, the config, the paused adapter's PAState). The program refuses it while the adapter is not paused and refuses a second one. The forwarder's other committee instructions, `close_escrow` (drain an escrow to a recipient and close it), `close_nonce_bitmaps_batch` and `close_config`, refuse while the adapter is not paused, and are likewise made by hand.
+`migrate_config` keeps the adapter, the logic ref, the version and the owner, and returns the rent the smaller account no longer needs to the owner. Until it runs, wraps and unwraps settle, since both layouts start with the adapter and the logic ref, and every owner-only instruction refuses the config with `ConfigNotMigrated`; a second run fails with `NotPreviousLayout`.
 
 ## Retiring the forwarder
 
-Retirement closes accounts for good, so on a live cluster it is done by hand. Once the adapter is paused, the committee signs, in order: `close_nonce_bitmaps_batch` over every nonce bitmap the forwarder owns (closing them ends wrap replay protection; the forwarder cannot be initialized again, its upgrade authority being its own PDA), `close_escrow` for each mint's escrow (drains it to the committee's token account and closes it), then `close_config`, which also ends the forwarder's ownership: with no config, neither `upgrade` nor `reinitialize` can run. The program stays on chain, its upgrade authority its own PDA.
+Retirement closes accounts for good, so on a live cluster it is done by hand. The closing instructions recover the rent of accounts EVM storage does not have, so they have no EVM counterpart; they are the owner's, who can already replace the program's code, and each refuses while the adapter is not paused. Once the adapter is paused, the owner signs, in order: `close_nonce_bitmaps_batch` over every nonce bitmap the forwarder owns (closing them ends wrap replay protection; the forwarder cannot be initialized again, its upgrade authority being its own PDA), `close_escrow` for each mint's escrow (drains it to a token account the owner names and closes it), then `close_config`, which also ends the forwarder's ownership: with no config, neither `upgrade` nor `reinitialize` can run. The program stays on chain, its upgrade authority its own PDA.

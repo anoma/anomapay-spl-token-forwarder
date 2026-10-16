@@ -42,16 +42,6 @@ const forwarderCases: [ForwarderEvent["name"], Uint8Array, ForwarderEvent][] = [
     eventIx("Unwrapped", [MINT, USER, u64Le(2n ** 64n - 1n)]),
     { name: "Unwrapped", token: MINT, to: USER, amount: 2n ** 64n - 1n },
   ],
-  [
-    "EmergencyCallerSet",
-    eventIx("EmergencyCallerSet", [USER, OTHER]),
-    { name: "EmergencyCallerSet", emergencyCaller: USER, setBy: OTHER },
-  ],
-  [
-    "EmergencyWithdraw",
-    eventIx("EmergencyWithdraw", [MINT, USER, u64Le(42n), OTHER]),
-    { name: "EmergencyWithdraw", tokenMint: MINT, to: USER, amount: 42n, caller: OTHER },
-  ],
   ["Initialized", eventIx("Initialized", [u64Le(2n)]), { name: "Initialized", version: 2n }],
   [
     "OwnershipTransferred",

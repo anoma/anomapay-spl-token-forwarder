@@ -3,14 +3,11 @@
 //! needs the adapter as the CPI caller, so those behaviours are tested
 //! through settlement (wrap.rs, unwrap.rs).
 
-use anoma_pa_solana_client::{
-    anchor_instruction_disc, derive_event_authority_pda, derive_pa_state_pda,
-};
+use anoma_pa_solana_client::{anchor_instruction_disc, derive_event_authority_pda};
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
 use anomapay_spl_token_forwarder_client::{
     CONFIG_VERSION, derive_forwarder_config_pda, encode_unwrap_forwarder_input, reinitialize_ix,
-    set_emergency_caller_ix,
 };
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::setup::{self, LocalForwarder, config};
@@ -153,25 +150,5 @@ async fn refuses_a_forward_call_that_is_not_a_cpi_from_the_adapter() -> anyhow::
     };
     expect_integration_panic(Needle::Static("Error Code: ProtocolAdapterMismatch."))(
         env.send(&[forward_call], &[]).await,
-    )
-}
-
-// Mirrors EmergencyMigratableForwarderBase.t.sol: test_setEmergencyCaller_reverts_if_the_caller_is_not_the_emergency_committee
-#[tokio::test(flavor = "multi_thread")]
-async fn refuses_set_emergency_caller_from_a_non_committee_signer() -> anyhow::Result<()> {
-    let (env, local) = setup::local().await?;
-    let impostor = Keypair::new();
-    let (pa_state, _) = derive_pa_state_pda(&env.protocol_adapter.program);
-    expect_integration_panic(Needle::Static("Error Code: UnauthorizedCaller."))(
-        env.send(
-            &[set_emergency_caller_ix(
-                &local.forwarder.program,
-                &impostor.pubkey(),
-                &pa_state,
-                &Keypair::new().pubkey(),
-            )],
-            &[&impostor],
-        )
-        .await,
     )
 }
