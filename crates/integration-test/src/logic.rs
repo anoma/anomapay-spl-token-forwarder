@@ -27,11 +27,6 @@ where
     type Call = C;
 }
 
-/// The domain owners of `L`'s resources sign under.
-pub fn auth_signature_domain<L: Logic>() -> &'static [u8] {
-    <L::Call as ForwarderCall>::AUTH_SIGNATURE_DOMAIN
-}
-
 /// A logic ref no resource has: 32 random bytes.
 pub fn random_logic_ref() -> Digest {
     use solana_signer::Signer;

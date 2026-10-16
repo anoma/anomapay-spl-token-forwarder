@@ -566,8 +566,9 @@ case "$COMMAND" in
     require_cmd cargo
     check_program_id_not_in_tree
     cargo clippy --workspace --all-targets -- -D warnings
-    cargo clippy -p spl-token-forwarder --features "$DEV_FEATURES" --all-targets -- -D warnings
-    cargo clippy -p spl-token-forwarder --features "$EMERGENCY_MIGRATING_FEATURES" --all-targets -- -D warnings
+    # The development and the emergency-migrating features in one pass; the
+    # workspace pass above covers the build without them.
+    cargo clippy -p spl-token-forwarder --features "$DEV_FEATURES $EMERGENCY_MIGRATING_FEATURES" --all-targets -- -D warnings
     # `cpi` is how another program depends on this one to call it.
     cargo clippy -p spl-token-forwarder --features cpi --all-targets -- -D warnings
     # The client's wire formats and event decoders without the Solana SDK.

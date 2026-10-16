@@ -85,6 +85,7 @@ describe("forwarder segment builders", () => {
 
   it("migration segment is the emergency-migrating build's layout", () => {
     const adapter = Keypair.generate().publicKey;
+    const [paState] = derivePaStatePda(adapter);
     const entries = [1, 2].map((i) => ({
       nullifier: new Uint8Array(32).fill(i),
       commitmentTreeRoot: new Uint8Array(32).fill(10 + i),
@@ -98,11 +99,11 @@ describe("forwarder segment builders", () => {
         SYSVAR_INSTRUCTIONS_PUBKEY,
         deriveEventAuthorityPda(forwarder)[0],
         forwarder,
-        derivePaStatePda(adapter)[0],
+        paState,
         deriveVulnerableLogicRefsPda(forwarder)[0],
         ...entries.flatMap((entry) => [
-          deriveAdapterRootMarkerPda(adapter, entry.commitmentTreeRoot)[0],
-          deriveAdapterNullifierPda(adapter, entry.nullifier)[0],
+          deriveAdapterRootMarkerPda(adapter, paState, entry.commitmentTreeRoot)[0],
+          deriveAdapterNullifierPda(adapter, paState, entry.nullifier)[0],
           deriveMigrationRecordPda(forwarder, entry.nullifier)[0],
         ]),
       ].map((k) => k.toBase58()),

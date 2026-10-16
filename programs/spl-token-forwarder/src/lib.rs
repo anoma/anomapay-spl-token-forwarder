@@ -766,10 +766,10 @@ pub struct Reinitialize<'info> {
     #[account(mut, address = CONFIG_PDA)]
     pub config: Account<'info, Config>,
 
-    /// CHECK: The vulnerable logic refs, which the seeds pin: empty until
-    /// the first incident's `reinitialize` creates them, which grows them at
-    /// every later one.
-    #[account(mut, seeds = [VULNERABLE_LOGIC_REFS_SEED], bump)]
+    /// CHECK: The vulnerable logic refs, at their canonical address: empty
+    /// until the first incident's `reinitialize` creates them, which grows
+    /// them at every later one.
+    #[account(mut, address = VULNERABLE_LOGIC_REFS_PDA)]
     pub vulnerable_logic_refs: UncheckedAccount<'info>,
 
     /// CHECK: The adapter's state, which `read_pa_state` checks against the

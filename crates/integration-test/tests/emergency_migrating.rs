@@ -283,13 +283,7 @@ fn passthrough_call(
 /// upgraded the forwarder to the emergency-migrating build and reinitialized
 /// it, listing the transfer logic ref and moving to the pass-through logic.
 async fn after_an_incident() -> anyhow::Result<Incident> {
-    after_an_incident_on(FORWARDER_EMERGENCY_MIGRATING_SO).await
-}
-
-/// `after_an_incident`, with `build` the emergency-migrating build the
-/// owner upgrades to.
-async fn after_an_incident_on(build: &[u8]) -> anyhow::Result<Incident> {
-    let mut incident = before_the_incident(build).await?;
+    let mut incident = before_the_incident(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
     incident.deny_and_reinitialize().await?;
     Ok(incident)
 }
@@ -322,10 +316,7 @@ async fn before_the_incident(build: &[u8]) -> anyhow::Result<Incident> {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_upgraded_forwarder_wraps_and_unwraps_as_before() -> anyhow::Result<()> {
     let (mut env, local) = setup::upgraded_to(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
-    local
-        .forwarder
-        .wraps_then_unwraps(&mut env, AMOUNT, "upgraded")
-        .await
+    local.forwarder.wraps_then_unwraps(&mut env).await
 }
 
 // Mirrors test_reinitialize_replaces_the_logic_ref_and_lists_only_the_passed_logic_refs
@@ -421,7 +412,7 @@ async fn refuses_reinitialize(
     expect_integration_panic(Needle::Static(error))(env.send(&[ix], &[signer]).await)?;
     let version = config(env, &local.forwarder.program).await?.version;
     anyhow::ensure!(
-        version == EMERGENCY_MIGRATING_CONFIG_VERSION - 1,
+        version == CONFIG_VERSION,
         "a refused reinitialize moved the config to version {version}"
     );
     Ok(())
@@ -465,16 +456,12 @@ async fn reinitialize_runs_once() -> anyhow::Result<()> {
 // migrate.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_later_incident_keeps_the_earlier_refs_listed_and_migratable() -> anyhow::Result<()> {
-    let mut incident = after_an_incident_on(FORWARDER_EMERGENCY_MIGRATING_DEV_SO).await?;
+    let mut incident = before_the_incident(FORWARDER_EMERGENCY_MIGRATING_DEV_SO).await?;
+    incident.deny_and_reinitialize().await?;
     let program = incident.local.forwarder.program;
     let later = random_logic_ref();
     deny(&mut incident.env, later).await?;
-    set_config_version(
-        &incident.env,
-        &incident.local,
-        EMERGENCY_MIGRATING_CONFIG_VERSION - 1,
-    )
-    .await?;
+    set_config_version(&incident.env, &incident.local, CONFIG_VERSION).await?;
     let (env, local) = (&incident.env, &incident.local);
     expect_integration_panic(Needle::Static("Error Code: LogicRefAlreadyVulnerable."))(
         env.send(
@@ -629,7 +616,6 @@ async fn a_migration_records_every_nullifier_and_moves_no_tokens() -> anyhow::Re
         .await?;
     let executed = incident.env.protocol_adapter.settled(tx).await?;
 
-    let forwarder = &incident.local.forwarder;
     migrated(
         &incident.env,
         &executed,
@@ -992,7 +978,7 @@ async fn a_migration_recovers_the_wrapped_tokens<P: Prover>(
 
     let before = balances(env, &unmoved(forwarder)).await?;
     let migration = forwarder
-        .prove_migration(env, &[wrapped], &holder, "real-migration/migrate")
+        .prove_migration(env, wrapped, &holder, "real-migration/migrate")
         .await?;
     let executed = env.protocol_adapter.settled(migration.tx).await?;
     migrated(

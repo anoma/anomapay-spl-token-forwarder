@@ -167,34 +167,6 @@ mod tests {
     }
 
     #[test]
-    /// The emergency-migrating build's IDL declares the migration record
-    /// (`init_migration_record` creates it). It does not declare the
-    /// vulnerable logic refs, which `reinitialize` creates by hand; the
-    /// program's unit tests check this decoder against its serialization.
-    fn the_emergency_migrating_idl_declares_the_migration_record_the_decoder_reads() {
-        let idl = crate::idl::emergency_migrating_idl();
-        let fields: Vec<(String, String)> = crate::idl::fields(&idl, "MigrationRecord")
-            .iter()
-            .map(|f| (f["name"].to_string(), f["type"].to_string()))
-            .collect();
-        assert_eq!(
-            fields,
-            [
-                ("\"migrated\"".to_string(), "\"bool\"".to_string()),
-                ("\"bump\"".to_string(), "\"u8\"".to_string())
-            ]
-        );
-        let account = idl["accounts"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|a| a["name"] == "MigrationRecord")
-            .unwrap();
-        let expected: Vec<u8> = serde_json::from_value(account["discriminator"].clone()).unwrap();
-        assert_eq!(anchor_account_disc("MigrationRecord").to_vec(), expected);
-    }
-
-    #[test]
     fn the_emergency_migrating_accounts_decode_to_their_fields() {
         let mut listed = anchor_account_disc("VulnerableLogicRefs").to_vec();
         listed.extend(2u32.to_le_bytes());

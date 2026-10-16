@@ -152,17 +152,22 @@ export function buildMigrateForwarderAccounts(
   protocolAdapter: PublicKey,
   entries: MigrateEntryAccounts[],
 ): AccountMeta[] {
+  const [paState] = derivePaStatePda(protocolAdapter);
   return [
     ...forwarderSegmentHead(forwarderProgram),
-    { pubkey: derivePaStatePda(protocolAdapter)[0], isSigner: false, isWritable: false },
+    { pubkey: paState, isSigner: false, isWritable: false },
     { pubkey: deriveVulnerableLogicRefsPda(forwarderProgram)[0], isSigner: false, isWritable: false },
     ...entries.flatMap((entry) => [
       {
-        pubkey: deriveAdapterRootMarkerPda(protocolAdapter, entry.commitmentTreeRoot)[0],
+        pubkey: deriveAdapterRootMarkerPda(protocolAdapter, paState, entry.commitmentTreeRoot)[0],
         isSigner: false,
         isWritable: false,
       },
-      { pubkey: deriveAdapterNullifierPda(protocolAdapter, entry.nullifier)[0], isSigner: false, isWritable: false },
+      {
+        pubkey: deriveAdapterNullifierPda(protocolAdapter, paState, entry.nullifier)[0],
+        isSigner: false,
+        isWritable: false,
+      },
       { pubkey: deriveMigrationRecordPda(forwarderProgram, entry.nullifier)[0], isSigner: false, isWritable: true },
     ]),
   ];

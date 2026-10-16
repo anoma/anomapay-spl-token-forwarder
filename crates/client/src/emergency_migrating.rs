@@ -48,9 +48,7 @@ pub fn reinitialize_ix(
     let count =
         u32::try_from(vulnerable_logic_refs.len()).expect("fewer than 2^32 vulnerable logic refs");
     data.extend_from_slice(&count.to_le_bytes());
-    vulnerable_logic_refs
-        .iter()
-        .for_each(|logic_ref| data.extend_from_slice(logic_ref));
+    data.extend_from_slice(vulnerable_logic_refs.as_flattened());
     Instruction {
         program_id: *forwarder_program,
         accounts: vec![

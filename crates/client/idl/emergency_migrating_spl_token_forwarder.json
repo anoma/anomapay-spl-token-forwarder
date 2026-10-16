@@ -579,40 +579,11 @@
         {
           "name": "vulnerable_logic_refs",
           "docs": [
-            "the first incident's `reinitialize` creates them, which grows them at",
-            "every later one."
+            "until the first incident's `reinitialize` creates them, which grows",
+            "them at every later one."
           ],
           "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  117,
-                  108,
-                  110,
-                  101,
-                  114,
-                  97,
-                  98,
-                  108,
-                  101,
-                  95,
-                  108,
-                  111,
-                  103,
-                  105,
-                  99,
-                  95,
-                  114,
-                  101,
-                  102,
-                  115
-                ]
-              }
-            ]
-          }
+          "address": "Hg5mVf1cDV3bANYsdsxwp4rAFb5y5umMG7fKhsT6Qkai"
         },
         {
           "name": "pa_state",

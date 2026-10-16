@@ -11,9 +11,10 @@ use anoma_rm_risc0::resource::Resource;
 use anoma_rm_risc0_gadgets::authority::{AuthoritySigningKey, AuthorityVerifyingKey};
 use anoma_rm_risc0_gadgets::encryption::{SecretKey, generate_public_key};
 use anyhow::Context;
-use emergency_migrating_transfer_library::EmergencyMigratingTransferLogic;
 use emergency_migrating_transfer_library::action::migrate as migrate_action;
-use emergency_migrating_transfer_witness::MigrateEntry;
+use emergency_migrating_transfer_witness::{
+    EMERGENCY_MIGRATING_AUTH_SIGNATURE_DOMAIN, MigrateEntry,
+};
 use k256::AffinePoint;
 use k256::elliptic_curve::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -22,9 +23,9 @@ use solana_signer::Signer;
 use surfpool_sdk::Pubkey;
 use transfer_library::TransferLogic;
 use transfer_library::action::{self, ComplianceParams, Owner, TransferAction, WrapAuth};
-use transfer_witness::{LabelInfo, ValueInfo, WrapAuthInfo};
+use transfer_witness::{ForwarderCall, LabelInfo, ValueInfo, WrapAuthInfo};
 
-use crate::logic::{Logic, Witness, auth_signature_domain};
+use crate::logic::{Logic, Witness};
 
 /// Year 2100: the deadline never passes under test.
 pub const WRAP_DEADLINE: i64 = 4_102_444_800;
@@ -197,9 +198,10 @@ pub fn unwrap<L: Logic>(
         .action_tree_root()
         .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to compute the unwrap's action tree root")?;
-    let auth_sig = owner
-        .auth_sk
-        .sign(auth_signature_domain::<L>(), root.as_bytes());
+    let auth_sig = owner.auth_sk.sign(
+        <L::Call as ForwarderCall>::AUTH_SIGNATURE_DOMAIN,
+        root.as_bytes(),
+    );
     let action = unwrap
         .action(
             auth_sig,
@@ -222,29 +224,27 @@ pub struct MigrationData {
 }
 
 /// A migration of `wrapped`, resources `owner` holds under the label of
-/// `forwarder` and `mint`, each with its path in the adapter's commitment
-/// tree, into one resource of the emergency-migrating logic `owner` holds.
+/// `forwarder` and `mint`, at `path` in the adapter's commitment tree,
+/// into one resource of the emergency-migrating logic `owner` holds.
 /// `seed` makes the action's resources distinct from every other test's.
 pub fn migrate(
     forwarder: Pubkey,
     mint: Pubkey,
-    wrapped: Vec<(Resource, MerklePath)>,
+    wrapped: Resource,
+    path: MerklePath,
     owner: &ShieldedOwner,
     seed: &str,
 ) -> anyhow::Result<MigrationData> {
-    let entries = wrapped
-        .into_iter()
-        .map(|(resource, path)| MigrateEntry {
-            resource,
-            nf_key: owner.keys.nf_key.clone(),
-            path,
-            value_info: owner.keys.value.clone(),
-            forwarder_program_id: forwarder.to_bytes(),
-        })
-        .collect();
+    let entry = MigrateEntry {
+        resource: wrapped,
+        nf_key: owner.keys.nf_key.clone(),
+        path,
+        value_info: owner.keys.value.clone(),
+        forwarder_program_id: forwarder.to_bytes(),
+    };
     let migration = migrate_action(
         label(forwarder, mint),
-        entries,
+        vec![entry],
         label_hash(&format!("{seed}/ephemeral-nonce")),
         owner.keys.clone(),
         label_hash(&format!("{seed}/rand-seed")),
@@ -256,10 +256,9 @@ pub fn migrate(
         .action_tree_root()
         .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to compute the migration's action tree root")?;
-    let auth_sig = owner.auth_sk.sign(
-        auth_signature_domain::<EmergencyMigratingTransferLogic>(),
-        root.as_bytes(),
-    );
+    let auth_sig = owner
+        .auth_sk
+        .sign(EMERGENCY_MIGRATING_AUTH_SIGNATURE_DOMAIN, root.as_bytes());
     let action = migration
         .action(
             auth_sig,

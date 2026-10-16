@@ -747,16 +747,16 @@ impl Forwarder {
         Ok(())
     }
 
-    /// The user wraps `amount` into a resource a shielded owner holds, then
-    /// the owner unwraps it to a fresh recipient, both settled on `env`: the
-    /// user's tokens move into escrow, then out to the recipient. `seed`
-    /// makes the resources distinct from every other wrap's.
-    pub async fn wraps_then_unwraps<P: Prover>(
-        &self,
-        env: &mut Environment<P>,
-        amount: u64,
-        seed: &str,
-    ) -> anyhow::Result<()> {
+    /// The user wraps 100 tokens into a resource a shielded owner holds, then
+    /// the owner unwraps them to a fresh recipient, both settled on `env`:
+    /// the user's tokens move into escrow, then out to the recipient.
+    pub async fn wraps_then_unwraps<P>(&self, env: &mut Environment<P>) -> anyhow::Result<()>
+    where
+        P: Prover,
+    {
+        // 100 tokens at the mint's 6 decimals.
+        let amount = 100_000_000;
+        let seed = "wrap-then-unwrap";
         let owner = ShieldedOwner::seeded(&format!("{seed}/owner"));
         let (user, escrow) = (self.user_account(), self.escrow_account());
         let user_before = balance(env, &user).await?;
@@ -772,23 +772,22 @@ impl Forwarder {
             .await
     }
 
-    /// A migration of `wrapped`, resources under this forwarder's label that
-    /// `owner` holds in the adapter's commitment tree, into one resource of
-    /// the emergency-migrating logic `owner` holds, proven on `env`. `seed`
-    /// makes its resources distinct from every other migration's.
+    /// A migration of `wrapped`, a resource under this forwarder's label that
+    /// `owner` holds in the adapter's commitment tree, into a resource of the
+    /// emergency-migrating logic `owner` holds, proven on `env`. `seed` makes
+    /// its resources distinct from every other migration's.
     pub async fn prove_migration<P: Prover>(
         &self,
         env: &Environment<P>,
-        wrapped: &[Resource],
+        wrapped: Resource,
         owner: &ShieldedOwner,
         seed: &str,
     ) -> anyhow::Result<ProvenMigration> {
-        let tree = &env.protocol_adapter.commitment_tree;
-        let wrapped = wrapped
-            .iter()
-            .map(|resource| Ok((*resource, tree.path_to(resource.commitment())?)))
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        let migration = fixtures::migrate(self.program, self.mint, wrapped, owner, seed)?;
+        let path = env
+            .protocol_adapter
+            .commitment_tree
+            .path_to(wrapped.commitment())?;
+        let migration = fixtures::migrate(self.program, self.mint, wrapped, path, owner, seed)?;
         Ok(ProvenMigration {
             tx: prove_actions(env, &[migration.witnesses]).await?,
             created: migration.created,

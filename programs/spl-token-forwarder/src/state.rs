@@ -95,12 +95,14 @@ pub const CONFIG_VERSION: u64 = PRODUCTION_CONFIG_VERSION + 1;
 /// account type: the account must be the state account of the adapter the
 /// config names.
 pub fn read_pa_state(config: &Config, pa_state: &AccountInfo) -> Result<PAStateAccount> {
-    require_keys_eq!(
-        pa_state.key(),
-        derive_pa_state_pda(&config.protocol_adapter).0,
-        crate::ErrorCode::InvalidPaState
-    );
-    decode_pa_state(&pa_state.try_borrow_data()?)
+    let state = decode_pa_state(&pa_state.try_borrow_data()?)?;
+    // The adapter creates its state only at the canonical bump, which it
+    // stores: one address computation checks the account, no search.
+    let address =
+        Pubkey::create_program_address(&[PA_STATE_SEED, &[state.bump]], &config.protocol_adapter)
+            .map_err(|_| crate::ErrorCode::InvalidPaState)?;
+    require_keys_eq!(pa_state.key(), address, crate::ErrorCode::InvalidPaState);
+    Ok(state)
 }
 
 /// A PA state account's data, decoded through the adapter's own account
@@ -115,11 +117,6 @@ pub fn decode_pa_state(data: &[u8]) -> Result<PAStateAccount> {
         crate::ErrorCode::InvalidPaState
     );
     Ok(state)
-}
-
-/// Derive the PA state PDA address from the PA program ID.
-pub fn derive_pa_state_pda(pa_program_id: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[PA_STATE_SEED], pa_program_id)
 }
 
 #[constant]
