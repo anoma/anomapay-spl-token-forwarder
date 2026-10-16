@@ -246,10 +246,7 @@ async fn before_the_incident(build: &[u8]) -> anyhow::Result<Incident> {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_upgraded_forwarder_wraps_and_unwraps_as_before() -> anyhow::Result<()> {
     let (mut env, local) = setup::upgraded_to(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
-    local
-        .forwarder
-        .wraps_then_unwraps(&mut env, AMOUNT, "upgraded")
-        .await
+    local.forwarder.wraps_then_unwraps(&mut env).await
 }
 
 // Mirrors test_reinitialize_replaces_the_logic_ref_and_lists_only_the_passed_logic_refs
