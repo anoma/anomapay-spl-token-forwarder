@@ -14,7 +14,7 @@ use anoma_pa_solana_client::{
     derive_upgrade_authority_pda,
 };
 
-use crate::constants::NONCES_PER_WORD;
+use crate::constants::{FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS, NONCES_PER_WORD};
 use crate::pda::{
     derive_forwarder_config_pda, derive_forwarder_escrow_authority, derive_nonce_bitmap_pda,
 };
@@ -271,7 +271,9 @@ pub fn close_config_ix(
 /// The head of every forwarder CPI segment: the forwarder (segment marker),
 /// its config, the instructions sysvar, then the forwarder's event authority
 /// and the forwarder again, which its CPI events need.
-fn forwarder_segment_head(forwarder_program: &Pubkey) -> [AccountMeta; 5] {
+pub(crate) fn forwarder_segment_head(
+    forwarder_program: &Pubkey,
+) -> [AccountMeta; FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS as usize] {
     [
         AccountMeta::new_readonly(*forwarder_program, false),
         AccountMeta::new_readonly(derive_forwarder_config_pda(forwarder_program).0, false),
@@ -331,7 +333,7 @@ pub fn build_unwrap_forwarder_accounts(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::constants::{FORWARDER_UNWRAP_NUM_ACCOUNTS, FORWARDER_WRAP_NUM_ACCOUNTS};
     use std::str::FromStr;
@@ -441,16 +443,17 @@ mod tests {
         );
     }
 
-    /// Checks `ix` against the forwarder IDL's instruction `name`: the data is
-    /// its discriminator then `args`, and each account has the IDL's flags,
-    /// its fixed address, or its PDA from the IDL's own constant seeds.
-    /// Returns the address `ix` passes for each IDL account name.
-    fn assert_matches_the_forwarders_idl(
+    /// Checks `ix` against the instruction `name` of `idl`, either build's:
+    /// the data is its discriminator then `args`, and each account has the
+    /// IDL's flags, its fixed address, or its PDA from the IDL's seeds when
+    /// they are all constants. Returns the address `ix` passes for each IDL
+    /// account name.
+    pub(crate) fn assert_matches_the_idl(
+        idl: &serde_json::Value,
         ix: &Instruction,
         name: &str,
         args: &[u8],
     ) -> impl Fn(&str) -> Pubkey {
-        let idl = crate::idl::idl();
         let spec = idl["instructions"]
             .as_array()
             .unwrap()
@@ -488,7 +491,10 @@ mod tests {
             if let Some(address) = account["address"].as_str() {
                 assert_eq!(meta.pubkey.to_string(), address, "{account_name} address");
             }
-            if let Some(seeds) = account["pda"]["seeds"].as_array() {
+            if let Some(seeds) = account["pda"]["seeds"]
+                .as_array()
+                .filter(|seeds| seeds.iter().all(|s| s["kind"] == "const"))
+            {
                 let seeds: Vec<Vec<u8>> = seeds
                     .iter()
                     .map(|s| serde_json::from_value(s["value"].clone()).unwrap())
@@ -513,7 +519,7 @@ mod tests {
     }
 
     /// The events' accounts every `#[event_cpi]` instruction ends with.
-    fn assert_event_accounts(by_name: &impl Fn(&str) -> Pubkey, forwarder: &Pubkey) {
+    pub(crate) fn assert_event_accounts(by_name: &impl Fn(&str) -> Pubkey, forwarder: &Pubkey) {
         assert_eq!(
             by_name("event_authority"),
             derive_event_authority_pda(forwarder).0
@@ -531,7 +537,7 @@ mod tests {
         );
         let ix = initialize_ix(&forwarder, &authority, &adapter, [7; 32], &owner);
         let args = [adapter.to_bytes().as_slice(), &[7; 32], &owner.to_bytes()].concat();
-        let by_name = assert_matches_the_forwarders_idl(&ix, "initialize", &args);
+        let by_name = assert_matches_the_idl(&crate::idl::idl(), &ix, "initialize", &args);
         assert_eq!(by_name("authority"), authority);
         assert_eq!(ix.accounts.len(), 8);
     }
@@ -557,7 +563,7 @@ mod tests {
                 vec![],
             ),
         ] {
-            let by_name = assert_matches_the_forwarders_idl(&ix, name, &args);
+            let by_name = assert_matches_the_idl(&crate::idl::idl(), &ix, name, &args);
             assert_eq!(by_name("authority"), owner, "{name}");
             assert_event_accounts(&by_name, &forwarder);
             assert_eq!(ix.accounts.len(), 4, "{name}");
@@ -577,7 +583,7 @@ mod tests {
             budget,
             ComputeBudgetInstruction::set_compute_unit_limit(UPGRADE_COMPUTE_UNIT_LIMIT)
         );
-        let by_name = assert_matches_the_forwarders_idl(&ix, "upgrade", &[]);
+        let by_name = assert_matches_the_idl(&crate::idl::idl(), &ix, "upgrade", &[]);
         assert_eq!(by_name("authority"), owner);
         assert_eq!(by_name("buffer"), buffer);
         assert_eq!(by_name("spill"), spill);
@@ -589,7 +595,7 @@ mod tests {
     fn version_matches_the_forwarders_idl() {
         let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
         let ix = version_ix(&forwarder);
-        let _ = assert_matches_the_forwarders_idl(&ix, "version", &[]);
+        let _ = assert_matches_the_idl(&crate::idl::idl(), &ix, "version", &[]);
         assert!(ix.accounts.is_empty());
     }
 
@@ -598,7 +604,7 @@ mod tests {
         let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
         let owner = Pubkey::new_unique();
         let ix = migrate_config_ix(&forwarder, &owner);
-        let by_name = assert_matches_the_forwarders_idl(&ix, "migrate_config", &[]);
+        let by_name = assert_matches_the_idl(&crate::idl::idl(), &ix, "migrate_config", &[]);
         assert_eq!(by_name("owner"), owner);
         assert_eq!(by_name("config"), derive_forwarder_config_pda(&forwarder).0);
         assert_eq!(ix.accounts.len(), 2);
@@ -615,7 +621,7 @@ mod tests {
         );
 
         let ix = close_escrow_ix(&forwarder, &owner, &pa_state, &mint, &recipient_ata);
-        let by_name = assert_matches_the_forwarders_idl(&ix, "close_escrow", &[]);
+        let by_name = assert_matches_the_idl(&crate::idl::idl(), &ix, "close_escrow", &[]);
         let escrow_authority = derive_forwarder_escrow_authority(&forwarder).0;
         assert_eq!(by_name("authority"), owner);
         assert_eq!(
@@ -628,14 +634,15 @@ mod tests {
         assert_eq!(ix.accounts.len(), 8);
 
         let ix = close_config_ix(&forwarder, &owner, &pa_state);
-        let by_name = assert_matches_the_forwarders_idl(&ix, "close_config", &[]);
+        let by_name = assert_matches_the_idl(&crate::idl::idl(), &ix, "close_config", &[]);
         assert_eq!(by_name("authority"), owner);
         assert_eq!(by_name("pa_state"), pa_state);
         assert_eq!(ix.accounts.len(), 3);
 
         let bitmaps = [Pubkey::new_unique(), Pubkey::new_unique()];
         let ix = close_nonce_bitmaps_batch_ix(&forwarder, &owner, &pa_state, &bitmaps);
-        let by_name = assert_matches_the_forwarders_idl(&ix, "close_nonce_bitmaps_batch", &[]);
+        let by_name =
+            assert_matches_the_idl(&crate::idl::idl(), &ix, "close_nonce_bitmaps_batch", &[]);
         assert_eq!(by_name("authority"), owner);
         assert_eq!(by_name("pa_state"), pa_state);
         assert_eq!(

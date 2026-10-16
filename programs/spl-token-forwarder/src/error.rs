@@ -4,6 +4,11 @@
 
 use anchor_lang::prelude::*;
 
+/// Declares `ErrorCode`: the forwarder's errors, then those of the build
+/// (the emergency-migrating build's, below). Anchor's IDL takes one error
+/// enum per program, so a build's errors extend the forwarder's, after them.
+macro_rules! error_codes {
+    ($($build:tt)*) => {
 #[error_code]
 pub enum ErrorCode {
     #[msg("Invalid input data")]
@@ -116,4 +121,70 @@ pub enum ErrorCode {
     /// layout, which `migrate_config` rewrites.
     #[msg("The config is in a previous release's layout - run migrate_config first")]
     ConfigNotMigrated,
+
+    $($build)*
+}
+    };
+}
+
+#[cfg(not(feature = "emergency-migrating"))]
+error_codes! {}
+
+// The emergency-migrating build's errors: the EVM draft's, then the accounts
+// a migration reads.
+#[cfg(feature = "emergency-migrating")]
+error_codes! {
+    /// The EVM draft's `LogicRefNotDenied`.
+    #[msg("A denylist of the adapter lacks a vulnerable logic ref")]
+    LogicRefNotDenied,
+
+    /// The EVM draft's `LogicRefAlreadyDenied`.
+    #[msg("A denylist of the adapter holds the new logic ref")]
+    LogicRefAlreadyDenied,
+
+    /// The EVM draft's `EmptyVulnerableLogicRefList`.
+    #[msg("reinitialize lists no vulnerable logic ref")]
+    EmptyVulnerableLogicRefList,
+
+    /// The EVM draft's `LogicRefAlreadyVulnerable`.
+    #[msg("The logic ref is listed as vulnerable already")]
+    LogicRefAlreadyVulnerable,
+
+    /// The EVM draft's `LogicRefNotVulnerable`.
+    #[msg("The logic ref is not listed as vulnerable")]
+    LogicRefNotVulnerable,
+
+    /// The EVM draft's `NonExistingRoot`.
+    #[msg("The root is not a historical root of the adapter")]
+    NonExistingRoot,
+
+    /// The EVM draft's `UnknownForwarder`.
+    #[msg("The resource's label names neither this forwarder nor the legacy forwarder")]
+    UnknownForwarder,
+
+    /// The EVM draft's `EmptyMigrationBatch`.
+    #[msg("The migration names no resource")]
+    EmptyMigrationBatch,
+
+    /// The EVM draft's `ResourceAlreadyConsumed`.
+    #[msg("The adapter consumed the resource already")]
+    ResourceAlreadyConsumed,
+
+    /// The EVM draft's `ResourceAlreadyMigrated`.
+    #[msg("The forwarder migrated the resource already")]
+    ResourceAlreadyMigrated,
+
+    #[msg("Migration record does not exist - create it with init_migration_record before the migration")]
+    MigrationRecordMissing,
+
+    #[msg("Invalid migration record PDA - doesn't match the nullifier's derived address")]
+    InvalidMigrationRecordPda,
+
+    #[msg("Invalid vulnerable logic refs PDA - doesn't match the derived address")]
+    InvalidVulnerableLogicRefsPda,
+
+    /// The adapter's `NullifierPdaMismatch`: the account a migration reads
+    /// as the adapter's marker of a nullifier is not at its address.
+    #[msg("Nullifier PDA mismatch - not the adapter's marker of the nullifier")]
+    NullifierPdaMismatch,
 }

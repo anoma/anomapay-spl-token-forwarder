@@ -1,7 +1,7 @@
 //! Tests for the wire formats, the nonce bitmap, and the adapter-state read.
 
 use crate::state::{
-    base64_of_hash, nonce_to_word_and_bit, pa_is_paused, Config, NonceBitmap, PreviousConfig,
+    base64_of_hash, decode_pa_state, nonce_to_word_and_bit, Config, NonceBitmap, PreviousConfig,
     UnwrapInput, WrapInput, WrapMessage, CONFIG_PDA, CONFIG_SEED, ESCROW_AUTHORITY,
     ESCROW_AUTHORITY_BUMP, ESCROW_SEED, NONCES_PER_WORD, NONCE_BITMAP_SEED, SIGNED_MESSAGE_LEN,
 };
@@ -372,7 +372,7 @@ fn a_previous_config_migrates_to_its_adapter_logic_ref_version_and_owner() {
 }
 
 // =============================================================================
-// PA Paused Tests
+// PA State Tests
 // =============================================================================
 
 /// A PA state account exactly as the adapter serializes it (discriminator
@@ -396,30 +396,41 @@ fn serialized_pa_state(paused: bool, denied_logic_refs: Vec<[u8; 32]>) -> Vec<u8
 }
 
 #[test]
-fn pa_is_paused_reads_the_flag_from_the_adapter_layout() {
+fn decode_pa_state_reads_the_adapter_layout() {
     for (paused, denied_logic_refs) in [
         (true, vec![]),
         (true, vec![[7u8; 32]]),
         (false, vec![[7u8; 32]]),
     ] {
-        let data = serialized_pa_state(paused, denied_logic_refs);
-        assert_eq!(pa_is_paused(&data).unwrap(), paused);
+        let data = serialized_pa_state(paused, denied_logic_refs.clone());
+        let state = decode_pa_state(&data).unwrap();
+        assert_eq!(state.paused, paused);
+        assert_eq!(state.denied_consumed_logic_refs, denied_logic_refs);
     }
 }
 
 #[test]
-fn pa_is_paused_rejects_data_that_is_not_a_pa_state_account() {
+fn decode_pa_state_rejects_data_that_is_not_a_pa_state_account() {
     let mut data = serialized_pa_state(true, vec![]);
     data[0] ^= 0xff; // corrupt the discriminator
     assert!(
-        pa_is_paused(&data).is_err(),
-        "a foreign account must be an error, not \"not paused\""
+        decode_pa_state(&data).is_err(),
+        "a foreign account must be an error, not a state"
     );
 }
 
+/// The schema version is the first field after the discriminator: a state
+/// in another layout is refused, not misread.
 #[test]
-fn pa_is_paused_rejects_truncated_data() {
+fn decode_pa_state_rejects_another_schema_version() {
+    let mut data = serialized_pa_state(true, vec![]);
+    data[8] = protocol_adapter::state::SCHEMA_VERSION + 1;
+    assert!(decode_pa_state(&data).is_err());
+}
+
+#[test]
+fn decode_pa_state_rejects_truncated_data() {
     let data = serialized_pa_state(true, vec![]);
-    assert!(pa_is_paused(&data[..40]).is_err());
-    assert!(pa_is_paused(&[]).is_err());
+    assert!(decode_pa_state(&data[..40]).is_err());
+    assert!(decode_pa_state(&[]).is_err());
 }

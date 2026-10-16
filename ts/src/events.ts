@@ -68,12 +68,48 @@ export interface UpgradedEvent {
   executableHash: Uint8Array;
 }
 
+/**
+ * The emergency-migrating build's `reinitialize` replaced the logic ref
+ * `previousLogicRef` with `newLogicRef`, as the EVM draft's `LogicRefReplaced`.
+ */
+export interface LogicRefReplacedEvent {
+  name: "LogicRefReplaced";
+  previousLogicRef: Uint8Array;
+  newLogicRef: Uint8Array;
+}
+
+/**
+ * The emergency-migrating build migrated the resource with `nullifier` and the
+ * logic ref `vulnerableLogicRef`, whose token's mint is `token`, as the EVM
+ * draft's `Migrated`. No tokens moved: an indexer adding up `Wrapped` and
+ * `Unwrapped` amounts must not count it.
+ */
+export interface MigratedEvent {
+  name: "Migrated";
+  token: Uint8Array;
+  vulnerableLogicRef: Uint8Array;
+  nullifier: Uint8Array;
+}
+
+/**
+ * The emergency-migrating build's `reinitialize` listed `logicRef` as
+ * vulnerable, as the EVM draft's `VulnerableLogicRefListed`.
+ */
+export interface VulnerableLogicRefListedEvent {
+  name: "VulnerableLogicRefListed";
+  logicRef: Uint8Array;
+}
+
+/** One SPL Token Forwarder event, of either build. */
 export type ForwarderEvent =
   | WrappedEvent
   | UnwrappedEvent
   | InitializedEvent
   | OwnershipTransferredEvent
-  | UpgradedEvent;
+  | UpgradedEvent
+  | LogicRefReplacedEvent
+  | MigratedEvent
+  | VulnerableLogicRefListedEvent;
 
 export class EventDecodeError extends Error {
   constructor(message: string) {
@@ -129,6 +165,16 @@ const BODY_READERS: { [N in ForwarderEvent["name"]]: (body: Uint8Array) => Extra
     ["newOwner", bytes32],
   ]),
   Upgraded: bodyReader("Upgraded", [["executableHash", bytes32]]),
+  LogicRefReplaced: bodyReader("LogicRefReplaced", [
+    ["previousLogicRef", bytes32],
+    ["newLogicRef", bytes32],
+  ]),
+  Migrated: bodyReader("Migrated", [
+    ["token", bytes32],
+    ["vulnerableLogicRef", bytes32],
+    ["nullifier", bytes32],
+  ]),
+  VulnerableLogicRefListed: bodyReader("VulnerableLogicRefListed", [["logicRef", bytes32]]),
 };
 
 /** Each event's body reader, by the hex of its discriminator. */

@@ -27,13 +27,16 @@ Development:
                  E2E_PROVER, QUEUE_BASE_URL, QUEUE_AUTH_TOKEN; read by the
                  harness)
   test-program [--check]
-                 Write the deterministic production and development builds
-                 to the integration tests' programs/, the binaries they load;
+                 Write the deterministic production and development builds,
+                 and the emergency-migrating build with and without the
+                 development features, to the integration tests'
+                 programs/, the binaries they load;
                  with --check, fail when a committed binary is not, byte for
                  byte, the fresh build
   typecheck      Type-check and format-check the operator scripts against the
                  production IDL's types (the program is not compiled), and
-                 check the client's copy of the IDL is that IDL
+                 check the client's copies of the production and
+                 emergency-migrating IDLs are the program's
   script-test    Run the operator scripts against the harness's local runtime
                  (crates/integration-test/tests/operator_scripts.rs), after
                  installing their dependencies and generating the types they
@@ -153,6 +156,8 @@ done
 # development (the dev features' instructions, which some tests use).
 TEST_PROGRAM="${PROJECT_DIR}/crates/integration-test/programs/${PROGRAM_NAME}.so"
 TEST_PROGRAM_DEV="${PROJECT_DIR}/crates/integration-test/programs/${PROGRAM_NAME}_dev.so"
+TEST_PROGRAM_EMERGENCY_MIGRATING="${PROJECT_DIR}/crates/integration-test/programs/${PROGRAM_NAME}_emergency_migrating.so"
+TEST_PROGRAM_EMERGENCY_MIGRATING_DEV="${PROJECT_DIR}/crates/integration-test/programs/${PROGRAM_NAME}_emergency_migrating_dev.so"
 
 # Write the fresh build in target/deploy to the test program $1; with
 # --check, fail instead when $1 is not, byte for byte, the fresh build.
@@ -561,7 +566,9 @@ case "$COMMAND" in
     require_cmd cargo
     check_program_id_not_in_tree
     cargo clippy --workspace --all-targets -- -D warnings
-    cargo clippy -p spl-token-forwarder --features "$DEV_FEATURES" --all-targets -- -D warnings
+    # The development and the emergency-migrating features in one pass; the
+    # workspace pass above covers the build without them.
+    cargo clippy -p spl-token-forwarder --features "$DEV_FEATURES $EMERGENCY_MIGRATING_FEATURES" --all-targets -- -D warnings
     # `cpi` is how another program depends on this one to call it.
     cargo clippy -p spl-token-forwarder --features cpi --all-targets -- -D warnings
     # The client's wire formats and event decoders without the Solana SDK.
@@ -571,6 +578,7 @@ case "$COMMAND" in
   unit-test)
     require_cmd cargo
     cargo test --workspace
+    cargo test -p spl-token-forwarder --features "$EMERGENCY_MIGRATING_FEATURES"
     ;;
   build-dev)
     require_cmd anchor
@@ -601,6 +609,10 @@ case "$COMMAND" in
     write_test_program "$TEST_PROGRAM" || failed=1
     deterministic_build --features "$DEV_FEATURES"
     write_test_program "$TEST_PROGRAM_DEV" || failed=1
+    deterministic_build --features "$EMERGENCY_MIGRATING_FEATURES"
+    write_test_program "$TEST_PROGRAM_EMERGENCY_MIGRATING" || failed=1
+    deterministic_build --features "$EMERGENCY_MIGRATING_FEATURES $DEV_FEATURES"
+    write_test_program "$TEST_PROGRAM_EMERGENCY_MIGRATING_DEV" || failed=1
     exit "$failed"
     ;;
   script-test)
@@ -618,6 +630,11 @@ case "$COMMAND" in
     # against, is the program's.
     if ! cmp "$PROGRAM_IDL" crates/client/idl/spl_token_forwarder.json; then
       echo "❌ crates/client/idl/spl_token_forwarder.json is not the program's IDL; copy $PROGRAM_IDL over it." >&2
+      exit 1
+    fi
+    emergency_migrating_idl
+    if ! cmp "$EMERGENCY_MIGRATING_IDL" crates/client/idl/emergency_migrating_spl_token_forwarder.json; then
+      echo "❌ crates/client/idl/emergency_migrating_spl_token_forwarder.json is not the emergency-migrating build's IDL; copy $EMERGENCY_MIGRATING_IDL over it." >&2
       exit 1
     fi
     yarn run typecheck

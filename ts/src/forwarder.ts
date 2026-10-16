@@ -1,6 +1,6 @@
 // Builders for the forwarder's CPI account segments inside a settle
 // transaction's remaining accounts, and for the forwarder's own
-// `init_nonce_bitmap` instruction. Ordering is owned by the forwarder program;
+// `init_nonce_bitmap` and `init_migration_record` instructions. Ordering is owned by the forwarder program;
 // integrators must use these builders rather than hand-rolling the slice.
 
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
@@ -14,10 +14,15 @@ import {
 
 import { anchorDiscriminator } from "./discriminator.js";
 import {
+  deriveAdapterNullifierPda,
+  deriveAdapterRootMarkerPda,
   deriveEventAuthorityPda,
   deriveForwarderConfigPda,
   deriveForwarderEscrowAuthority,
+  deriveMigrationRecordPda,
   deriveNonceBitmapPda,
+  derivePaStatePda,
+  deriveVulnerableLogicRefsPda,
 } from "./pda.js";
 
 /**
@@ -99,6 +104,72 @@ export function buildWrapForwarderAccounts(
     { pubkey: escrowAuthority, isSigner: false, isWritable: false },
     { pubkey: nonceBitmapPda, isSigner: false, isWritable: true },
     { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+  ];
+}
+
+/** The accounts a migration's segment reads of one entry: its nullifier and the root it is proven against. */
+export interface MigrateEntryAccounts {
+  nullifier: Uint8Array;
+  commitmentTreeRoot: Uint8Array;
+}
+
+/**
+ * Build the emergency-migrating build's permissionless `init_migration_record`
+ * instruction, which creates the migration record of the resource with
+ * `nullifier`, `payer` funding the rent, and does nothing when it exists. A
+ * migration needs every entry's record, so its settlement carries this before
+ * the settle instruction.
+ */
+export function initMigrationRecordIx(
+  forwarderProgram: PublicKey,
+  payer: PublicKey,
+  nullifier: Uint8Array,
+): TransactionInstruction {
+  const [record] = deriveMigrationRecordPda(forwarderProgram, nullifier);
+  const data = new Uint8Array(8 + 32);
+  data.set(anchorDiscriminator("global", "init_migration_record"), 0);
+  data.set(nullifier, 8);
+  return new TransactionInstruction({
+    programId: forwarderProgram,
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: record, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from(data),
+  });
+}
+
+/**
+ * Build the emergency-migrating build's migration CPI segment through the
+ * adapter `protocolAdapter`: the segment head, the adapter's state and the
+ * vulnerable logic refs, then for each entry the adapter's marker of its root,
+ * the adapter's marker of its nullifier and its migration record, which must
+ * already exist (`initMigrationRecordIx`).
+ */
+export function buildMigrateForwarderAccounts(
+  forwarderProgram: PublicKey,
+  protocolAdapter: PublicKey,
+  entries: MigrateEntryAccounts[],
+): AccountMeta[] {
+  const [paState] = derivePaStatePda(protocolAdapter);
+  return [
+    ...forwarderSegmentHead(forwarderProgram),
+    { pubkey: paState, isSigner: false, isWritable: false },
+    { pubkey: deriveVulnerableLogicRefsPda(forwarderProgram)[0], isSigner: false, isWritable: false },
+    ...entries.flatMap((entry) => [
+      {
+        pubkey: deriveAdapterRootMarkerPda(protocolAdapter, paState, entry.commitmentTreeRoot)[0],
+        isSigner: false,
+        isWritable: false,
+      },
+      {
+        pubkey: deriveAdapterNullifierPda(protocolAdapter, paState, entry.nullifier)[0],
+        isSigner: false,
+        isWritable: false,
+      },
+      { pubkey: deriveMigrationRecordPda(forwarderProgram, entry.nullifier)[0], isSigner: false, isWritable: true },
+    ]),
   ];
 }
 

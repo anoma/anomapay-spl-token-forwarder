@@ -9,16 +9,11 @@ use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
 use anomapay_spl_token_forwarder_client::{
     CONFIG_VERSION, derive_forwarder_config_pda, encode_unwrap_forwarder_input, reinitialize_ix,
 };
-use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
+use anomapay_spl_token_forwarder_integration_test::logic::{logic_ref, random_logic_ref};
 use anomapay_spl_token_forwarder_integration_test::setup::{self, LocalForwarder, config};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
-
-/// A logic ref no resource has: 32 random bytes.
-fn random_ref() -> [u8; 32] {
-    Keypair::new().pubkey().to_bytes()
-}
 
 /// Reinitializing to `logic_ref` as `signer` fails with `error` and leaves
 /// the config as it was.
@@ -55,7 +50,7 @@ async fn reinitialize_refuses_a_signer_that_is_not_the_owner() -> anyhow::Result
         &env,
         &local,
         &Keypair::new(),
-        random_ref(),
+        random_logic_ref().into(),
         "AnchorError caused by account: authority. Error Code: OwnableUnauthorizedAccount.",
     )
     .await
@@ -71,7 +66,7 @@ async fn reinitialize_refuses_a_config_already_at_this_builds_version() -> anyho
         &env,
         &local,
         &local.owner,
-        random_ref(),
+        random_logic_ref().into(),
         "Error Code: InvalidInitialization.",
     )
     .await
@@ -86,7 +81,7 @@ async fn reinitialize_rotates_the_logic_ref_once_for_a_config_below_this_builds_
     let (env, local) = setup::local_below_this_builds_version().await?;
     let (program, owner) = (local.forwarder.program, &local.owner);
 
-    let rotated = random_ref();
+    let rotated = random_logic_ref().into();
     env.send(
         &[reinitialize_ix(&program, &owner.pubkey(), rotated)],
         &[owner],
@@ -101,7 +96,7 @@ async fn reinitialize_rotates_the_logic_ref_once_for_a_config_below_this_builds_
         &env,
         &local,
         owner,
-        random_ref(),
+        random_logic_ref().into(),
         "Error Code: InvalidInitialization.",
     )
     .await

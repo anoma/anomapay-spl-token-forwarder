@@ -14,6 +14,10 @@ PROGRAM_TYPES="target/types/${PROGRAM_NAME}.ts"
 # which the production IDL must lack (build_release and release_idl check it).
 DEV_FEATURES="dev-config-version"
 DEV_ONLY_IX="dev_set_config_version"
+# The emergency-migrating build's Cargo feature and IDL
+# (docs/EMERGENCY_MIGRATION.md).
+EMERGENCY_MIGRATING_FEATURES="emergency-migrating"
+EMERGENCY_MIGRATING_IDL="target/idl/emergency_migrating_${PROGRAM_NAME}.json"
 
 # The SBPF version every build targets: local and CI builds, and the
 # solana-verify deterministic build, whose `cargo build-sbf` would otherwise
@@ -32,8 +36,9 @@ require_cmd() {
   fi
 }
 
-# Export the forwarder's and the adapter's address for <cluster>: the program
-# and the adapter crate it builds against read them at compile time
+# Export the forwarder's, the adapter's and the legacy forwarder's address for
+# <cluster>: the program and the adapter crate it builds against read them at
+# compile time
 # (env/README.md).
 load_program_ids() {
   local cluster="$1" file="${PROJECT_DIR}/env/$1.env" var
@@ -44,7 +49,7 @@ load_program_ids() {
   set -a
   source "$file"
   set +a
-  for var in FORWARDER_PROGRAM_ID PROTOCOL_ADAPTER_PROGRAM_ID; do
+  for var in FORWARDER_PROGRAM_ID PROTOCOL_ADAPTER_PROGRAM_ID LEGACY_FORWARDER_PROGRAM_ID; do
     if [[ -z "${!var:-}" ]]; then
       echo "❌ ${file} names no ${var}." >&2
       exit 1
@@ -130,6 +135,13 @@ release_idl() {
   assert_release_idl_lacks_dev_only
 }
 
+# The emergency-migrating build's IDL, without compiling the program.
+emergency_migrating_idl() {
+  echo "    Building the emergency-migrating build's IDL..."
+  mkdir -p "$(dirname "$EMERGENCY_MIGRATING_IDL")"
+  anchor idl build -p "$PROGRAM_NAME" -o "$EMERGENCY_MIGRATING_IDL" -- --features "$EMERGENCY_MIGRATING_FEATURES"
+}
+
 # The production IDL must be exactly the development IDL minus DEV_ONLY_IX,
 # and each of those instructions must be in the development IDL: the check
 # fails when a dev-only instruction reaches the production build, and when the
@@ -187,5 +199,6 @@ deterministic_build() {
   fi
   checked_sbf_build solana-verify build --library-name "$PROGRAM_NAME" --arch "$SBPF_ARCH" -- \
     --config "env.FORWARDER_PROGRAM_ID=\"${FORWARDER_PROGRAM_ID}\"" \
-    --config "env.PROTOCOL_ADAPTER_PROGRAM_ID=\"${PROTOCOL_ADAPTER_PROGRAM_ID}\"" "$@"
+    --config "env.PROTOCOL_ADAPTER_PROGRAM_ID=\"${PROTOCOL_ADAPTER_PROGRAM_ID}\"" \
+    --config "env.LEGACY_FORWARDER_PROGRAM_ID=\"${LEGACY_FORWARDER_PROGRAM_ID}\"" "$@"
 }

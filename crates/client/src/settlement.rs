@@ -14,6 +14,9 @@ use solana_instruction::Instruction;
 use solana_pubkey::Pubkey;
 use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
 
+use crate::emergency_migrating::{
+    build_migrate_forwarder_accounts, derive_migration_record_pda, init_migration_record_ix,
+};
 use crate::forwarder::{
     build_unwrap_forwarder_accounts, build_wrap_forwarder_accounts, init_nonce_bitmap_ix,
     nonce_word_index,
@@ -101,10 +104,11 @@ fn nonce_bitmap(forwarder: &Pubkey, wrap: &WrapInput) -> (Pubkey, u64) {
     (derive_nonce_bitmap_pda(forwarder, &user, word).0, word)
 }
 
-/// What a settlement passes the forwarder `forwarder` for `calls`, every one
-/// to it, `payer` paying for the accounts the calls need created. Both
-/// account creations do nothing when the account exists, so the settlement
-/// carries them whatever the chain holds.
+/// What a settlement through the adapter `protocol_adapter` passes the
+/// forwarder `forwarder` for `calls`, every one to it, `payer` paying for
+/// the accounts the calls need created. Every account creation does nothing
+/// when the account exists, so the settlement carries them whatever the
+/// chain holds.
 ///
 /// A wrap's input names the absolute index of its signature check in the
 /// settlement transaction. The checks come first among the forwarder's
@@ -114,13 +118,15 @@ fn nonce_bitmap(forwarder: &Pubkey, wrap: &WrapInput) -> (Pubkey, u64) {
 /// input's signature ([`WrapInput::signature`](crate::WrapInput::signature)).
 pub fn settlement_calls(
     forwarder: &Pubkey,
+    protocol_adapter: &Pubkey,
     payer: &Pubkey,
     calls: &[SolanaExternalCall],
     preceding_start: usize,
 ) -> Result<CallAccounts, CallsError> {
     let mut checks: Vec<(u8, Instruction)> = Vec::new();
     let mut accounts_needed: Vec<Instruction> = Vec::new();
-    let mut bitmaps: BTreeSet<Pubkey> = BTreeSet::new();
+    // The bitmaps and migration records the calls need, each created once.
+    let mut created: BTreeSet<Pubkey> = BTreeSet::new();
     let mut segments = Vec::with_capacity(calls.len());
 
     for (call, (external_call, input)) in calls.iter().zip(inputs(forwarder, calls)?).enumerate() {
@@ -140,7 +146,7 @@ pub fn settlement_calls(
                 // adapter's CPI carries no signer that could create it. Two
                 // wraps of one word create it once.
                 let (bitmap, word) = nonce_bitmap(forwarder, &wrap);
-                if bitmaps.insert(bitmap) {
+                if created.insert(bitmap) {
                     accounts_needed.push(init_nonce_bitmap_ix(forwarder, payer, &user, word));
                 }
                 build_wrap_forwarder_accounts(
@@ -161,6 +167,21 @@ pub fn settlement_calls(
                     &spl_token_interface::id(),
                 ));
                 build_unwrap_forwarder_accounts(forwarder, &recipient, &mint)
+            }
+            ForwarderInput::Migrate(migration) => {
+                // Each entry needs its migration record, which, as a
+                // bitmap, the adapter's CPI cannot create.
+                for entry in &migration.entries {
+                    let (record, _) = derive_migration_record_pda(forwarder, &entry.nullifier);
+                    if created.insert(record) {
+                        accounts_needed.push(init_migration_record_ix(
+                            forwarder,
+                            payer,
+                            &entry.nullifier,
+                        ));
+                    }
+                }
+                build_migrate_forwarder_accounts(forwarder, protocol_adapter, &migration.entries)
             }
         };
         if segment.len() != usize::from(external_call.num_accounts) {
@@ -198,12 +219,18 @@ pub fn settlement_calls(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::{FORWARDER_UNWRAP_NUM_ACCOUNTS, FORWARDER_WRAP_NUM_ACCOUNTS};
-    use crate::input::{encode_unwrap_forwarder_input, encode_wrap_forwarder_input, WrapInput};
+    use crate::constants::{
+        forwarder_migrate_num_accounts, FORWARDER_UNWRAP_NUM_ACCOUNTS, FORWARDER_WRAP_NUM_ACCOUNTS,
+    };
+    use crate::input::{
+        encode_migrate_forwarder_input, encode_unwrap_forwarder_input, encode_wrap_forwarder_input,
+        MigrateEntry, MigrateInput, WrapInput,
+    };
     use anoma_pa_solana_client::external_call::OutputMode;
 
     const FORWARDER: Pubkey = Pubkey::new_from_array([7; 32]);
     const PAYER: Pubkey = Pubkey::new_from_array([8; 32]);
+    const ADAPTER: Pubkey = Pubkey::new_from_array([9; 32]);
 
     fn wrap(user: u8, nonce: u64, ed25519_ix_index: u8) -> WrapInput {
         WrapInput {
@@ -246,7 +273,8 @@ mod tests {
     #[test]
     fn a_wrap_carries_its_signature_check_then_its_bitmaps_init() {
         let input = wrap(2, 9, 0);
-        let settlement = settlement_calls(&FORWARDER, &PAYER, &[wrap_call(&input)], 0).unwrap();
+        let settlement =
+            settlement_calls(&FORWARDER, &ADAPTER, &PAYER, &[wrap_call(&input)], 0).unwrap();
         assert_eq!(
             settlement.preceding,
             vec![
@@ -269,7 +297,7 @@ mod tests {
     fn two_wraps_of_one_bitmap_create_it_once() {
         let (first, second) = (wrap(2, 9, 0), wrap(2, 10, 1));
         let calls = [wrap_call(&first), wrap_call(&second)];
-        let settlement = settlement_calls(&FORWARDER, &PAYER, &calls, 0).unwrap();
+        let settlement = settlement_calls(&FORWARDER, &ADAPTER, &PAYER, &calls, 0).unwrap();
         assert_eq!(settlement.preceding.len(), 3, "two checks, one bitmap init");
     }
 
@@ -278,7 +306,7 @@ mod tests {
         // The second call's wrap names index 0, the first's index 1.
         let (first, second) = (wrap(2, 9, 1), wrap(4, 9, 0));
         let calls = [wrap_call(&first), wrap_call(&second)];
-        let settlement = settlement_calls(&FORWARDER, &PAYER, &calls, 0).unwrap();
+        let settlement = settlement_calls(&FORWARDER, &ADAPTER, &PAYER, &calls, 0).unwrap();
         assert_eq!(
             settlement.preceding[..2],
             [check_of(&second), check_of(&first)]
@@ -289,7 +317,7 @@ mod tests {
     fn wraps_naming_indices_other_than_the_first_ones_are_refused() {
         let calls = [wrap_call(&wrap(2, 9, 1))];
         assert_eq!(
-            settlement_calls(&FORWARDER, &PAYER, &calls, 0),
+            settlement_calls(&FORWARDER, &ADAPTER, &PAYER, &calls, 0),
             Err(CallsError::SignatureCheckIndices {
                 named: vec![1],
                 start: 0
@@ -303,7 +331,7 @@ mod tests {
     fn the_signature_checks_start_where_the_forwarders_preceding_instructions_do() {
         let (first, second) = (wrap(2, 9, 3), wrap(4, 9, 2));
         let calls = [wrap_call(&first), wrap_call(&second)];
-        let settlement = settlement_calls(&FORWARDER, &PAYER, &calls, 2).unwrap();
+        let settlement = settlement_calls(&FORWARDER, &ADAPTER, &PAYER, &calls, 2).unwrap();
         assert_eq!(
             settlement.preceding[..2],
             [check_of(&second), check_of(&first)]
@@ -312,6 +340,7 @@ mod tests {
         assert_eq!(
             settlement_calls(
                 &FORWARDER,
+                &ADAPTER,
                 &PAYER,
                 &[wrap_call(&wrap(2, 9, 0)), wrap_call(&wrap(4, 9, 1))],
                 2
@@ -336,7 +365,7 @@ mod tests {
             Pubkey::new_from_array(recipient),
         );
         assert_eq!(
-            settlement_calls(&FORWARDER, &PAYER, &calls, 0).unwrap(),
+            settlement_calls(&FORWARDER, &ADAPTER, &PAYER, &calls, 0).unwrap(),
             CallAccounts {
                 segments: vec![build_unwrap_forwarder_accounts(
                     &FORWARDER, &recipient, &mint
@@ -364,8 +393,47 @@ mod tests {
             program: other,
         };
         assert_eq!(
-            settlement_calls(&FORWARDER, &PAYER, &calls, 0),
+            settlement_calls(&FORWARDER, &ADAPTER, &PAYER, &calls, 0),
             Err(refusal)
+        );
+    }
+
+    /// A migration's entries, of which the first and the last name one
+    /// nullifier: the settlement creates each record once, and the segment
+    /// lists every entry's accounts.
+    #[test]
+    fn a_migration_carries_each_records_init_once_and_its_segment() {
+        let entry = |nullifier: u8| MigrateEntry {
+            nullifier: [nullifier; 32],
+            commitment_tree_root: [2; 32],
+            vulnerable_logic_ref: [3; 32],
+            forwarder: FORWARDER.to_bytes(),
+        };
+        let migration = MigrateInput {
+            token_mint: [1; 32],
+            quantity: 30,
+            entries: vec![entry(4), entry(5), entry(4)],
+        };
+        let calls = [call(
+            FORWARDER,
+            encode_migrate_forwarder_input(&migration),
+            forwarder_migrate_num_accounts(3).unwrap(),
+        )];
+        let settlement = settlement_calls(&FORWARDER, &ADAPTER, &PAYER, &calls, 0).unwrap();
+        assert_eq!(
+            settlement.preceding,
+            vec![
+                init_migration_record_ix(&FORWARDER, &PAYER, &[4; 32]),
+                init_migration_record_ix(&FORWARDER, &PAYER, &[5; 32]),
+            ]
+        );
+        assert_eq!(
+            settlement.segments,
+            vec![build_migrate_forwarder_accounts(
+                &FORWARDER,
+                &ADAPTER,
+                &migration.entries
+            )]
         );
     }
 
@@ -377,7 +445,7 @@ mod tests {
             FORWARDER_WRAP_NUM_ACCOUNTS + 1,
         )];
         assert_eq!(
-            settlement_calls(&FORWARDER, &PAYER, &calls, 0),
+            settlement_calls(&FORWARDER, &ADAPTER, &PAYER, &calls, 0),
             Err(CallsError::AccountCount {
                 call: 0,
                 committed: FORWARDER_WRAP_NUM_ACCOUNTS + 1,

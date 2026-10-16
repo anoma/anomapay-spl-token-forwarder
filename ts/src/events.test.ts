@@ -4,7 +4,9 @@ import { BN, BorshCoder, type Idl } from "@anchor-lang/core";
 import { bytesToHex } from "@noble/hashes/utils";
 import { PublicKey } from "@solana/web3.js";
 
-import forwarderIdl from "../../crates/client/idl/spl_token_forwarder.json";
+// The emergency-migrating build's IDL: its events are the production build's
+// and its own, every event the decoder reads.
+import forwarderIdl from "../../crates/client/idl/emergency_migrating_spl_token_forwarder.json";
 import { anchorDiscriminator } from "./discriminator.js";
 import {
   decodeForwarderEventInstruction,
@@ -49,6 +51,21 @@ const forwarderCases: [ForwarderEvent["name"], Uint8Array, ForwarderEvent][] = [
     { name: "OwnershipTransferred", previousOwner: USER, newOwner: OTHER },
   ],
   ["Upgraded", eventIx("Upgraded", [ROOT]), { name: "Upgraded", executableHash: ROOT }],
+  [
+    "LogicRefReplaced",
+    eventIx("LogicRefReplaced", [USER, OTHER]),
+    { name: "LogicRefReplaced", previousLogicRef: USER, newLogicRef: OTHER },
+  ],
+  [
+    "Migrated",
+    eventIx("Migrated", [MINT, OTHER, ROOT]),
+    { name: "Migrated", token: MINT, vulnerableLogicRef: OTHER, nullifier: ROOT },
+  ],
+  [
+    "VulnerableLogicRefListed",
+    eventIx("VulnerableLogicRefListed", [OTHER]),
+    { name: "VulnerableLogicRefListed", logicRef: OTHER },
+  ],
 ];
 
 describe("decodeForwarderEventInstruction", () => {
