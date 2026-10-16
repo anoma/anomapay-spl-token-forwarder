@@ -16,13 +16,6 @@ use solana_keypair::Keypair;
 use solana_signer::Signer;
 use surfpool_sdk::Pubkey;
 
-/// 100 tokens at the mint's 6 decimals.
-const AMOUNT: u64 = 100_000_000;
-
-/// `migrate_config`'s refusal of a signer other than the owner the previous
-/// layout records, which it reads in its handler.
-const NOT_THE_PREVIOUS_OWNER: &str = "Error Code: OwnableUnauthorizedAccount.";
-
 /// The config account's data and lamports.
 async fn config_account(env: &LocalEnv, program: &Pubkey) -> anyhow::Result<(Vec<u8>, u64)> {
     let account = env
@@ -37,10 +30,7 @@ async fn config_account(env: &LocalEnv, program: &Pubkey) -> anyhow::Result<(Vec
 async fn before_the_migration_the_upgraded_forwarder_serves_and_refuses_its_owner()
 -> anyhow::Result<()> {
     let (mut env, local) = setup::upgraded_from_the_previous_release().await?;
-    local
-        .forwarder
-        .wraps_then_unwraps(&mut env, AMOUNT, "before-migration")
-        .await?;
+    local.forwarder.wraps_then_unwraps(&mut env).await?;
     let (program, owner) = (local.forwarder.program, &local.owner);
     expect_integration_panic(Needle::Static("Error Code: ConfigNotMigrated."))(
         env.send(
@@ -100,10 +90,7 @@ async fn the_migration_keeps_the_configs_values_and_returns_the_freed_rent_to_th
     )
     .await?;
     anyhow::ensure!(config(&env, &program).await?.owner == new_owner.pubkey().to_bytes());
-    local
-        .forwarder
-        .wraps_then_unwraps(&mut env, AMOUNT, "after-migration")
-        .await
+    local.forwarder.wraps_then_unwraps(&mut env).await
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -111,7 +98,7 @@ async fn the_migration_refuses_anyone_but_the_owner() -> anyhow::Result<()> {
     let (env, local) = setup::upgraded_from_the_previous_release().await?;
     let stranger = Keypair::new();
     setup::give_sol(&env, &stranger.pubkey(), 1_000_000_000)?;
-    expect_integration_panic(Needle::Static(NOT_THE_PREVIOUS_OWNER))(
+    expect_integration_panic(Needle::Static("Error Code: OwnableUnauthorizedAccount."))(
         env.send(
             &[migrate_config_ix(
                 &local.forwarder.program,

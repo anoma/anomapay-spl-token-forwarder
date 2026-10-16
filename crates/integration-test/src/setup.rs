@@ -679,19 +679,16 @@ impl Forwarder {
         prove_actions(env, &[unwrap]).await
     }
 
-    /// The user wraps `amount` into a resource a shielded owner holds, then
-    /// the owner unwraps it to a fresh recipient, both settled on `env`: the
-    /// user's tokens move into escrow, then out to the recipient. `seed`
-    /// makes the resources distinct from every other wrap's.
-    pub async fn wraps_then_unwraps<P>(
-        &self,
-        env: &mut Environment<P>,
-        amount: u64,
-        seed: &str,
-    ) -> anyhow::Result<()>
+    /// The user wraps 100 tokens into a resource a shielded owner holds, then
+    /// the owner unwraps them to a fresh recipient, both settled on `env`:
+    /// the user's tokens move into escrow, then out to the recipient.
+    pub async fn wraps_then_unwraps<P>(&self, env: &mut Environment<P>) -> anyhow::Result<()>
     where
         P: Prover,
     {
+        // 100 tokens at the mint's 6 decimals.
+        let amount = 100_000_000;
+        let seed = "wrap-then-unwrap";
         let owner = ShieldedOwner::seeded(&format!("{seed}/owner"));
         let (user, escrow) = (self.user_account(), self.escrow_account());
         let user_before = balance(env, &user).await?;
