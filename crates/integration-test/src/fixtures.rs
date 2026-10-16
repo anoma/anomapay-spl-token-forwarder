@@ -1,5 +1,6 @@
-//! AnomaPay wrap and unwrap actions, built with anomapay-solana-resource's
-//! action builders and wrapped as pa-testkit action witnesses.
+//! AnomaPay wrap, unwrap and migration actions, built with
+//! anomapay-solana-resource's action builders and wrapped as pa-testkit
+//! action witnesses.
 
 use anoma_pa_testkit::witness::ActionWitnesses;
 use anoma_rm_risc0::Digest;
@@ -10,16 +11,21 @@ use anoma_rm_risc0::resource::Resource;
 use anoma_rm_risc0_gadgets::authority::{AuthoritySigningKey, AuthorityVerifyingKey};
 use anoma_rm_risc0_gadgets::encryption::{SecretKey, generate_public_key};
 use anyhow::Context;
+use emergency_migrating_transfer_library::action::migrate as migrate_action;
+use emergency_migrating_transfer_witness::{
+    EMERGENCY_MIGRATING_AUTH_SIGNATURE_DOMAIN, MigrateEntry,
+};
 use k256::AffinePoint;
 use k256::elliptic_curve::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 use surfpool_sdk::Pubkey;
+use transfer_library::TransferLogic;
 use transfer_library::action::{self, ComplianceParams, Owner, TransferAction, WrapAuth};
-use transfer_witness::{AUTH_SIGNATURE_DOMAIN, LabelInfo, ValueInfo, WrapAuthInfo};
+use transfer_witness::{ForwarderCall, LabelInfo, ValueInfo, WrapAuthInfo};
 
-use crate::logic::Witness;
+use crate::logic::{Logic, Witness};
 
 /// Year 2100: the deadline never passes under test.
 pub const WRAP_DEADLINE: i64 = 4_102_444_800;
@@ -63,6 +69,14 @@ impl ShieldedOwner {
     }
 }
 
+/// The label of the forwarder `forwarder`'s resources of `mint`.
+fn label(forwarder: Pubkey, mint: Pubkey) -> LabelInfo {
+    LabelInfo {
+        forwarder_program_id: forwarder.to_bytes(),
+        spl_token_mint: mint.to_bytes(),
+    }
+}
+
 /// The key the created resources' discovery payloads are encrypted to.
 fn discovery_pk() -> AffinePoint {
     generate_public_key(SecretKey::new(scalar("anomapay-spl-token-forwarder/discovery")).inner())
@@ -77,7 +91,7 @@ fn compliance<'a>(seed: &str, kind_table: &'a KindTable) -> ComplianceParams<'a>
     }
 }
 
-fn witnesses(action: TransferAction) -> ActionWitnesses {
+fn witnesses<L: Logic>(action: TransferAction<L>) -> ActionWitnesses {
     ActionWitnesses {
         compliance_witness: Box::new(action.compliance_witness),
         logic_witnesses: vec![
@@ -120,11 +134,8 @@ pub fn wrap(
     kind_table: &KindTable,
     seed: &str,
 ) -> anyhow::Result<WrapData> {
-    let wrap = action::wrap(
-        LabelInfo {
-            forwarder_program_id: forwarder.to_bytes(),
-            spl_token_mint: mint.to_bytes(),
-        },
+    let wrap = action::wrap::<TransferLogic>(
+        label(forwarder, mint),
         terms.amount,
         label_hash(&format!("{seed}/ephemeral-nonce")),
         owner.keys.clone(),
@@ -158,16 +169,16 @@ pub fn wrap(
         .context("failed to build the wrap's witnesses")?;
     Ok(WrapData {
         witnesses: witnesses(action),
-        created: wrap.created,
+        created: wrap.deposit.created,
         signed_message: message,
     })
 }
 
-/// An unwrap of `wrapped`, `owner`'s shielded resource under the label of
-/// `forwarder` and `mint`, releasing its tokens to `recipient`'s token
-/// account. `path` is the wrapped resource's path in the adapter's
+/// An unwrap of `wrapped`, `owner`'s shielded resource of `L` under the
+/// label of `forwarder` and `mint`, releasing its tokens to `recipient`'s
+/// token account. `path` is the wrapped resource's path in the adapter's
 /// commitment tree.
-pub fn unwrap(
+pub fn unwrap<L: Logic>(
     forwarder: Pubkey,
     mint: Pubkey,
     wrapped: Resource,
@@ -175,11 +186,8 @@ pub fn unwrap(
     recipient: Pubkey,
     path: MerklePath,
 ) -> anyhow::Result<ActionWitnesses> {
-    let unwrap = action::unwrap(
-        LabelInfo {
-            forwarder_program_id: forwarder.to_bytes(),
-            spl_token_mint: mint.to_bytes(),
-        },
+    let unwrap = action::unwrap::<L>(
+        label(forwarder, mint),
         wrapped,
         owner.keys.clone(),
         recipient.to_bytes(),
@@ -190,7 +198,10 @@ pub fn unwrap(
         .action_tree_root()
         .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to compute the unwrap's action tree root")?;
-    let auth_sig = owner.auth_sk.sign(AUTH_SIGNATURE_DOMAIN, root.as_bytes());
+    let auth_sig = owner.auth_sk.sign(
+        <L::Call as ForwarderCall>::AUTH_SIGNATURE_DOMAIN,
+        root.as_bytes(),
+    );
     let action = unwrap
         .action(
             auth_sig,
@@ -203,4 +214,62 @@ pub fn unwrap(
         .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to build the unwrap's witnesses")?;
     Ok(witnesses(action))
+}
+
+/// A migration, unproven: its witnesses and the resource of the
+/// emergency-migrating logic it creates.
+pub struct MigrationData {
+    pub witnesses: ActionWitnesses,
+    pub created: Resource,
+}
+
+/// A migration of `wrapped`, resources `owner` holds under the label of
+/// `forwarder` and `mint`, at `path` in the adapter's commitment tree,
+/// into one resource of the emergency-migrating logic `owner` holds.
+/// `seed` makes the action's resources distinct from every other test's.
+pub fn migrate(
+    forwarder: Pubkey,
+    mint: Pubkey,
+    wrapped: Resource,
+    path: MerklePath,
+    owner: &ShieldedOwner,
+    seed: &str,
+) -> anyhow::Result<MigrationData> {
+    let entry = MigrateEntry {
+        resource: wrapped,
+        nf_key: owner.keys.nf_key.clone(),
+        path,
+        value_info: owner.keys.value.clone(),
+        forwarder_program_id: forwarder.to_bytes(),
+    };
+    let migration = migrate_action(
+        label(forwarder, mint),
+        vec![entry],
+        label_hash(&format!("{seed}/ephemeral-nonce")),
+        owner.keys.clone(),
+        label_hash(&format!("{seed}/rand-seed")),
+    )
+    .map_err(|e| anyhow::anyhow!("{e:?}"))
+    .context("failed to build the migration's resources")?;
+    let root: Digest = migration
+        .deposit
+        .action_tree_root()
+        .map_err(|e| anyhow::anyhow!("{e:?}"))
+        .context("failed to compute the migration's action tree root")?;
+    let auth_sig = owner
+        .auth_sk
+        .sign(EMERGENCY_MIGRATING_AUTH_SIGNATURE_DOMAIN, root.as_bytes());
+    let action = migration
+        .action(
+            auth_sig,
+            &discovery_pk(),
+            compliance(seed, anoma_pa_testkit::fixtures::kind_table()),
+            &mut ChaCha20Rng::from_seed(label_hash(&format!("{seed}/rng"))),
+        )
+        .map_err(|e| anyhow::anyhow!("{e:?}"))
+        .context("failed to build the migration's witnesses")?;
+    Ok(MigrationData {
+        witnesses: witnesses(action),
+        created: migration.deposit.created,
+    })
 }

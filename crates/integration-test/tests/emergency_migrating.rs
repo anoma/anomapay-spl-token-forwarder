@@ -13,10 +13,11 @@
 
 use anoma_pa_solana_client::external_call::{OutputMode, SolanaExternalCall};
 use anoma_pa_solana_client::settlement::CallAccounts;
+use anoma_pa_solana_integration_test::envs::common::environment::Environment;
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::executed::Executed;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
-use anoma_pa_testkit::environment::{DeniedLogicRef, ProtocolAdapter as _};
+use anoma_pa_testkit::environment::{DeniedLogicRef, ProtocolAdapter as _, Prover};
 use anoma_pa_testkit::fixtures::passthrough::{self, PASSTHROUGH_LOGIC_VK};
 use anoma_pa_testkit::transaction::Transaction;
 use anoma_pa_testkit::{execute_tx, latest_root, prove_actions};
@@ -35,13 +36,17 @@ use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
 use anomapay_spl_token_forwarder_integration_test::logic::{logic_ref, random_logic_ref};
 use anomapay_spl_token_forwarder_integration_test::refusal::{NOT_THE_OWNER, balances};
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, FORWARDER_EMERGENCY_MIGRATING_DEV_SO, FORWARDER_EMERGENCY_MIGRATING_SO, LocalForwarder,
-    config, events, set_config_version,
+    self, FORWARDER_EMERGENCY_MIGRATING_DEV_SO, FORWARDER_EMERGENCY_MIGRATING_SO, Forwarder,
+    OwnedForwarder, config, events, set_config_version,
+};
+use emergency_migrating_transfer_library::{
+    EMERGENCY_MIGRATING_TOKEN_TRANSFER_ID, EmergencyMigratingTransferLogic,
 };
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 use surfpool_sdk::Pubkey;
+use transfer_library::TransferLogic;
 
 /// 100 tokens at the mint's 6 decimals.
 const AMOUNT: u64 = 100_000_000;
@@ -55,12 +60,16 @@ fn bytes(digest: Digest) -> [u8; 32] {
 }
 
 /// The adapter's owner denies `logic_ref` on both denylists.
-async fn deny(env: &mut LocalEnv, logic_ref: Digest) -> anyhow::Result<()> {
+async fn deny<P>(env: &mut Environment<P>, logic_ref: Digest) -> anyhow::Result<()> {
     deny_on(env, logic_ref, &[true, false]).await
 }
 
 /// The adapter's owner denies `logic_ref` on the denylists `consumed` names.
-async fn deny_on(env: &mut LocalEnv, logic_ref: Digest, consumed: &[bool]) -> anyhow::Result<()> {
+async fn deny_on<P>(
+    env: &mut Environment<P>,
+    logic_ref: Digest,
+    consumed: &[bool],
+) -> anyhow::Result<()> {
     let denied: Vec<DeniedLogicRef> = consumed
         .iter()
         .map(|&consumed| DeniedLogicRef {
@@ -72,9 +81,9 @@ async fn deny_on(env: &mut LocalEnv, logic_ref: Digest, consumed: &[bool]) -> an
 }
 
 /// The owner's `reinitialize` of the emergency-migrating build.
-fn reinitialize(
-    env: &LocalEnv,
-    local: &LocalForwarder,
+fn reinitialize<P>(
+    env: &Environment<P>,
+    local: &OwnedForwarder,
     new_logic_ref: Digest,
     vulnerable: &[Digest],
 ) -> Instruction {
@@ -100,8 +109,8 @@ async fn listed(env: &LocalEnv, program: &Pubkey) -> anyhow::Result<Vec<[u8; 32]
 
 /// Whether the forwarder migrated the resource with `nullifier`, as the EVM
 /// draft's `isNullifierMigrated`: its record exists and says so.
-async fn is_migrated(
-    env: &LocalEnv,
+async fn is_migrated<P>(
+    env: &Environment<P>,
     program: &Pubkey,
     nullifier: [u8; 32],
 ) -> anyhow::Result<bool> {
@@ -123,7 +132,7 @@ async fn is_migrated(
 /// resource's circuit.
 struct Incident {
     env: LocalEnv,
-    local: LocalForwarder,
+    local: OwnedForwarder,
     /// The owner of `wrapped`.
     owner: ShieldedOwner,
     /// A resource with the vulnerable logic ref, which the user wrapped.
@@ -136,12 +145,8 @@ impl Incident {
     /// The forwarder's own resource `wrapped`, as a migration entry against
     /// `root`.
     fn entry(&self) -> anyhow::Result<MigrateEntry> {
-        let nullifier = self
-            .wrapped
-            .nullifier(&self.owner.keys.nf_key)
-            .map_err(|e| anyhow::anyhow!("{e:?}"))?;
         Ok(MigrateEntry {
-            nullifier: bytes(nullifier),
+            nullifier: nullifier(&self.wrapped, &self.owner)?,
             commitment_tree_root: bytes(self.root),
             vulnerable_logic_ref: bytes(logic_ref()),
             forwarder: self.local.forwarder.program.to_bytes(),
@@ -170,11 +175,76 @@ impl Incident {
     /// emergency-migrating build, listing it and moving to the pass-through
     /// logic.
     async fn deny_and_reinitialize(&mut self) -> anyhow::Result<()> {
-        deny(&mut self.env, logic_ref()).await?;
-        let ix = reinitialize(&self.env, &self.local, PASSTHROUGH_LOGIC_VK, &[logic_ref()]);
-        self.env.send(&[ix], &[&self.local.owner]).await?;
-        Ok(())
+        deny_and_reinitialize(&mut self.env, &self.local, PASSTHROUGH_LOGIC_VK).await
     }
+}
+
+/// The incident on `env`: the adapter's owner denies the transfer logic ref
+/// on both denylists, and the forwarder's owner reinitializes the
+/// emergency-migrating build, listing it and moving to `new_logic_ref`.
+async fn deny_and_reinitialize<P>(
+    env: &mut Environment<P>,
+    owned: &OwnedForwarder,
+    new_logic_ref: Digest,
+) -> anyhow::Result<()> {
+    deny(env, logic_ref()).await?;
+    let ix = reinitialize(env, owned, new_logic_ref, &[logic_ref()]);
+    env.send(&[ix], &[&owned.owner]).await?;
+    Ok(())
+}
+
+/// The nullifier of `resource`, which `owner` holds.
+fn nullifier(resource: &Resource, owner: &ShieldedOwner) -> anyhow::Result<[u8; 32]> {
+    Ok(bytes(
+        resource
+            .nullifier(&owner.keys.nf_key)
+            .map_err(|e| anyhow::anyhow!("{e:?}"))?,
+    ))
+}
+
+/// The settlement `executed` migrated `migrated`, each a vulnerable logic
+/// ref and a nullifier, through `forwarder`: the forwarder announced and
+/// recorded each, and the user's and the escrow's token accounts still hold
+/// `before`.
+async fn migrated<P>(
+    env: &Environment<P>,
+    executed: &Executed,
+    forwarder: &Forwarder,
+    migrated: &[([u8; 32], [u8; 32])],
+    before: &[u64],
+) -> anyhow::Result<()> {
+    let emitted = events(executed, &forwarder.program)?;
+    let expected: Vec<ForwarderEvent> = migrated
+        .iter()
+        .map(|&(vulnerable_logic_ref, nullifier)| {
+            ForwarderEvent::Migrated(MigratedEvent {
+                token: forwarder.mint.to_bytes(),
+                vulnerable_logic_ref,
+                nullifier,
+            })
+        })
+        .collect();
+    anyhow::ensure!(
+        emitted == expected,
+        "the migration emits {emitted:?}, not {expected:?}"
+    );
+    for &(_, nullifier) in migrated {
+        anyhow::ensure!(
+            is_migrated(env, &forwarder.program, nullifier).await?,
+            "the forwarder did not record {nullifier:02x?}"
+        );
+    }
+    let after = balances(env, &unmoved(forwarder)).await?;
+    anyhow::ensure!(
+        after == before,
+        "a migration moved tokens: {before:?} became {after:?}"
+    );
+    Ok(())
+}
+
+/// The token accounts a migration leaves alone: the user's and the escrow's.
+fn unmoved(forwarder: &Forwarder) -> [Pubkey; 2] {
+    [forwarder.user_account(), forwarder.escrow_account()]
 }
 
 /// The forwarder call of a migration of `entries` resources with `input`;
@@ -334,7 +404,7 @@ async fn reinitialize_keeps_the_logic_ref_and_lists_the_vulnerable_refs() -> any
 /// the config keeps the production build's version.
 async fn refuses_reinitialize(
     env: &LocalEnv,
-    local: &LocalForwarder,
+    local: &OwnedForwarder,
     ix: Instruction,
     signer: &Keypair,
     error: &'static str,
@@ -530,7 +600,6 @@ async fn reinitialize_refuses_a_new_ref_either_denylist_holds() -> anyhow::Resul
 #[tokio::test(flavor = "multi_thread")]
 async fn a_migration_records_every_nullifier_and_moves_no_tokens() -> anyhow::Result<()> {
     let mut incident = after_an_incident().await?;
-    let program = incident.local.forwarder.program;
     let own = incident.entry()?;
     // A resource the adapter never consumed, under another historical root:
     // the forwarder checks the nullifier and the root, not the resource.
@@ -539,44 +608,22 @@ async fn a_migration_records_every_nullifier_and_moves_no_tokens() -> anyhow::Re
         commitment_tree_root: bytes(latest_root(&incident.env).await?),
         ..own.clone()
     };
-    let unmoved = [
-        incident.local.forwarder.user_account(),
-        incident.local.forwarder.escrow_account(),
-    ];
-    let before = balances(&incident.env, &unmoved).await?;
+    let forwarder = &incident.local.forwarder;
+    let before = balances(&incident.env, &unmoved(forwarder)).await?;
 
     let tx = incident
         .prove_migration(vec![own.clone(), other.clone()], 1)
         .await?;
     let executed = incident.env.protocol_adapter.settled(tx).await?;
 
-    let emitted = events(&executed, &program)?;
-    let expected: Vec<ForwarderEvent> = [&own, &other]
-        .into_iter()
-        .map(|entry| {
-            ForwarderEvent::Migrated(MigratedEvent {
-                token: incident.local.forwarder.mint.to_bytes(),
-                vulnerable_logic_ref: entry.vulnerable_logic_ref,
-                nullifier: entry.nullifier,
-            })
-        })
-        .collect();
-    anyhow::ensure!(
-        emitted == expected,
-        "the migration emits {emitted:?}, not {expected:?}"
-    );
-    for entry in [&own, &other] {
-        anyhow::ensure!(
-            is_migrated(&incident.env, &program, entry.nullifier).await?,
-            "the forwarder did not record {:02x?}",
-            entry.nullifier
-        );
-    }
-    anyhow::ensure!(
-        balances(&incident.env, &unmoved).await? == before,
-        "a migration moved tokens"
-    );
-    Ok(())
+    migrated(
+        &incident.env,
+        &executed,
+        forwarder,
+        &[own, other].map(|entry| (entry.vulnerable_logic_ref, entry.nullifier)),
+        &before,
+    )
+    .await
 }
 
 /// Settling a migration of `entries` fails with `error`, and records no
@@ -640,7 +687,7 @@ async fn a_migration_refuses_a_resource_the_adapter_consumed() -> anyhow::Result
     let tx = incident
         .local
         .forwarder
-        .prove_unwrap(
+        .prove_unwrap::<TransferLogic, _>(
             &incident.env,
             incident.wrapped,
             &incident.owner,
@@ -895,4 +942,68 @@ async fn the_production_build_refuses_a_migration() -> anyhow::Result<()> {
     expect_integration_panic(Needle::Static("Error Code: UnknownOperation."))(
         execute_tx(&mut env, tx).await,
     )
+}
+
+// ---------------------------------------------------------------------------
+// A migration proven by the emergency-migrating logic
+// ---------------------------------------------------------------------------
+
+/// The incident end to end with the AnomaPay resource, as the EVM
+/// integration test test_execute_emergency_migrates_a_resource_after_the_protocol_adapter_denies_its_logic_ref
+/// runs it with the ERC20 resource: a holder wraps `AMOUNT` under the
+/// transfer logic; the adapter's owner denies it; the forwarder's owner
+/// upgrades to the emergency-migrating build and reinitializes it, listing
+/// the transfer logic and moving to the emergency-migrating logic. The
+/// holder's migration, which that logic proves, records the wrapped
+/// resource's nullifier and moves no tokens, and its resource then unwraps
+/// through that logic, releasing the escrowed tokens to a recipient.
+async fn a_migration_recovers_the_wrapped_tokens<P: Prover>(
+    env: &mut Environment<P>,
+    owned: OwnedForwarder,
+) -> anyhow::Result<()> {
+    let holder = ShieldedOwner::seeded("real-migration/holder");
+    let forwarder = &owned.forwarder;
+    let wrapped = forwarder
+        .wrap(env, &holder, AMOUNT, 1, "real-migration/wrap")
+        .await?;
+
+    setup::upgrade(
+        env,
+        &forwarder.program,
+        &owned.owner,
+        FORWARDER_EMERGENCY_MIGRATING_SO,
+    )
+    .await?;
+    deny_and_reinitialize(env, &owned, EMERGENCY_MIGRATING_TOKEN_TRANSFER_ID).await?;
+
+    let before = balances(env, &unmoved(forwarder)).await?;
+    let migration = forwarder
+        .prove_migration(env, wrapped, &holder, "real-migration/migrate")
+        .await?;
+    let executed = env.protocol_adapter.settled(migration.tx).await?;
+    migrated(
+        env,
+        &executed,
+        forwarder,
+        &[(bytes(logic_ref()), nullifier(&wrapped, &holder)?)],
+        &before,
+    )
+    .await?;
+
+    forwarder
+        .unwraps::<EmergencyMigratingTransferLogic, P>(env, migration.created, &holder, AMOUNT)
+        .await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn local_a_migration_recovers_the_wrapped_tokens() -> anyhow::Result<()> {
+    let (mut env, owned) = setup::local().await?;
+    a_migration_recovers_the_wrapped_tokens(&mut env, owned).await
+}
+
+#[cfg(feature = "e2e")]
+#[tokio::test(flavor = "multi_thread")]
+async fn e2e_test_a_migration_recovers_the_wrapped_tokens() -> anyhow::Result<()> {
+    let (mut env, owned) = setup::e2e_owned().await?;
+    a_migration_recovers_the_wrapped_tokens(&mut env, owned).await
 }

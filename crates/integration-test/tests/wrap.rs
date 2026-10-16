@@ -16,7 +16,7 @@ use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::refusal::{balances, refuses};
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, Forwarder, LocalForwarder, ProvenWrap, create_mint, events, fund, token_account,
+    self, Forwarder, OwnedForwarder, ProvenWrap, create_mint, events, fund, token_account,
 };
 use anyhow::Context;
 use solana_keypair::Keypair;
@@ -39,7 +39,7 @@ const NONCE_BITMAP: usize = 8;
 
 /// The local environment with the forwarder, and the owner of the resources
 /// its wraps create.
-async fn local() -> anyhow::Result<(LocalEnv, LocalForwarder, ShieldedOwner)> {
+async fn local() -> anyhow::Result<(LocalEnv, OwnedForwarder, ShieldedOwner)> {
     let (env, local) = setup::local().await?;
     Ok((env, local, ShieldedOwner::seeded("wrap/owner")))
 }
@@ -356,7 +356,7 @@ async fn refuses_a_wrap_whose_authorization_is_not_at_the_instruction_index_its_
 /// The environment after the user's first wrap settled, and a second wrap
 /// under the same nonce, with the user holding and approving its amount, so
 /// any account substitution that let it through would move tokens.
-async fn replay() -> anyhow::Result<(LocalEnv, LocalForwarder, Transaction)> {
+async fn replay() -> anyhow::Result<(LocalEnv, OwnedForwarder, Transaction)> {
     let (mut env, local, owner) = local().await?;
     let forwarder = &local.forwarder;
     forwarder
