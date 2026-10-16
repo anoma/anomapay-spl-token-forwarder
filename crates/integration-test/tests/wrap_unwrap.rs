@@ -42,19 +42,14 @@ where
 #[tokio::test(flavor = "multi_thread")]
 async fn local_wraps_then_unwraps() -> anyhow::Result<()> {
     let (mut env, local) = setup::local().await?;
-    local
-        .forwarder
-        .wraps_then_unwraps(&mut env, AMOUNT, "wrap-then-unwrap")
-        .await
+    local.forwarder.wraps_then_unwraps(&mut env).await
 }
 
 #[cfg(feature = "e2e")]
 #[tokio::test(flavor = "multi_thread")]
 async fn e2e_test_wraps_then_unwraps() -> anyhow::Result<()> {
     let (mut env, forwarder) = setup::e2e().await?;
-    forwarder
-        .wraps_then_unwraps(&mut env, AMOUNT, "wrap-then-unwrap")
-        .await
+    forwarder.wraps_then_unwraps(&mut env).await
 }
 
 #[tokio::test(flavor = "multi_thread")]
