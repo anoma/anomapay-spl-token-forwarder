@@ -27,11 +27,13 @@ pub const OP_MIGRATE: u8 = 2;
 #[constant]
 pub const VULNERABLE_LOGIC_REFS_SEED: &[u8] = b"vulnerable_logic_refs";
 
-/// The vulnerable logic refs' address, derived at compile time.
-pub const VULNERABLE_LOGIC_REFS_PDA: Pubkey = Pubkey::new_from_array(
-    anchor_lang::derive_program_address(&[VULNERABLE_LOGIC_REFS_SEED], &crate::ID_CONST.to_bytes())
-        .0,
-);
+/// The vulnerable logic refs' canonical address and bump, derived at
+/// compile time: checking the account and signing for it cost no search.
+const VULNERABLE_LOGIC_REFS_DERIVATION: ([u8; 32], u8) =
+    anchor_lang::derive_program_address(&[VULNERABLE_LOGIC_REFS_SEED], &crate::ID_CONST.to_bytes());
+pub const VULNERABLE_LOGIC_REFS_PDA: Pubkey =
+    Pubkey::new_from_array(VULNERABLE_LOGIC_REFS_DERIVATION.0);
+const VULNERABLE_LOGIC_REFS_BUMP: u8 = VULNERABLE_LOGIC_REFS_DERIVATION.1;
 
 /// The seed of a migrated resource's record, one per nullifier.
 #[constant]
@@ -215,10 +217,8 @@ fn store(ctx: &Context<Reinitialize>, listed: &VulnerableLogicRefs) -> Result<()
         )?;
     }
     if account.owner == &system_program {
-        let signer_seeds: &[&[&[u8]]] = &[&[
-            VULNERABLE_LOGIC_REFS_SEED,
-            &[ctx.bumps.vulnerable_logic_refs],
-        ]];
+        let signer_seeds: &[&[&[u8]]] =
+            &[&[VULNERABLE_LOGIC_REFS_SEED, &[VULNERABLE_LOGIC_REFS_BUMP]]];
         anchor_lang::system_program::allocate(
             CpiContext::new_with_signer(
                 system_program,
@@ -246,12 +246,7 @@ fn store(ctx: &Context<Reinitialize>, listed: &VulnerableLogicRefs) -> Result<()
     listed.try_serialize(&mut &mut data[..])
 }
 
-/// `reinitialize` of this build, as the EVM draft's
-/// `reinitialize(newLogicRef, vulnerableLogicRefs)`: once per build that
-/// raises CONFIG_VERSION, the owner lists the vulnerable logic refs, at least
-/// one, each on both of the adapter's denylists and not listed already, and
-/// sets the forwarder's logic ref to `new_logic_ref`, on neither denylist,
-/// or keeps it.
+/// The emergency-migrating build's `reinitialize`, which `lib.rs` documents.
 pub(crate) fn reinitialize(
     ctx: Context<Reinitialize>,
     new_logic_ref: [u8; 32],

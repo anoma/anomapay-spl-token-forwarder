@@ -64,15 +64,27 @@ export function derivePaStatePda(protocolAdapter: PublicKey): [PublicKey, number
   return PublicKey.findProgramAddressSync([new TextEncoder().encode("pa_state")], protocolAdapter);
 }
 
-/** Derive the adapter's marker of the historical root `root`. Seed: `["root", pa_state, root]`. */
-export function deriveAdapterRootMarkerPda(protocolAdapter: PublicKey, root: Uint8Array): [PublicKey, number] {
-  const [paState] = derivePaStatePda(protocolAdapter);
+/**
+ * Derive the adapter's marker of the historical root `root`, as the adapter's
+ * client does, `paState` being its state account. Seed: `["root", pa_state, root]`.
+ */
+export function deriveAdapterRootMarkerPda(
+  protocolAdapter: PublicKey,
+  paState: PublicKey,
+  root: Uint8Array,
+): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([new TextEncoder().encode("root"), paState.toBuffer(), root], protocolAdapter);
 }
 
-/** Derive the adapter's marker of the spent nullifier `nullifier`. Seed: `["nullifier", pa_state, nullifier]`. */
-export function deriveAdapterNullifierPda(protocolAdapter: PublicKey, nullifier: Uint8Array): [PublicKey, number] {
-  const [paState] = derivePaStatePda(protocolAdapter);
+/**
+ * Derive the adapter's marker of the spent nullifier `nullifier`, as the
+ * adapter's client does. Seed: `["nullifier", pa_state, nullifier]`.
+ */
+export function deriveAdapterNullifierPda(
+  protocolAdapter: PublicKey,
+  paState: PublicKey,
+  nullifier: Uint8Array,
+): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [new TextEncoder().encode("nullifier"), paState.toBuffer(), nullifier],
     protocolAdapter,
