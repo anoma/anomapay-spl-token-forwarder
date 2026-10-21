@@ -36,7 +36,7 @@ Each incident follows these steps:
 1. The owner of the protocol adapter pauses it (the adapter's `pause`). The adapter then settles no transaction.
 2. The owner of the adapter denies each vulnerable logic ref with `deny_logic_refs`, on both denylists (`consumed: true` and `consumed: false`).
 3. The owner of the forwarder upgrades it in place to the emergency-migrating build, writing the build to a buffer and calling the forwarder's `upgrade` (no script builds or deploys it, as no script deploys the EVM draft), and calls its `reinitialize` with the logic ref of C and the vulnerable logic refs to list (see [Which resources can emergency-migrate](#which-resources-can-emergency-migrate)). The owner pays the rent of the list. C has no flaw and has the migrate call: only a circuit with the migrate call can start an emergency migration, so if the active version has none, the forwarder must move to a version that has one, even if the active version has no flaw.
-4. The kind tables release C as the active version. They keep a vulnerable version listed as deprecated, but no transaction can use its rows, because the adapter denies its logic ref. The owner of the adapter stores the new kind table root. If B has no flaw, the owner deprecates its logic ref.
+4. The kind tables release C as the active version. They keep a vulnerable version listed as deprecated, but no transaction can use its rows, because the adapter denies its logic ref. The owner of the adapter stores the new kind tree root. If B has no flaw, the owner deprecates its logic ref.
 5. The owner of the adapter unpauses it.
 6. Resource owners emergency-migrate their resources with a vulnerable logic ref, and soft-migrate their resources of a deprecated version.
 
