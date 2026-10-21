@@ -45,7 +45,7 @@ async fn settles_a_wrap_proven_against_a_kind_table_once_the_owner_installs_its_
     }])
     .context("the table is not a kind table")?;
     let root = kind_table.root();
-    let held = env.protocol_adapter.state().await?.kind_table_root;
+    let held = env.protocol_adapter.state().await?.kind_tree_root;
     anyhow::ensure!(
         held != <[u8; 32]>::from(root),
         "the deployment must hold another table for the wrap to be refused first"
@@ -78,7 +78,7 @@ async fn settles_a_wrap_proven_against_a_kind_table_once_the_owner_installs_its_
     // empty is refused before the proof is verified.
     let refusal = env.protocol_adapter.submit(tx.clone()).await?.err();
     anyhow::ensure!(
-        refusal == Some(Refusal::UnacceptedKindTableRoot),
+        refusal == Some(Refusal::UnacceptedKindTreeRoot),
         "the adapter returned {refusal:?}, not a refusal of the kind table"
     );
     anyhow::ensure!(
@@ -86,7 +86,7 @@ async fn settles_a_wrap_proven_against_a_kind_table_once_the_owner_installs_its_
         "a refused wrap moved tokens"
     );
 
-    env.protocol_adapter.set_kind_table_root(root).await?;
+    env.protocol_adapter.set_kind_tree_root(root).await?;
     execute_tx(&mut env, tx).await?;
     anyhow::ensure!(
         balances(&env, &accounts).await? == [before[0] - AMOUNT, before[1] + AMOUNT],

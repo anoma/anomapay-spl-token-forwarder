@@ -513,6 +513,23 @@ pub async fn config<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::Result
     Ok(decode_config(&data)?)
 }
 
+/// The version the previous release's config holds on `env`, read in that
+/// release's layout (the program's `PreviousConfig`): the discriminator, the
+/// adapter, the logic ref, the emergency committee and caller, then the
+/// version. `migrate_config` keeps it; `reinitialize` raises it.
+pub async fn previous_config_version<P>(
+    env: &Environment<P>,
+    program: &Pubkey,
+) -> anyhow::Result<u64> {
+    let (config, _) = derive_forwarder_config_pda(program);
+    let data = env.protocol_adapter.rpc.get_account_data(&config).await?;
+    let at = 8 + 4 * 32;
+    let version = data
+        .get(at..at + 8)
+        .with_context(|| format!("{config} is shorter than the previous layout"))?;
+    Ok(u64::from_le_bytes(version.try_into()?))
+}
+
 /// `local` with the development build, whose config the owner then puts
 /// (`dev_set_config_version`) one below this build's CONFIG_VERSION, as an
 /// earlier build would have left it: the config `reinitialize` rotates once.

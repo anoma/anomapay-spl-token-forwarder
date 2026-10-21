@@ -8,8 +8,8 @@
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
 use anomapay_spl_token_forwarder_client::{
-    CONFIG_ACCOUNT_SIZE, decode_config, derive_forwarder_config_pda, migrate_config_ix,
-    transfer_ownership_ix,
+    CONFIG_ACCOUNT_SIZE, ConfigAccount, decode_config, derive_forwarder_config_pda,
+    migrate_config_ix, transfer_ownership_ix,
 };
 use anomapay_spl_token_forwarder_integration_test::setup::{self, config, expected_config};
 use solana_keypair::Keypair;
@@ -52,6 +52,7 @@ async fn the_migration_keeps_the_configs_values_and_returns_the_freed_rent_to_th
     let (program, owner) = (local.forwarder.program, &local.owner);
     let rpc = &env.protocol_adapter.rpc;
     let (_, lamports_before) = config_account(&env, &program).await?;
+    let previous_version = setup::previous_config_version(&env, &program).await?;
     let owner_before = rpc.get_balance(&owner.pubkey()).await?;
 
     env.send(&[migrate_config_ix(&program, &owner.pubkey())], &[owner])
@@ -59,7 +60,10 @@ async fn the_migration_keeps_the_configs_values_and_returns_the_freed_rent_to_th
 
     let (data, lamports) = config_account(&env, &program).await?;
     let stored = decode_config(&data)?;
-    let expected = expected_config(&env, &owner.pubkey());
+    let expected = ConfigAccount {
+        version: previous_version,
+        ..expected_config(&env, &owner.pubkey())
+    };
     anyhow::ensure!(
         stored == expected,
         "the config is {stored:?}, not {expected:?}"
