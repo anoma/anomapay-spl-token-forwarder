@@ -1193,7 +1193,7 @@
         "logic ref raises it by one, so its `reinitialize` runs once."
       ],
       "type": "u64",
-      "value": "6"
+      "value": "7"
     },
     {
       "name": "ESCROW_SEED",

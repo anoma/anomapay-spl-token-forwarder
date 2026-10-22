@@ -1535,7 +1535,7 @@
         "version, so its `reinitialize` runs once."
       ],
       "type": "u64",
-      "value": "7"
+      "value": "8"
     },
     {
       "name": "ESCROW_SEED",
