@@ -21,7 +21,7 @@ The repository's Nix shell provides the Rust version that CI uses, so [Nix](http
 curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install | sh -s -- --daemon
 ```
 
-On macOS, leave out `-s -- --daemon`. The commands below run in the Nix shell through `./scripts/dev.sh`, which turns on the flakes support that the shell needs.
+On macOS, leave out `-s -- --daemon`. From a checkout of this repository, the commands below run in the Nix shell through `./scripts/dev.sh`, which turns on the flakes support that the shell needs.
 
 ## Usage
 
