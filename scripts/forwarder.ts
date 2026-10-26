@@ -16,17 +16,13 @@
  *                                     rotate the config's logic ref to
  *                                     STF_LOGIC_REF, once; escrow and nonce
  *                                     bitmaps are untouched.
- *   migrate-config        (owner)     After upgrading the program from the
- *                                     release whose config held an emergency
- *                                     committee and caller: rewrite the
- *                                     config into this release's layout.
  *
  * Closing escrows, nonce bitmaps or the config are not commands: on a live
  * cluster they are done by hand (docs/OPERATIONS.md).
  *
  * The program enforces who may do what and when; a refused command fails
  * with the program's error (OwnableUnauthorizedAccount, InvalidInitialization,
- * NotPreviousLayout, ...).
+ * ...).
  *
  * Environment (read per command):
  *   STF_LOGIC_REF           32-byte hex: the resource logic the config
@@ -39,7 +35,7 @@ import { confirmedProvider } from "../client/provider";
 import { Program } from "@anchor-lang/core";
 import { getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 import { SplTokenForwarder } from "../target/types/spl_token_forwarder";
-import { initializeForwarder, migrateForwarderConfig, reinitializeForwarder } from "../client/instructions";
+import { initializeForwarder, reinitializeForwarder } from "../client/instructions";
 import { deriveForwarderConfigPda, deriveForwarderEscrowAuthority } from "../ts/src/pda";
 import { fail, requireHexBytes, requirePubkey } from "./cli-utils";
 
@@ -120,21 +116,9 @@ async function reinitializeCommand() {
   );
 }
 
-async function migrateConfigCommand() {
-  // The config is in the previous layout, which this build's types do not
-  // decode: the program checks it and the signer.
-  await migrateForwarderConfig(forwarder, wallet.publicKey).rpc();
-  const config = await requireConfig();
-  console.log(
-    `✅ Config migrated: adapter ${config.protocolAdapter.toBase58()}, logic ref ` +
-      `${Buffer.from(config.logicRef).toString("hex")}, version ${config.version}, owner ${config.owner.toBase58()}`,
-  );
-}
-
 const COMMANDS: Record<string, () => Promise<void>> = {
   init,
   reinitialize: reinitializeCommand,
-  "migrate-config": migrateConfigCommand,
 };
 
 const command = process.argv[2];

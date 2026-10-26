@@ -189,43 +189,6 @@ pub mod spl_token_forwarder {
         Ok(())
     }
 
-    /// Rewrite a config the previous release laid out into this release's
-    /// layout, once, after the in-place upgrade to this release: the
-    /// emergency committee and caller go, the adapter, logic ref, version
-    /// and owner stay, and the rent the account no longer needs goes to the
-    /// owner, who signs.
-    ///
-    /// The Solana counterpart of the initialization data an EVM upgrade
-    /// (`upgradeToAndCall`) carries for a layout change. Until it runs,
-    /// `forward_call` serves, reading the adapter and logic ref both layouts
-    /// start with, and every owner-only instruction refuses the config
-    /// (`ConfigNotMigrated`).
-    pub fn migrate_config(ctx: Context<MigrateConfig>) -> Result<()> {
-        let config = &ctx.accounts.config;
-        let previous = {
-            let data = config.try_borrow_data()?;
-            require!(
-                data.len() == PreviousConfig::ACCOUNT_SIZE
-                    && data.starts_with(Config::DISCRIMINATOR),
-                ErrorCode::NotPreviousLayout
-            );
-            PreviousConfig::try_from_slice(&data[Config::DISCRIMINATOR.len()..])?
-        };
-        require!(
-            ctx.accounts.owner.key() == previous.owner,
-            ErrorCode::OwnableUnauthorizedAccount
-        );
-
-        let refund = config.lamports() - Rent::get()?.minimum_balance(Config::ACCOUNT_SIZE);
-        config.resize(Config::ACCOUNT_SIZE)?;
-        previous
-            .migrated()
-            .try_serialize(&mut &mut config.try_borrow_mut_data()?[..])?;
-        config.sub_lamports(refund)?;
-        ctx.accounts.owner.add_lamports(refund)?;
-        Ok(())
-    }
-
     /// Overwrite the config's version. Development builds only: lets the
     /// integration suite put a config below this build's CONFIG_VERSION, as a
     /// config an earlier build initialized is, and observe `reinitialize`
@@ -740,7 +703,6 @@ pub struct Version {}
 #[derive(Accounts)]
 pub struct OwnerOnly<'info> {
     #[account(
-        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
         constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
     )]
     pub authority: Signer<'info>,
@@ -758,7 +720,6 @@ pub struct OwnerOnly<'info> {
 pub struct Reinitialize<'info> {
     #[account(
         mut,
-        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
         constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
     )]
     pub authority: Signer<'info>,
@@ -802,7 +763,6 @@ pub struct InitMigrationRecord<'info> {
 #[derive(Accounts)]
 pub struct UpgradeProgram<'info> {
     #[account(
-        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
         constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
     )]
     pub authority: Signer<'info>,
@@ -847,7 +807,6 @@ pub struct UpgradeProgram<'info> {
 #[derive(Accounts)]
 pub struct DevSetConfigVersion<'info> {
     #[account(
-        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
         constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
     )]
     pub authority: Signer<'info>,
@@ -890,27 +849,11 @@ pub struct ForwardCall<'info> {
     pub ix_sysvar: UncheckedAccount<'info>,
 }
 
-/// The owner, as the previous release's config records it, and the config
-/// in that layout, which the handler reads and rewrites.
-#[derive(Accounts)]
-pub struct MigrateConfig<'info> {
-    /// Receives the rent the smaller account no longer needs.
-    #[account(mut)]
-    pub owner: Signer<'info>,
-
-    /// CHECK: The config in the previous layout, which `Account<Config>`
-    /// cannot read: the address and the program's ownership pin it, and
-    /// the handler checks its size and discriminator.
-    #[account(mut, address = CONFIG_PDA, owner = crate::ID)]
-    pub config: UncheckedAccount<'info>,
-}
-
 #[derive(Accounts)]
 pub struct CloseEscrow<'info> {
     /// The owner, who receives the closed escrow ATA's rent.
     #[account(
         mut,
-        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
         constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
     )]
     pub authority: Signer<'info>,
@@ -946,7 +889,6 @@ pub struct CloseConfig<'info> {
     /// The owner, who receives the config's rent.
     #[account(
         mut,
-        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
         constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
     )]
     pub authority: Signer<'info>,
@@ -963,7 +905,6 @@ pub struct CloseNonceBitmaps<'info> {
     /// The owner, who receives the closed bitmaps' rent.
     #[account(
         mut,
-        constraint = Config::is_current_layout(&config.to_account_info()) @ ErrorCode::ConfigNotMigrated,
         constraint = authority.key() == config.owner @ ErrorCode::OwnableUnauthorizedAccount
     )]
     pub authority: Signer<'info>,

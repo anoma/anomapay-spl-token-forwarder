@@ -30,15 +30,6 @@ export function initializeForwarder(
 }
 
 /**
- * The forwarder's `migrate_config`, signed by `owner`, the owner the previous
- * release's config records: after the in-place upgrade to this release, it
- * rewrites the config into this release's layout.
- */
-export function migrateForwarderConfig(forwarder: Program<SplTokenForwarder>, owner: PublicKey) {
-  return forwarder.methods.migrateConfig().accountsPartial({ owner });
-}
-
-/**
  * Rotate the forwarder config's logic ref, once per build that raises
  * CONFIG_VERSION, after upgrading the program to that build. `authority`
  * must be the forwarder's owner.

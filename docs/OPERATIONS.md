@@ -46,17 +46,6 @@ Escrow and nonce bitmaps are untouched. The instruction emits `Initialized` with
 
 The forwarder is upgraded in place, as the EVM forwarder's proxy is upgraded through `upgradeToAndCall`: the program id, the config, the escrow and the nonce bitmaps stay. The owner upgrades it with `./scripts/dev.sh upgrade --cluster <c>`, which writes the new build to a buffer and calls the forwarder's `upgrade` (before `initialize`, while the deployer's wallet is still the upgrade authority, it upgrades through the loader); `--prebuilt` ships `verify-build`'s deterministic build. A release that changes an account layout ships owner-only migration instructions, the counterpart of the call the EVM owner passes to `upgradeToAndCall`, which run once, right after the upgrade, and a test that runs the upgrade path from the previous build.
 
-### From the release with an emergency committee
-
-The release before this one stored an emergency committee and an emergency caller in the config, the EVM V1 forwarder's emergency mechanism, which the EVM V2 forwarder does not have. This release drops both, so its config is 64 bytes shorter. After the upgrade, the owner rewrites the config once:
-
-```sh
-./scripts/dev.sh upgrade --cluster <c>                                 # owner wallet
-./scripts/dev.sh forwarder migrate-config --cluster <c>                # owner wallet
-```
-
-`migrate_config` keeps the adapter, the logic ref, the version and the owner, and returns the rent the smaller account no longer needs to the owner. Until it runs, wraps and unwraps settle, since both layouts start with the adapter and the logic ref, and every owner-only instruction refuses the config with `ConfigNotMigrated`; a second run fails with `NotPreviousLayout`.
-
 ## After a flaw in a circuit version
 
 When a circuit version of the transfer resource lets false proofs pass, the adapter's owner denies its logic ref and the forwarder's owner upgrades the forwarder to the emergency-migrating build, whose resources with that logic ref then migrate to a fixed version without moving tokens. [EMERGENCY_MIGRATION.md](EMERGENCY_MIGRATION.md) is the procedure and its limits.

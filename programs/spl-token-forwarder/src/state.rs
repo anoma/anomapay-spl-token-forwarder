@@ -32,44 +32,6 @@ pub struct Config {
 impl Config {
     /// The account's size: the discriminator and the fields.
     pub const ACCOUNT_SIZE: usize = Self::DISCRIMINATOR.len() + Self::INIT_SPACE;
-
-    /// Whether the config account holds this release's layout rather than a
-    /// previous one `migrate_config` has yet to rewrite. Every owner-only
-    /// instruction requires it: a previous layout holds other bytes where
-    /// this one reads the version and the owner.
-    pub fn is_current_layout(config: &AccountInfo) -> bool {
-        config.data_len() == Self::ACCOUNT_SIZE
-    }
-}
-
-/// The config as the previous release laid it out, which `migrate_config`
-/// rewrites: the fields above with an emergency committee and an emergency
-/// caller between the logic ref and the version.
-#[derive(AnchorDeserialize, InitSpace)]
-pub struct PreviousConfig {
-    pub protocol_adapter: Pubkey,
-    pub logic_ref: [u8; 32],
-    pub emergency_committee: Pubkey,
-    pub emergency_caller: Pubkey,
-    pub version: u64,
-    pub owner: Pubkey,
-}
-
-impl PreviousConfig {
-    /// The previous account's size: the discriminator, which the layouts
-    /// share, and the fields.
-    pub const ACCOUNT_SIZE: usize = Config::DISCRIMINATOR.len() + Self::INIT_SPACE;
-
-    /// The config in this release's layout: the same adapter, logic ref,
-    /// version and owner.
-    pub fn migrated(&self) -> Config {
-        Config {
-            protocol_adapter: self.protocol_adapter,
-            logic_ref: self.logic_ref,
-            version: self.version,
-            owner: self.owner,
-        }
-    }
 }
 
 /// The production build's config version. A build that rotates the logic

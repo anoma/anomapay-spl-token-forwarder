@@ -46,9 +46,6 @@ pub const FORWARDER_EMERGENCY_MIGRATING_SO: &[u8] =
 /// as a later implementation's.
 pub const FORWARDER_EMERGENCY_MIGRATING_DEV_SO: &[u8] =
     include_bytes!("../programs/spl_token_forwarder_emergency_migrating_dev.so");
-/// The previous release's production build, whose config held an emergency
-/// committee and caller: where an in-place upgrade to this release starts.
-const PREVIOUS_FORWARDER_SO: &[u8] = include_bytes!("../programs/previous/spl_token_forwarder.so");
 const LOCALNET: &str = include_str!("../../../env/localnet.env");
 #[cfg(feature = "e2e")]
 const DEVNET: &str = include_str!("../../../env/devnet.env");
@@ -91,8 +88,6 @@ pub enum Build {
     /// With the development features' instructions
     /// (`dev_set_config_version`).
     Development,
-    /// The previous release's production build.
-    Previous,
 }
 
 /// The local environment with the forwarder `build` deployed, its upgrade
@@ -111,7 +106,6 @@ fn deploy<P>(env: &Environment<P>, build: Build) -> anyhow::Result<Pubkey> {
     let so = match build {
         Build::Production => FORWARDER_SO,
         Build::Development => FORWARDER_DEV_SO,
-        Build::Previous => PREVIOUS_FORWARDER_SO,
     };
     env.deploy_program(program, so, env.protocol_adapter.payer.pubkey())?;
     Ok(program)
@@ -158,45 +152,6 @@ async fn owned<P>(env: &mut Environment<P>, build: Build) -> anyhow::Result<Owne
     let owner = initialize(env, program).await?;
     let forwarder = serve(env, program).await?;
     Ok(OwnedForwarder { forwarder, owner })
-}
-
-/// The local environment with the previous release deployed, initialized
-/// for the adapter and the transfer resource's logic ref with a new owner
-/// and emergency committee, and serving a mint; then upgraded in place by
-/// its owner to this release's production build, as a cluster's forwarder
-/// is. The config is still in the previous layout: `migrate_config` has not
-/// run.
-pub async fn upgraded_from_the_previous_release() -> anyhow::Result<(LocalEnv, OwnedForwarder)> {
-    let (mut env, program) = deployed(Build::Previous).await?;
-    let payer = env.protocol_adapter.payer.pubkey();
-
-    // The previous release's initialize took the committee between the
-    // logic ref and the owner, over the same accounts.
-    let owner = Keypair::new();
-    let mut initialize = initialize_ix(
-        &program,
-        &payer,
-        &env.protocol_adapter.program,
-        crate::logic::logic_ref().into(),
-        &owner.pubkey(),
-    );
-    initialize.data = [
-        anchor_instruction_disc("initialize").as_slice(),
-        env.protocol_adapter.program.as_ref(),
-        &<[u8; 32]>::from(crate::logic::logic_ref()),
-        Keypair::new().pubkey().as_ref(),
-        owner.pubkey().as_ref(),
-    ]
-    .concat();
-    env.send(&[initialize], &[])
-        .await
-        .context("failed to initialize the previous release")?;
-    let forwarder = serve(&mut env, program).await?;
-
-    upgrade(&env, &program, &owner, FORWARDER_SO)
-        .await
-        .context("the owner failed to upgrade the previous release")?;
-    Ok((env, OwnedForwarder { forwarder, owner }))
 }
 
 /// `local`, upgraded in place by the owner to `build`, the emergency-migrating
@@ -511,23 +466,6 @@ pub async fn config<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::Result
         .await
         .with_context(|| format!("the forwarder {program} has no config {config}"))?;
     Ok(decode_config(&data)?)
-}
-
-/// The version the previous release's config holds on `env`, read in that
-/// release's layout (the program's `PreviousConfig`): the discriminator, the
-/// adapter, the logic ref, the emergency committee and caller, then the
-/// version. `migrate_config` keeps it; `reinitialize` raises it.
-pub async fn previous_config_version<P>(
-    env: &Environment<P>,
-    program: &Pubkey,
-) -> anyhow::Result<u64> {
-    let (config, _) = derive_forwarder_config_pda(program);
-    let data = env.protocol_adapter.rpc.get_account_data(&config).await?;
-    let at = 8 + 4 * 32;
-    let version = data
-        .get(at..at + 8)
-        .with_context(|| format!("{config} is shorter than the previous layout"))?;
-    Ok(u64::from_le_bytes(version.try_into()?))
 }
 
 /// `local` with the development build, whose config the owner then puts
