@@ -54,7 +54,7 @@ Cluster operations (--cluster required):
                  upgrade (owner wallet) once its upgrade authority is its PDA,
                  else through the loader
   forwarder <cmd>
-                 init, reinitialize, migrate-config. Parameters are STF_*
+                 init, reinitialize. Parameters are STF_*
                  environment variables; see scripts/forwarder.ts.
   idl-publish    Publish the production IDL on chain (the program's canonical
                  Program Metadata IDL account; signer must be the upgrade

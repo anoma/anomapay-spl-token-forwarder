@@ -182,20 +182,6 @@ pub fn version_ix(forwarder_program: &Pubkey) -> Instruction {
     }
 }
 
-/// Build the forwarder's `migrate_config`: after the in-place upgrade to
-/// this release, `owner`, the owner the previous release's config records,
-/// rewrites the config into this release's layout.
-pub fn migrate_config_ix(forwarder_program: &Pubkey, owner: &Pubkey) -> Instruction {
-    Instruction {
-        program_id: *forwarder_program,
-        accounts: vec![
-            AccountMeta::new(*owner, true),
-            AccountMeta::new(derive_forwarder_config_pda(forwarder_program).0, false),
-        ],
-        data: anchor_instruction_disc("migrate_config").to_vec(),
-    }
-}
-
 /// Build the forwarder's `close_escrow`: while the adapter whose state is
 /// `pa_state` is paused, the owner drains `mint`'s escrow to the token
 /// account `recipient_ata` and closes it, taking its rent.
@@ -597,17 +583,6 @@ pub(crate) mod tests {
         let ix = version_ix(&forwarder);
         let _ = assert_matches_the_idl(&crate::idl::idl(), &ix, "version", &[]);
         assert!(ix.accounts.is_empty());
-    }
-
-    #[test]
-    fn migrate_config_matches_the_forwarders_idl() {
-        let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
-        let owner = Pubkey::new_unique();
-        let ix = migrate_config_ix(&forwarder, &owner);
-        let by_name = assert_matches_the_idl(&crate::idl::idl(), &ix, "migrate_config", &[]);
-        assert_eq!(by_name("owner"), owner);
-        assert_eq!(by_name("config"), derive_forwarder_config_pda(&forwarder).0);
-        assert_eq!(ix.accounts.len(), 2);
     }
 
     #[test]

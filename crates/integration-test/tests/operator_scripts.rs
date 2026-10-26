@@ -3,9 +3,7 @@
 //! installs the scripts' dependencies and builds the types they import.
 
 use anoma_pa_solana_client::derive_upgrade_authority_pda;
-use anomapay_spl_token_forwarder_client::{
-    CONFIG_VERSION, ConfigAccount, derive_forwarder_escrow_authority,
-};
+use anomapay_spl_token_forwarder_client::{CONFIG_VERSION, derive_forwarder_escrow_authority};
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::scripts::{hex, run_script};
 use anomapay_spl_token_forwarder_integration_test::setup::{
@@ -135,31 +133,6 @@ async fn reinitialize_rotates_the_logic_ref() -> anyhow::Result<()> {
     anyhow::ensure!(
         stored.logic_ref == rotated && stored.version == CONFIG_VERSION,
         "the config is {stored:?}, not rotated to {rotated:02x?} at version {CONFIG_VERSION}"
-    );
-    Ok(())
-}
-
-/// After the in-place upgrade from the release with an emergency committee,
-/// the owner's `migrate-config` rewrites the config into this release's
-/// layout, keeping its values.
-#[tokio::test(flavor = "multi_thread")]
-async fn migrate_config_rewrites_the_upgraded_config() -> anyhow::Result<()> {
-    let (env, local) = setup::upgraded_from_the_previous_release().await?;
-    let (program, owner) = (local.forwarder.program, &local.owner);
-    let previous_version = setup::previous_config_version(&env, &program).await?;
-    let ran = run_script(&env, owner, "forwarder.ts", &["migrate-config"], &[])?;
-    anyhow::ensure!(
-        ran.success && ran.stdout.contains("✅ Config migrated"),
-        "{ran}"
-    );
-    let stored = config(&env, &program).await?;
-    let expected = ConfigAccount {
-        version: previous_version,
-        ..expected_config(&env, &owner.pubkey())
-    };
-    anyhow::ensure!(
-        stored == expected,
-        "the config is {stored:?}, not {expected:?}"
     );
     Ok(())
 }

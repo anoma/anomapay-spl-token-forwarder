@@ -40,4 +40,4 @@ Everything runs in the repository's Nix dev shell, which pins the Rust, Solana a
 
 ## Operations
 
-Deploying, initializing, upgrading and operating the forwarder on a cluster go through `./scripts/dev.sh <command> --cluster <localnet\|devnet\|mainnet>`: `deploy`, `upgrade`, `forwarder <init\|reinitialize\|migrate-config>`, `idl-publish`, `status`. [docs/OPERATIONS.md](docs/OPERATIONS.md) is the procedure set.
+Deploying, initializing, upgrading and operating the forwarder on a cluster go through `./scripts/dev.sh <command> --cluster <localnet\|devnet\|mainnet>`: `deploy`, `upgrade`, `forwarder <init\|reinitialize>`, `idl-publish`, `status`. [docs/OPERATIONS.md](docs/OPERATIONS.md) is the procedure set.

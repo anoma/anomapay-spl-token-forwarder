@@ -424,52 +424,6 @@
       ]
     },
     {
-      "name": "migrate_config",
-      "docs": [
-        "Rewrite a config the previous release laid out into this release's",
-        "layout, once, after the in-place upgrade to this release: the",
-        "emergency committee and caller go, the adapter, logic ref, version",
-        "and owner stay, and the rent the account no longer needs goes to the",
-        "owner, who signs.",
-        "",
-        "The Solana counterpart of the initialization data an EVM upgrade",
-        "(`upgradeToAndCall`) carries for a layout change. Until it runs,",
-        "`forward_call` serves, reading the adapter and logic ref both layouts",
-        "start with, and every owner-only instruction refuses the config",
-        "(`ConfigNotMigrated`)."
-      ],
-      "discriminator": [
-        92,
-        131,
-        58,
-        105,
-        210,
-        154,
-        224,
-        193
-      ],
-      "accounts": [
-        {
-          "name": "owner",
-          "docs": [
-            "Receives the rent the smaller account no longer needs."
-          ],
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "config",
-          "docs": [
-            "cannot read: the address and the program's ownership pin it, and",
-            "the handler checks its size and discriminator."
-          ],
-          "writable": true,
-          "address": "6wu5mRw8RN1euy4AUsQoHTU5HraEGGXYhmrucG41bMdq"
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "reinitialize",
       "docs": [
         "Rotate the logic ref, once per build that raises CONFIG_VERSION.",
@@ -977,16 +931,6 @@
       "code": 6029,
       "name": "Unauthorized",
       "msg": "Unauthorized: the signer does not hold the authority this instruction requires"
-    },
-    {
-      "code": 6030,
-      "name": "NotPreviousLayout",
-      "msg": "The config is not in the previous release's layout"
-    },
-    {
-      "code": 6031,
-      "name": "ConfigNotMigrated",
-      "msg": "The config is in a previous release's layout - run migrate_config first"
     }
   ],
   "types": [

@@ -53,8 +53,7 @@ pub enum AccountDecodeError {
     WrongDiscriminator { expected: &'static str },
     /// The data ran out while reading the named field.
     Truncated { field: &'static str },
-    /// The account is `actual` bytes long, not its layout's `expected`: a
-    /// config a previous release laid out, until `migrate_config` runs.
+    /// The account is `actual` bytes long, not its layout's `expected`.
     Length { expected: usize, actual: usize },
 }
 
@@ -220,16 +219,6 @@ mod tests {
             Err(AccountDecodeError::Length {
                 expected: CONFIG_ACCOUNT_SIZE,
                 actual: CONFIG_ACCOUNT_SIZE - 1
-            })
-        );
-        // A previous release's config: an emergency committee and caller
-        // between the logic ref and the version.
-        let previous = [&config[..72], &[3; 64], &config[72..]].concat();
-        assert_eq!(
-            decode_config(&previous),
-            Err(AccountDecodeError::Length {
-                expected: CONFIG_ACCOUNT_SIZE,
-                actual: CONFIG_ACCOUNT_SIZE + 64
             })
         );
 
