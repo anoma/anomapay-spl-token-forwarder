@@ -5,14 +5,16 @@
 use anoma_pa_solana_client::{anchor_account_disc, derive_pa_state_pda};
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
-use anoma_pa_testkit::environment::ProtocolAdapter as _;
+use anoma_pa_testkit::environment::{ProtocolAdapter as _, Refusal};
+use anoma_pa_testkit::execute_tx;
 use anomapay_spl_token_forwarder_client::{
     close_config_ix, close_escrow_ix, close_nonce_bitmaps_batch_ix, derive_forwarder_config_pda,
     derive_forwarder_escrow_authority, derive_nonce_bitmap_pda, init_nonce_bitmap_ix,
 };
+use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
 use anomapay_spl_token_forwarder_integration_test::refusal::{NOT_THE_OWNER, balances};
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, OwnedForwarder, balance, create_mint, mint_to, token_account,
+    self, OwnedForwarder, balance, create_mint, fund, mint_to, token_account,
 };
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
@@ -265,6 +267,64 @@ async fn closes_every_nonce_bitmap_and_refunds_their_rent() -> anyhow::Result<()
     anyhow::ensure!(
         rpc.get_balance(&owner).await? > before,
         "the owner recovers the bitmaps' rent"
+    );
+    Ok(())
+}
+
+// Closing the bitmaps forgets which nonces were used, and the adapter's
+// owner can unpause the adapter afterwards. The user's signature on a
+// settled wrap then passes the forwarder's nonce check again; resubmitting
+// that wrap must still fail, on the adapter's record of its spent
+// nullifiers, with no tokens moved.
+#[tokio::test(flavor = "multi_thread")]
+async fn refuses_a_settled_wrap_replayed_after_its_nonce_bitmap_is_closed() -> anyhow::Result<()> {
+    const AMOUNT: u64 = 100_000_000;
+    const NONCE: u64 = 1;
+    let (mut env, local) = setup::local().await?;
+    let forwarder = &local.forwarder;
+    let program = forwarder.program;
+    let wrap = forwarder
+        .prove_wrap(
+            &env,
+            &ShieldedOwner::seeded("teardown/replay-owner"),
+            AMOUNT,
+            NONCE,
+            "teardown/replay",
+        )
+        .await?;
+    execute_tx(&mut env, wrap.tx.clone()).await?;
+
+    env.protocol_adapter.pause().await?;
+    let bitmaps = nonce_bitmaps(&env, &program).await?;
+    env.send(
+        &[close_nonce_bitmaps_batch_ix(
+            &program,
+            &local.owner.pubkey(),
+            &pa_state(&env),
+            &bitmaps,
+        )],
+        &[&local.owner],
+    )
+    .await?;
+    anyhow::ensure!(
+        nonce_bitmaps(&env, &program).await?.is_empty(),
+        "every nonce bitmap is closed, so the forwarder no longer records the wrap's nonce"
+    );
+    env.protocol_adapter.unpause().await?;
+
+    // The user holds and approves the amount again, so a replay that got
+    // through would move it.
+    fund(&env, &program, &forwarder.mint, &forwarder.user, AMOUNT).await?;
+    let accounts = [forwarder.user_account(), forwarder.escrow_account()];
+    let before = balances(&env, &accounts).await?;
+    let refusal = env.protocol_adapter.submit(wrap.tx).await?.err();
+    anyhow::ensure!(
+        refusal == Some(Refusal::NullifierSpent),
+        "the adapter returned {refusal:?} for the replayed wrap, not NullifierSpent"
+    );
+    anyhow::ensure!(
+        balances(&env, &accounts).await? == before,
+        "the replayed wrap moved tokens"
     );
     Ok(())
 }
