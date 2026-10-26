@@ -6,7 +6,7 @@
 use anoma_pa_solana_client::cursor::{Cursor, Truncated};
 use anoma_pa_solana_client::{anchor_account_disc, ANCHOR_DISCRIMINATOR_LEN};
 
-use crate::constants::{CONFIG_ACCOUNT_SIZE, NONCES_PER_WORD};
+use crate::constants::NONCES_PER_WORD;
 
 /// The forwarder's configuration (`Config`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -53,8 +53,6 @@ pub enum AccountDecodeError {
     WrongDiscriminator { expected: &'static str },
     /// The data ran out while reading the named field.
     Truncated { field: &'static str },
-    /// The account is `actual` bytes long, not its layout's `expected`.
-    Length { expected: usize, actual: usize },
 }
 
 impl core::fmt::Display for AccountDecodeError {
@@ -65,9 +63,6 @@ impl core::fmt::Display for AccountDecodeError {
             }
             AccountDecodeError::Truncated { field } => {
                 write!(f, "account truncated while reading {field}")
-            }
-            AccountDecodeError::Length { expected, actual } => {
-                write!(f, "the account is {actual} bytes, not {expected}")
             }
         }
     }
@@ -89,16 +84,9 @@ fn fields<'a>(data: &'a [u8], name: &'static str) -> Result<Cursor<'a>, AccountD
     Ok(Cursor::new(data, ANCHOR_DISCRIMINATOR_LEN))
 }
 
-/// Decode the forwarder's `Config` account, which must be in this release's
-/// layout.
+/// Decode the forwarder's `Config` account.
 pub fn decode_config(data: &[u8]) -> Result<ConfigAccount, AccountDecodeError> {
     let mut c = fields(data, "Config")?;
-    if data.len() != CONFIG_ACCOUNT_SIZE {
-        return Err(AccountDecodeError::Length {
-            expected: CONFIG_ACCOUNT_SIZE,
-            actual: data.len(),
-        });
-    }
     Ok(ConfigAccount {
         protocol_adapter: c.array_32("protocol_adapter")?,
         logic_ref: c.array_32("logic_ref")?,
@@ -216,10 +204,7 @@ mod tests {
         );
         assert_eq!(
             decode_config(&config[..config.len() - 1]),
-            Err(AccountDecodeError::Length {
-                expected: CONFIG_ACCOUNT_SIZE,
-                actual: CONFIG_ACCOUNT_SIZE - 1
-            })
+            Err(AccountDecodeError::Truncated { field: "owner" })
         );
 
         let mut bitmap = anchor_account_disc("NonceBitmap").to_vec();
