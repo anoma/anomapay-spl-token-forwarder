@@ -60,6 +60,31 @@ async fn nonce_bitmaps(env: &LocalEnv, program: &Pubkey) -> anyhow::Result<Vec<P
     Ok(accounts.into_iter().map(|(address, _)| address).collect())
 }
 
+/// The owner closes `bitmaps`, every nonce bitmap the forwarder holds, and
+/// none remains.
+async fn close_nonce_bitmaps(
+    env: &LocalEnv,
+    local: &OwnedForwarder,
+    bitmaps: &[Pubkey],
+) -> anyhow::Result<()> {
+    let program = local.forwarder.program;
+    env.send(
+        &[close_nonce_bitmaps_batch_ix(
+            &program,
+            &local.owner.pubkey(),
+            &pa_state(env),
+            bitmaps,
+        )],
+        &[&local.owner],
+    )
+    .await?;
+    anyhow::ensure!(
+        nonce_bitmaps(env, &program).await?.is_empty(),
+        "every nonce bitmap is closed"
+    );
+    Ok(())
+}
+
 /// An escrow of a fresh mint holding `ESCROWED`, and a token account of the
 /// mint owned by `recipient`: the mint, the escrow account and the
 /// recipient's.
@@ -250,20 +275,7 @@ async fn closes_every_nonce_bitmap_and_refunds_their_rent() -> anyhow::Result<()
     let owner = local.owner.pubkey();
     let rpc = &env.protocol_adapter.rpc;
     let before = rpc.get_balance(&owner).await?;
-    env.send(
-        &[close_nonce_bitmaps_batch_ix(
-            &program,
-            &owner,
-            &pa_state(&env),
-            &bitmaps,
-        )],
-        &[&local.owner],
-    )
-    .await?;
-    anyhow::ensure!(
-        nonce_bitmaps(&env, &program).await?.is_empty(),
-        "every nonce bitmap is closed"
-    );
+    close_nonce_bitmaps(&env, &local, &bitmaps).await?;
     anyhow::ensure!(
         rpc.get_balance(&owner).await? > before,
         "the owner recovers the bitmaps' rent"
@@ -294,22 +306,9 @@ async fn refuses_a_settled_wrap_replayed_after_its_nonce_bitmap_is_closed() -> a
         .await?;
     execute_tx(&mut env, wrap.tx.clone()).await?;
 
+    // Closing every bitmap forgets the wrap's nonce.
     env.protocol_adapter.pause().await?;
-    let bitmaps = nonce_bitmaps(&env, &program).await?;
-    env.send(
-        &[close_nonce_bitmaps_batch_ix(
-            &program,
-            &local.owner.pubkey(),
-            &pa_state(&env),
-            &bitmaps,
-        )],
-        &[&local.owner],
-    )
-    .await?;
-    anyhow::ensure!(
-        nonce_bitmaps(&env, &program).await?.is_empty(),
-        "every nonce bitmap is closed, so the forwarder no longer records the wrap's nonce"
-    );
+    close_nonce_bitmaps(&env, &local, &nonce_bitmaps(&env, &program).await?).await?;
     env.protocol_adapter.unpause().await?;
 
     // The user holds and approves the amount again, so a replay that got
