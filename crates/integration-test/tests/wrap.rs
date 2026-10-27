@@ -2,10 +2,10 @@
 //! events and the nonce it uses up, and every account, signature and replay
 //! the forwarder refuses, with no tokens moved.
 
-use anoma_pa_solana_client::events::PaEvent;
 use anoma_pa_solana_client::settlement::CallAccounts;
 use anoma_pa_solana_client::{anchor_instruction_disc, transaction_size};
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
+use anoma_pa_solana_integration_test::executed::PaEvent;
 use anoma_pa_solana_integration_test::test_forwarder;
 use anoma_pa_testkit::transaction::Transaction;
 use anomapay_spl_token_forwarder_client::{
