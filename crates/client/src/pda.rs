@@ -40,8 +40,8 @@ mod tests {
     use crate::program_ids::FORWARDER_PROGRAM_ID;
 
     #[test]
-    fn forwarder_escrow_authority_matches_the_devnet_forwarder() {
-        // Independent pin: the devnet forwarder's escrow authority, as
+    fn forwarder_escrow_authority_is_the_configured_forwarders() {
+        // Independent pin: the configured forwarder's escrow authority, as
         // `solana find-program-derived-address <forwarder> string:escrow`
         // derives it.
         let (authority, bump) = derive_forwarder_escrow_authority(&FORWARDER_PROGRAM_ID);

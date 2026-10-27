@@ -28,8 +28,8 @@ describe("PDA derivation", () => {
     expect(deriveEventAuthorityPda(FORWARDER_PROGRAM_ID)[0].equals(expected)).toBe(true);
   });
 
-  it("forwarder escrow authority is the devnet forwarder's", () => {
-    // Independent pin: the devnet forwarder's escrow authority, as
+  it("forwarder escrow authority is the configured forwarder's", () => {
+    // Independent pin: the configured forwarder's escrow authority, as
     // `solana find-program-derived-address <forwarder> string:escrow` derives
     // it; the Rust crate pins the same value.
     const [authority, bump] = deriveForwarderEscrowAuthority(FORWARDER_PROGRAM_ID);
