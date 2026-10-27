@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PublicKey } from "@solana/web3.js";
 
-import forwarderIdl from "../../crates/client/idl/spl_token_forwarder.json";
+import forwarderIdl from "../../crates/client/idls/spl_token_forwarder.json";
 import {
   deriveEventAuthorityPda,
   deriveForwarderConfigPda,

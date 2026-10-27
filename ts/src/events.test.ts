@@ -6,7 +6,7 @@ import { PublicKey } from "@solana/web3.js";
 
 // The emergency-migrating build's IDL: its events are the production build's
 // and its own, every event the decoder reads.
-import forwarderIdl from "../../crates/client/idl/emergency_migrating_spl_token_forwarder.json";
+import forwarderIdl from "../../crates/client/idls/emergency_migrating_spl_token_forwarder.json";
 import { anchorDiscriminator } from "./discriminator.js";
 import {
   decodeForwarderEventInstruction,
@@ -50,7 +50,7 @@ const forwarderCases: [ForwarderEvent["name"], Uint8Array, ForwarderEvent][] = [
     eventIx("OwnershipTransferred", [USER, OTHER]),
     { name: "OwnershipTransferred", previousOwner: USER, newOwner: OTHER },
   ],
-  ["Upgraded", eventIx("Upgraded", [ROOT]), { name: "Upgraded", executableHash: ROOT }],
+  ["Upgraded", eventIx("Upgraded", [ROOT]), { name: "Upgraded", implementationHash: ROOT }],
   [
     "LogicRefReplaced",
     eventIx("LogicRefReplaced", [USER, OTHER]),
@@ -124,6 +124,12 @@ describe("decodeForwarderEventInstruction", () => {
     const disc = anchorDiscriminator("event", "TransactionExecutedEvent");
     const data = Uint8Array.from(Buffer.concat([EVENT_IX_TAG, disc, ROOT]));
     expect(() => decodeForwarderEventInstruction(data)).toThrow(EventDecodeError);
+    expect(() => decodeForwarderEventInstruction(data)).toThrow(`unknown event discriminator ${bytesToHex(disc)}`);
+  });
+
+  it("rejects the discriminator over an event's name alone", () => {
+    const disc = anchorDiscriminator("event", "Wrapped");
+    const data = Uint8Array.from(Buffer.concat([EVENT_IX_TAG, disc, MINT, USER, u64Le(1n)]));
     expect(() => decodeForwarderEventInstruction(data)).toThrow(`unknown event discriminator ${bytesToHex(disc)}`);
   });
 

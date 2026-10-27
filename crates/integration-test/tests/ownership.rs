@@ -100,8 +100,7 @@ async fn transfer_ownership_moves_the_ownership_at_once_and_announces_it() -> an
         anyhow::bail!("transfer_ownership emits {events:?}, not one OwnershipTransferred");
     };
     anyhow::ensure!(
-        transferred.previous_owner == owner.pubkey().to_bytes()
-            && transferred.new_owner == successor.pubkey().to_bytes(),
+        transferred.previous_owner == owner.pubkey() && transferred.new_owner == successor.pubkey(),
         "OwnershipTransferred {transferred:?} is not from {} to {}",
         owner.pubkey(),
         successor.pubkey()
@@ -143,7 +142,7 @@ async fn renounced_ownership_is_announced_and_closes_reinitialize_and_upgrade() 
         anyhow::bail!("renounce_ownership emits {events:?}, not one OwnershipTransferred");
     };
     anyhow::ensure!(
-        transferred.previous_owner == owner.pubkey().to_bytes() && transferred.new_owner == [0; 32],
+        transferred.previous_owner == owner.pubkey() && transferred.new_owner == Pubkey::default(),
         "OwnershipTransferred {transferred:?} is not from the owner to the zero key"
     );
 
@@ -253,9 +252,9 @@ async fn upgrade_replaces_the_code_with_the_owners_buffer_announces_its_executab
         anyhow::bail!("upgrade emits {events:?}, not one Upgraded");
     };
     anyhow::ensure!(
-        upgraded.executable_hash == expected,
+        upgraded.implementation_hash == expected,
         "Upgraded announces {:02x?}, not the buffer's executable hash {expected:02x?}",
-        upgraded.executable_hash
+        upgraded.implementation_hash
     );
     let program_data = rpc
         .get_account_data(&derive_program_data_address(&program))

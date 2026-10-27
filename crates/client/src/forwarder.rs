@@ -413,7 +413,7 @@ pub(crate) mod tests {
         let ix = init_nonce_bitmap_ix(&forwarder, &payer, &user, 7);
 
         assert_eq!(ix.program_id, forwarder);
-        // Discriminator from idl/spl_token_forwarder.json, then the two args.
+        // Discriminator from idls/spl_token_forwarder.json, then the two args.
         assert_eq!(&ix.data[..8], &[214, 13, 125, 121, 72, 220, 241, 42]);
         assert_eq!(&ix.data[8..40], user.as_ref());
         assert_eq!(&ix.data[40..], &7u64.to_le_bytes());

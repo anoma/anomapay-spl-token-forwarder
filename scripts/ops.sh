@@ -579,6 +579,8 @@ case "$COMMAND" in
     require_cmd cargo
     cargo test --workspace
     cargo test -p spl-token-forwarder --features "$EMERGENCY_MIGRATING_FEATURES"
+    # The committed IDLs' event discriminators, which need the IDL types.
+    cargo test -p spl-token-forwarder --features idl-build --test event_signature
     ;;
   build-dev)
     require_cmd anchor
@@ -628,13 +630,13 @@ case "$COMMAND" in
     release_idl
     # The client bindings' copy of the IDL, which their decoders are tested
     # against, is the program's.
-    if ! cmp "$PROGRAM_IDL" crates/client/idl/spl_token_forwarder.json; then
-      echo "❌ crates/client/idl/spl_token_forwarder.json is not the program's IDL; copy $PROGRAM_IDL over it." >&2
+    if ! cmp "$PROGRAM_IDL" crates/client/idls/spl_token_forwarder.json; then
+      echo "❌ crates/client/idls/spl_token_forwarder.json is not the program's IDL; copy $PROGRAM_IDL over it." >&2
       exit 1
     fi
     emergency_migrating_idl
-    if ! cmp "$EMERGENCY_MIGRATING_IDL" crates/client/idl/emergency_migrating_spl_token_forwarder.json; then
-      echo "❌ crates/client/idl/emergency_migrating_spl_token_forwarder.json is not the emergency-migrating build's IDL; copy $EMERGENCY_MIGRATING_IDL over it." >&2
+    if ! cmp "$EMERGENCY_MIGRATING_IDL" crates/client/idls/emergency_migrating_spl_token_forwarder.json; then
+      echo "❌ crates/client/idls/emergency_migrating_spl_token_forwarder.json is not the emergency-migrating build's IDL; copy $EMERGENCY_MIGRATING_IDL over it." >&2
       exit 1
     fi
     yarn run typecheck

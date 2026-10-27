@@ -466,6 +466,7 @@ dependencies = [
 name = "anomapay-spl-token-forwarder-client"
 version = "0.4.0"
 dependencies = [
+ "anchor-lang",
  "anoma-pa-solana-client",
  "base64 0.22.1",
  "serde_json",
@@ -2875,7 +2876,7 @@ dependencies = [
 [[package]]
 name = "protocol-adapter"
 version = "2.0.0-rc.6"
-source = "git+https://github.com/anoma/solana-protocol-adapter?rev=46d67c46219f31518349efa79deaf1300cf2ea84#46d67c46219f31518349efa79deaf1300cf2ea84"
+source = "git+https://github.com/anoma/solana-protocol-adapter?rev=24c24d75c8c44d8d5b4892596eeab90f9a124ed3#24c24d75c8c44d8d5b4892596eeab90f9a124ed3"
 dependencies = [
  "anchor-lang",
  "anoma-rm-core",
@@ -2886,6 +2887,7 @@ dependencies = [
  "borsh",
  "hex-literal 1.1.0",
  "serde",
+ "sha2-const-stable",
  "solana-sha256-hasher",
 ]
 
@@ -5379,6 +5381,7 @@ dependencies = [
  "base64 0.21.7",
  "hex-literal 1.1.0",
  "protocol-adapter",
+ "serde_json",
  "solana-instructions-sysvar 5.0.0",
  "solana-sdk-ids",
  "solana-sha256-hasher",

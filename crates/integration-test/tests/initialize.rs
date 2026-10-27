@@ -192,7 +192,7 @@ async fn stores_its_configuration_announces_it_and_hands_the_upgrade_authority_t
         anyhow::bail!("initialize emits {events:?}, not OwnershipTransferred then Initialized");
     };
     anyhow::ensure!(
-        transferred.previous_owner == [0; 32] && transferred.new_owner == owner.to_bytes(),
+        transferred.previous_owner == Pubkey::default() && transferred.new_owner == owner,
         "OwnershipTransferred {transferred:?} is not from the zero key to {owner}"
     );
     anyhow::ensure!(

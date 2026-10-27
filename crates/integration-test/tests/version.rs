@@ -42,7 +42,7 @@ async fn the_forwarder_answers_with_the_release_its_idl_records() -> anyhow::Res
     let version = std::str::from_utf8(text)?;
 
     let idl: serde_json::Value =
-        serde_json::from_str(include_str!("../../client/idl/spl_token_forwarder.json"))?;
+        serde_json::from_str(include_str!("../../client/idls/spl_token_forwarder.json"))?;
     anyhow::ensure!(
         idl["metadata"]["version"] == version,
         "the deployed program answers {version}, the IDL records {}",

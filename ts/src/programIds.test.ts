@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import forwarderIdl from "../../crates/client/idl/spl_token_forwarder.json";
+import forwarderIdl from "../../crates/client/idls/spl_token_forwarder.json";
 import { FORWARDER_PROGRAM_ID } from "./programIds.js";
 
 describe("program ids", () => {

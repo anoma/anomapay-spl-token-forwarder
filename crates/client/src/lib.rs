@@ -8,6 +8,7 @@
 pub mod accounts;
 pub mod constants;
 pub mod events;
+pub mod generated;
 pub mod input;
 pub mod wrap_message;
 
@@ -29,10 +30,7 @@ pub use accounts::{
     AccountDecodeError, ConfigAccount, MigrationRecordAccount, NonceBitmapAccount,
 };
 pub use constants::*;
-pub use events::{
-    decode_forwarder_event_instruction, ForwarderEvent, InitializedEvent, LogicRefReplacedEvent,
-    MigratedEvent, UnwrappedEvent, VulnerableLogicRefListedEvent, WrappedEvent,
-};
+pub use events::{decode_forwarder_event_instruction, ForwarderEvent};
 pub use input::{
     decode_forwarder_input, encode_migrate_forwarder_input, encode_unwrap_forwarder_input,
     encode_wrap_forwarder_input, ForwarderInput, InputError, MigrateEntry, MigrateInput,
@@ -62,7 +60,7 @@ mod idl {
     pub(crate) fn idl() -> serde_json::Value {
         serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/idl/spl_token_forwarder.json"
+            "/idls/spl_token_forwarder.json"
         )))
         .unwrap()
     }
@@ -71,7 +69,7 @@ mod idl {
     pub(crate) fn emergency_migrating_idl() -> serde_json::Value {
         serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/idl/emergency_migrating_spl_token_forwarder.json"
+            "/idls/emergency_migrating_spl_token_forwarder.json"
         )))
         .unwrap()
     }

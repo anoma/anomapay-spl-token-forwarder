@@ -2,8 +2,8 @@ import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-tok
 import { Keypair, type PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY, SystemProgram } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
 
-import emergencyMigratingIdl from "../../crates/client/idl/emergency_migrating_spl_token_forwarder.json";
-import forwarderIdl from "../../crates/client/idl/spl_token_forwarder.json";
+import emergencyMigratingIdl from "../../crates/client/idls/emergency_migrating_spl_token_forwarder.json";
+import forwarderIdl from "../../crates/client/idls/spl_token_forwarder.json";
 import {
   FORWARDER_UNWRAP_NUM_ACCOUNTS,
   FORWARDER_WRAP_NUM_ACCOUNTS,

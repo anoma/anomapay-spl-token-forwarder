@@ -55,7 +55,7 @@ async function main() {
   const events = await forwarderEventsOfSignature(provider.connection, program.programId, signature);
   const upgraded = events.find((e): e is UpgradedEvent => e.name === "Upgraded");
   if (!upgraded) throw new Error(`transaction ${signature} landed without Upgraded`);
-  const announced = Buffer.from(upgraded.executableHash);
+  const announced = Buffer.from(upgraded.implementationHash);
   const deployed = await deployedExecutableHash(provider.connection, program.programId);
   if (!announced.equals(expected) || !deployed.equals(expected)) {
     throw new Error(

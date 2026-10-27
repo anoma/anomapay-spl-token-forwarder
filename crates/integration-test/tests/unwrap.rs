@@ -69,9 +69,7 @@ async fn settles_an_unwrap_the_recipient_receives_the_tokens_from_escrow() -> an
         anyhow::bail!("the settlement emits {events:?}, not one Unwrapped event");
     };
     anyhow::ensure!(
-        event.token == forwarder.mint.to_bytes()
-            && event.to == recipient.to_bytes()
-            && event.amount == AMOUNT,
+        event.token == forwarder.mint && event.to == recipient && event.amount == AMOUNT,
         "the Unwrapped event {event:?} is not the release of {AMOUNT} to {recipient}"
     );
     Ok(())

@@ -3,7 +3,9 @@
 // The forwarder emits every event as a self-invocation (Anchor `#[event_cpi]`):
 // an inner instruction whose program is the forwarder and whose data is the
 // 8-byte event tag, the event's 8-byte discriminator
-// (`sha256("event:<Name>")[..8]`), and the Borsh-encoded body. Readers pass
+// (`sha256("event:" ++ signature)[..8]`, the signature being the event's name
+// and its fields' IDL types in order, as `Wrapped(pubkey,pubkey,u64)`), and
+// the Borsh-encoded body. Readers pass
 // each forwarder-addressed inner instruction of a transaction through
 // `decodeForwarderEventInstruction`. Events never appear in the program log.
 
@@ -60,12 +62,12 @@ export interface OwnershipTransferredEvent {
 
 /**
  * The owner upgraded the forwarder to the code whose executable hash is
- * `executableHash` (sha256 of the code without trailing zero bytes, what
+ * `implementationHash` (sha256 of the code without trailing zero bytes, what
  * `solana-verify get-program-hash` reports), as ERC1967's `Upgraded`.
  */
 export interface UpgradedEvent {
   name: "Upgraded";
-  executableHash: Uint8Array;
+  implementationHash: Uint8Array;
 }
 
 /**
@@ -118,21 +120,31 @@ export class EventDecodeError extends Error {
   }
 }
 
-/** A Borsh `[u8; 32]`. */
-const bytes32 = transformDecoder(fixDecoderSize(getBytesDecoder(), 32), (b) => Uint8Array.from(b));
-const u64 = getU64Decoder();
+/** The Borsh decoder of a field type, with the type's name in the IDL. */
+type FieldDecoder = FixedSizeDecoder<Uint8Array | bigint> & { idlType: string };
 
-/** A body field: its name in the TypeScript event, and its Borsh decoder. */
-type BodyField = readonly [string, FixedSizeDecoder<Uint8Array | bigint>];
+/** A Borsh 32-byte field. */
+const bytes32 = transformDecoder(fixDecoderSize(getBytesDecoder(), 32), (b) => Uint8Array.from(b));
+const pubkey = { ...bytes32, idlType: "pubkey" };
+const array32 = { ...bytes32, idlType: "[u8;32]" };
+const u64 = { ...getU64Decoder(), idlType: "u64" };
+
+/** A body field: its name in the TypeScript event, and its decoder. */
+type BodyField = readonly [string, FieldDecoder];
+
+/** An event body's reader, and the event's signature. */
+type BodyReader<E> = ((body: Uint8Array) => E) & { signature: string };
 
 /**
  * The reader of event `name`'s body, whose Borsh fields are `fields` in
- * order. A body that ends inside a field names the field (by its name in the
- * program, snake_case); bytes past the last field are refused.
+ * order, with the event's signature: `name`, then the fields' IDL types in
+ * parentheses. A body that ends inside a field names the field (by its name in
+ * the program, snake_case); bytes past the last field are refused.
  */
 function bodyReader<N extends ForwarderEvent["name"], const F extends readonly BodyField[]>(name: N, fields: F) {
   const decoder = getStructDecoder(fields);
-  return (body: Uint8Array) => {
+  const signature = `${name}(${fields.map(([, field]) => field.idlType).join(",")})`;
+  return Object.assign((body: Uint8Array) => {
     let end = 0;
     for (const [field, fieldDecoder] of fields) {
       end += fieldDecoder.fixedSize;
@@ -145,41 +157,41 @@ function bodyReader<N extends ForwarderEvent["name"], const F extends readonly B
       throw new EventDecodeError(`${body.length - end} trailing byte(s) after the event body`);
     }
     return { name, ...decoder.decode(body) };
-  };
+  }, { signature });
 }
 
-const BODY_READERS: { [N in ForwarderEvent["name"]]: (body: Uint8Array) => Extract<ForwarderEvent, { name: N }> } = {
+const BODY_READERS: { [N in ForwarderEvent["name"]]: BodyReader<Extract<ForwarderEvent, { name: N }>> } = {
   Wrapped: bodyReader("Wrapped", [
-    ["token", bytes32],
-    ["from", bytes32],
+    ["token", pubkey],
+    ["from", pubkey],
     ["amount", u64],
   ]),
   Unwrapped: bodyReader("Unwrapped", [
-    ["token", bytes32],
-    ["to", bytes32],
+    ["token", pubkey],
+    ["to", pubkey],
     ["amount", u64],
   ]),
   Initialized: bodyReader("Initialized", [["version", u64]]),
   OwnershipTransferred: bodyReader("OwnershipTransferred", [
-    ["previousOwner", bytes32],
-    ["newOwner", bytes32],
+    ["previousOwner", pubkey],
+    ["newOwner", pubkey],
   ]),
-  Upgraded: bodyReader("Upgraded", [["executableHash", bytes32]]),
+  Upgraded: bodyReader("Upgraded", [["implementationHash", array32]]),
   LogicRefReplaced: bodyReader("LogicRefReplaced", [
-    ["previousLogicRef", bytes32],
-    ["newLogicRef", bytes32],
+    ["previousLogicRef", array32],
+    ["newLogicRef", array32],
   ]),
   Migrated: bodyReader("Migrated", [
-    ["token", bytes32],
-    ["vulnerableLogicRef", bytes32],
-    ["nullifier", bytes32],
+    ["token", pubkey],
+    ["vulnerableLogicRef", array32],
+    ["nullifier", array32],
   ]),
-  VulnerableLogicRefListed: bodyReader("VulnerableLogicRefListed", [["logicRef", bytes32]]),
+  VulnerableLogicRefListed: bodyReader("VulnerableLogicRefListed", [["logicRef", array32]]),
 };
 
-/** Each event's body reader, by the hex of its discriminator. */
+/** Each event's body reader, by the hex of its discriminator: the hash of its signature. */
 const READERS_BY_DISCRIMINATOR = new Map<string, (body: Uint8Array) => ForwarderEvent>(
-  Object.entries(BODY_READERS).map(([name, read]) => [bytesToHex(anchorDiscriminator("event", name)), read]),
+  Object.values(BODY_READERS).map((read) => [bytesToHex(anchorDiscriminator("event", read.signature)), read]),
 );
 
 const DISCRIMINATOR_END = EVENT_IX_TAG.length + 8;

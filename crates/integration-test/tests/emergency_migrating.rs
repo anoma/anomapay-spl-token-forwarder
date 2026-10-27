@@ -27,9 +27,12 @@ use anoma_rm_risc0::utils::bytes_to_words;
 use anomapay_spl_token_forwarder_client::emergency_migrating::{
     derive_migration_record_pda, derive_vulnerable_logic_refs_pda, reinitialize_ix,
 };
+use anomapay_spl_token_forwarder_client::generated::emergency_migrating_spl_token_forwarder::events::{
+    LogicRefReplaced, Migrated, VulnerableLogicRefListed,
+};
+use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::events::Initialized;
 use anomapay_spl_token_forwarder_client::{
-    CONFIG_VERSION, ForwarderEvent, LogicRefReplacedEvent, MigrateEntry, MigrateInput,
-    MigratedEvent, VulnerableLogicRefListedEvent, decode_migration_record,
+    CONFIG_VERSION, ForwarderEvent, MigrateEntry, MigrateInput, decode_migration_record,
     decode_vulnerable_logic_refs, encode_migrate_forwarder_input, forwarder_migrate_num_accounts,
 };
 use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
@@ -217,8 +220,8 @@ async fn migrated<P>(
     let expected: Vec<ForwarderEvent> = migrated
         .iter()
         .map(|&(vulnerable_logic_ref, nullifier)| {
-            ForwarderEvent::Migrated(MigratedEvent {
-                token: forwarder.mint.to_bytes(),
+            ForwarderEvent::Migrated(Migrated {
+                token: forwarder.mint,
                 vulnerable_logic_ref,
                 nullifier,
             })
@@ -351,17 +354,17 @@ async fn reinitialize_replaces_the_logic_ref_lists_the_passed_refs_and_announces
         &program,
     )?;
     let expected = vec![
-        ForwarderEvent::VulnerableLogicRefListed(VulnerableLogicRefListedEvent {
+        ForwarderEvent::VulnerableLogicRefListed(VulnerableLogicRefListed {
             logic_ref: bytes(first),
         }),
-        ForwarderEvent::VulnerableLogicRefListed(VulnerableLogicRefListedEvent {
+        ForwarderEvent::VulnerableLogicRefListed(VulnerableLogicRefListed {
             logic_ref: bytes(second),
         }),
-        ForwarderEvent::LogicRefReplaced(LogicRefReplacedEvent {
+        ForwarderEvent::LogicRefReplaced(LogicRefReplaced {
             previous_logic_ref: bytes(logic_ref()),
             new_logic_ref: bytes(new),
         }),
-        ForwarderEvent::Initialized(anomapay_spl_token_forwarder_client::InitializedEvent {
+        ForwarderEvent::Initialized(Initialized {
             version: EMERGENCY_MIGRATING_CONFIG_VERSION,
         }),
     ];

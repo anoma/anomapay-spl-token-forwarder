@@ -193,6 +193,81 @@
       "returns": "bytes"
     },
     {
+      "name": "init_migration_record",
+      "docs": [
+        "Create the migration record of the resource with `nullifier`, paid by",
+        "whoever signs, unless it exists, when it does nothing. Permissionless,",
+        "as `init_nonce_bitmap`: the record holds nothing but whether the",
+        "resource migrated, and a migration requires it to exist, since the",
+        "adapter forwards no signer that could pay for it."
+      ],
+      "discriminator": [
+        11,
+        34,
+        121,
+        185,
+        247,
+        39,
+        217,
+        204
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "migration_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  103,
+                  114,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "nullifier"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "_nullifier",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "init_nonce_bitmap",
       "docs": [
         "Create the nonce bitmap for one 256-nonce word of `user`, paid by",
@@ -426,15 +501,13 @@
     {
       "name": "reinitialize",
       "docs": [
-        "Rotate the logic ref, once per build that raises CONFIG_VERSION.",
-        "Mirrors the EVM forwarder's rotation: the owner upgrades the proxy to",
-        "an implementation whose `reinitializer(n)` writes the new ref",
-        "(`upgradeToAndCall`), and escrow and nonces stay. Here",
-        "the owner upgrades the program in place (`upgrade`) and then calls",
-        "this; it runs only while the config's version is below this build's.",
-        "Resources under the previous ref leave through the new one once the",
-        "kind table lists the previous version as its alias: a transaction",
-        "converts them, and the new resource unwraps."
+        "The emergency-migrating build's `reinitialize`, as the EVM draft's",
+        "`reinitialize(newLogicRef, vulnerableLogicRefs)`: once, after the",
+        "owner upgrades the forwarder in place to this build, the owner lists",
+        "the vulnerable logic refs, at least one, each denied on both of the",
+        "adapter's denylists, and sets the logic ref, on neither, or keeps it.",
+        "Emits `VulnerableLogicRefListed` per ref, `LogicRefReplaced` when the",
+        "logic ref changes, then `Initialized`."
       ],
       "discriminator": [
         135,
@@ -449,12 +522,32 @@
       "accounts": [
         {
           "name": "authority",
+          "writable": true,
           "signer": true
         },
         {
           "name": "config",
           "writable": true,
           "address": "6wu5mRw8RN1euy4AUsQoHTU5HraEGGXYhmrucG41bMdq"
+        },
+        {
+          "name": "vulnerable_logic_refs",
+          "docs": [
+            "until the first incident's `reinitialize` creates them, which grows",
+            "them at every later one."
+          ],
+          "writable": true,
+          "address": "Hg5mVf1cDV3bANYsdsxwp4rAFb5y5umMG7fKhsT6Qkai"
+        },
+        {
+          "name": "pa_state",
+          "docs": [
+            "config's adapter."
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
           "name": "event_authority"
@@ -465,12 +558,23 @@
       ],
       "args": [
         {
-          "name": "logic_ref",
+          "name": "new_logic_ref",
           "type": {
             "array": [
               "u8",
               32
             ]
+          }
+        },
+        {
+          "name": "vulnerable_logic_refs",
+          "type": {
+            "vec": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         }
       ]
@@ -701,6 +805,19 @@
       ]
     },
     {
+      "name": "MigrationRecord",
+      "discriminator": [
+        16,
+        36,
+        116,
+        243,
+        192,
+        61,
+        40,
+        1
+      ]
+    },
+    {
       "name": "NonceBitmap",
       "discriminator": [
         154,
@@ -718,66 +835,105 @@
     {
       "name": "Initialized",
       "discriminator": [
-        208,
+        167,
+        111,
+        190,
+        136,
+        109,
+        29,
+        191,
+        90
+      ]
+    },
+    {
+      "name": "LogicRefReplaced",
+      "discriminator": [
+        247,
+        53,
+        158,
         213,
-        115,
-        98,
-        115,
-        82,
+        33,
+        165,
         201,
-        209
+        225
+      ]
+    },
+    {
+      "name": "Migrated",
+      "discriminator": [
+        181,
+        32,
+        135,
+        150,
+        54,
+        73,
+        55,
+        54
       ]
     },
     {
       "name": "OwnershipTransferred",
       "discriminator": [
-        172,
-        61,
-        205,
-        183,
-        250,
-        50,
-        38,
-        98
+        71,
+        234,
+        56,
+        148,
+        14,
+        39,
+        34,
+        42
       ]
     },
     {
       "name": "Unwrapped",
       "discriminator": [
-        25,
-        86,
-        93,
-        80,
-        145,
-        113,
-        86,
-        93
+        154,
+        254,
+        126,
+        18,
+        244,
+        97,
+        129,
+        147
       ]
     },
     {
       "name": "Upgraded",
       "discriminator": [
-        138,
-        25,
-        89,
-        37,
-        127,
-        140,
-        213,
-        146
+        136,
+        228,
+        110,
+        228,
+        183,
+        148,
+        97,
+        109
+      ]
+    },
+    {
+      "name": "VulnerableLogicRefListed",
+      "discriminator": [
+        156,
+        34,
+        116,
+        82,
+        169,
+        152,
+        235,
+        121
       ]
     },
     {
       "name": "Wrapped",
       "discriminator": [
-        11,
-        127,
-        145,
-        31,
-        206,
-        134,
-        73,
-        130
+        255,
+        133,
+        209,
+        238,
+        236,
+        4,
+        112,
+        232
       ]
     }
   ],
@@ -931,6 +1087,76 @@
       "code": 6029,
       "name": "Unauthorized",
       "msg": "Unauthorized: the signer does not hold the authority this instruction requires"
+    },
+    {
+      "code": 6030,
+      "name": "LogicRefNotDenied",
+      "msg": "A denylist of the adapter lacks a vulnerable logic ref"
+    },
+    {
+      "code": 6031,
+      "name": "LogicRefAlreadyDenied",
+      "msg": "A denylist of the adapter holds the new logic ref"
+    },
+    {
+      "code": 6032,
+      "name": "EmptyVulnerableLogicRefList",
+      "msg": "reinitialize lists no vulnerable logic ref"
+    },
+    {
+      "code": 6033,
+      "name": "LogicRefAlreadyVulnerable",
+      "msg": "The logic ref is listed as vulnerable already"
+    },
+    {
+      "code": 6034,
+      "name": "LogicRefNotVulnerable",
+      "msg": "The logic ref is not listed as vulnerable"
+    },
+    {
+      "code": 6035,
+      "name": "NonExistingRoot",
+      "msg": "The root is not a historical root of the adapter"
+    },
+    {
+      "code": 6036,
+      "name": "UnknownForwarder",
+      "msg": "The resource's label names neither this forwarder nor the legacy forwarder"
+    },
+    {
+      "code": 6037,
+      "name": "EmptyMigrationBatch",
+      "msg": "The migration names no resource"
+    },
+    {
+      "code": 6038,
+      "name": "ResourceAlreadyConsumed",
+      "msg": "The adapter consumed the resource already"
+    },
+    {
+      "code": 6039,
+      "name": "ResourceAlreadyMigrated",
+      "msg": "The forwarder migrated the resource already"
+    },
+    {
+      "code": 6040,
+      "name": "MigrationRecordMissing",
+      "msg": "Migration record does not exist - create it with init_migration_record before the migration"
+    },
+    {
+      "code": 6041,
+      "name": "InvalidMigrationRecordPda",
+      "msg": "Invalid migration record PDA - doesn't match the nullifier's derived address"
+    },
+    {
+      "code": 6042,
+      "name": "InvalidVulnerableLogicRefsPda",
+      "msg": "Invalid vulnerable logic refs PDA - doesn't match the derived address"
+    },
+    {
+      "code": 6043,
+      "name": "NullifierPdaMismatch",
+      "msg": "Nullifier PDA mismatch - not the adapter's marker of the nullifier"
     }
   ],
   "types": [
@@ -998,6 +1224,101 @@
           {
             "name": "version",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LogicRefReplaced",
+      "docs": [
+        "Mirrors EVM: `event LogicRefReplaced(bytes32 indexed previousLogicRef,",
+        "bytes32 indexed newLogicRef);`"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "previous_logic_ref",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "new_logic_ref",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Migrated",
+      "docs": [
+        "Mirrors EVM: `event Migrated(address indexed token, bytes32 indexed",
+        "vulnerableLogicRef, bytes32 indexed nullifier);`. A migration moves no",
+        "tokens, so an indexer adding up the `Wrapped` and `Unwrapped` amounts must",
+        "not count it."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "token",
+            "type": "pubkey"
+          },
+          {
+            "name": "vulnerable_logic_ref",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "nullifier",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "MigrationRecord",
+      "docs": [
+        "Whether the resource with a nullifier migrated, as the EVM draft's",
+        "`_isNullifierMigrated`. The adapter forwards no signer to a forwarder, so",
+        "a migration cannot create this account: the permissionless",
+        "`init_migration_record` creates it beforehand, as `init_nonce_bitmap`",
+        "creates a wrap's bitmap, and a migration sets `migrated`.",
+        "",
+        "Seeds: [\"migration_record\", nullifier]."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "migrated",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "The canonical bump of the record's address, stored by",
+              "`init_migration_record`."
+            ],
+            "type": "u8"
           }
         ]
       }
@@ -1082,13 +1403,33 @@
       "name": "Upgraded",
       "docs": [
         "Mirrors ERC1967: `event Upgraded(address indexed implementation);`, the",
-        "new code named by its executable hash, as the adapter's `UpgradedEvent`."
+        "new code named by its executable hash, as the adapter's `Upgraded`."
       ],
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "executable_hash",
+            "name": "implementation_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "VulnerableLogicRefListed",
+      "docs": [
+        "Mirrors EVM: `event VulnerableLogicRefListed(bytes32 indexed logicRef);`"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "logic_ref",
             "type": {
               "array": [
                 "u8",
@@ -1132,12 +1473,13 @@
     {
       "name": "CONFIG_VERSION",
       "docs": [
-        "The config version this build initializes to and reinitializes to, as",
-        "the `n` of an OpenZeppelin `reinitializer(n)`. A build that rotates the",
-        "logic ref raises it by one, so its `reinitialize` runs once."
+        "The config version the emergency-migrating build reinitializes to: one",
+        "more than the production build it upgrades, as the EVM draft's",
+        "`reinitializer(2)` is one more than `ERC20Forwarder.initialize`'s",
+        "version, so its `reinitialize` runs once."
       ],
       "type": "u64",
-      "value": "7"
+      "value": "8"
     },
     {
       "name": "ESCROW_SEED",
@@ -1146,6 +1488,26 @@
       ],
       "type": "bytes",
       "value": "[101, 115, 99, 114, 111, 119]"
+    },
+    {
+      "name": "LEGACY_FORWARDER",
+      "docs": [
+        "The legacy SPL token forwarder of the cluster, whose resources can",
+        "emergency-migrate too because its balances moved to this forwarder, or",
+        "the zero key on a cluster without one, as the EVM draft's",
+        "`LEGACY_FORWARDER`. It comes from env/<cluster>.env, as the EVM draft's",
+        "constructor argument comes from the chain's deployment record."
+      ],
+      "type": "pubkey",
+      "value": "11111111111111111111111111111111"
+    },
+    {
+      "name": "MIGRATION_RECORD_SEED",
+      "docs": [
+        "The seed of a migrated resource's record, one per nullifier."
+      ],
+      "type": "bytes",
+      "value": "[109, 105, 103, 114, 97, 116, 105, 111, 110, 95, 114, 101, 99, 111, 114, 100]"
     },
     {
       "name": "NONCES_PER_WORD",
@@ -1161,9 +1523,26 @@
       "value": "[110, 111, 110, 99, 101, 95, 98, 105, 116, 109, 97, 112]"
     },
     {
+      "name": "OP_MIGRATE",
+      "docs": [
+        "The op byte of a `forward_call` input that migrates resources, after",
+        "`OP_WRAP` and `OP_UNWRAP`, as the EVM draft's call type `Migrate`."
+      ],
+      "type": "u8",
+      "value": "2"
+    },
+    {
       "name": "OP_UNWRAP",
       "type": "u8",
       "value": "1"
+    },
+    {
+      "name": "VULNERABLE_LOGIC_REFS_SEED",
+      "docs": [
+        "The seed of the vulnerable logic refs' account."
+      ],
+      "type": "bytes",
+      "value": "[118, 117, 108, 110, 101, 114, 97, 98, 108, 101, 95, 108, 111, 103, 105, 99, 95, 114, 101, 102, 115]"
     }
   ]
 }

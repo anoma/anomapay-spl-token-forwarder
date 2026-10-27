@@ -7,10 +7,13 @@ description = "Client bindings for the AnomaPay SPL token forwarder: instruction
 repository = "https://github.com/anoma/anomapay-spl-token-forwarder"
 
 [dependencies]
-# The adapter's client: the Anchor discriminators, the event framing and the
-# event bodies both programs emit, and the event-authority PDA.
+# The adapter's client: the Anchor discriminators, the event framing, and the
+# event-authority PDA.
 anoma-pa-solana-client = { workspace = true }
-# Pure deps: the wire formats and event decoders compile for any target.
+# The generated bindings (`declare_program!` over `idls/`): the event types
+# and their discriminators.
+anchor-lang = { workspace = true }
+# Pure deps: the wire formats compile for any target.
 base64 = "0.22"
 sha2 = "0.10"
 
@@ -48,3 +51,8 @@ solana = [
 # The submitter's plug-in: `SplTokenForwarder`, the adapter client's
 # `Forwarder` for this program.
 rpc = ["solana", "anoma-pa-solana-client/rpc", "dep:solana-rpc-client"]
+
+# The cfgs `declare_program!`'s output tests: the Solana target, and the
+# `idl-build` feature of a program crate, which this crate is not.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))', 'cfg(feature, values("idl-build"))'] }

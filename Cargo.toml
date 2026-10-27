@@ -13,10 +13,10 @@ solana = "4.3.0"
 # published Anchor has the fix (1.2.1 does not).
 anchor-lang = { git = "https://github.com/otter-sec/anchor", rev = "2c9747a2d31bd5e94745cee6c083577f3e6675c0" }
 # The adapter this forwarder is built against: its program crate (the state
-# layout, the upgrade helpers) and its client: the adapter commit whose
-# integration-test harness the tests use and the client that harness pins,
-# so the tests link one copy of the client.
-protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "46d67c46219f31518349efa79deaf1300cf2ea84", default-features = false, features = ["no-entrypoint"] }
+# layout, the upgrade helpers, the event discriminators), and its client at
+# the commit the integration tests' harness pins, so the tests link one copy
+# of the client.
+protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "24c24d75c8c44d8d5b4892596eeab90f9a124ed3", default-features = false, features = ["no-entrypoint"] }
 anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "7ed4f3ee29ec4f8840fd20599e28f2e50a79fb37", default-features = false }
 
 [profile.release]
