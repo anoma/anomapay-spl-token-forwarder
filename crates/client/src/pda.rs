@@ -42,11 +42,12 @@ mod tests {
     #[test]
     fn forwarder_escrow_authority_matches_the_devnet_forwarder() {
         // Independent pin: the devnet forwarder's escrow authority, as
-        // docs/DEVNET_DEPLOYMENT.md records it.
+        // `solana find-program-derived-address <forwarder> string:escrow`
+        // derives it.
         let (authority, bump) = derive_forwarder_escrow_authority(&FORWARDER_PROGRAM_ID);
         assert_eq!(
             authority.to_string(),
-            "G78SQtzYuo4YKDEECzh25rckXeJFjLMXy44iWKKG5rDG"
+            "A3srA2cw6o11TCSyMpBbnpLVnu6RLe6eGZEFz3d2m8h1"
         );
         assert_eq!(bump, 255);
     }

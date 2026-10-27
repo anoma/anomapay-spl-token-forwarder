@@ -4,7 +4,15 @@ Live state is always what `./scripts/dev.sh status --cluster devnet` reports; th
 
 **Record last verified:** 2026-10-22
 
-## Current deployment (since 2026-10-01)
+## Fresh deployment (addresses since 2026-10-27, not yet deployed)
+
+A deployment from scratch under new program IDs, for the clients generated from the programs' IDLs; the 2026-10-01 deployment below stays on devnet, unused. `env/devnet.env` names its addresses, and the operator's uncommitted `env/devnet.keys.env` names the program keypair, kept outside the repository.
+
+| Program | ID | State |
+|---|---|---|
+| SPL Token Forwarder | `34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4` | not yet deployed; to be initialized with the adapter `2gH5DnTwDLLFk3oYxnbrceSFdTMtvaxQz29x5W8Etmpx`, recorded in the adapter repository's record |
+
+## Deployment of 2026-10-01 (unused since 2026-10-27)
 
 Deployed 2026-10-01 by the operator wallet `5S8LtbDPtQE7GtWWMBFY78gmiYp2LqS5BsoFDxKjoHr9`, for the adapter `5zeqkB3kc9fd1RvaXB2GeMB53Jgf98QJtaFK38e6tTsc`. Since 2026-10-03 that wallet is the forwarder's stored owner, and the forwarder's upgrade authority is its own PDA `2z6EPiBxM5Pfubmrouj8qSCZJrSveuDEbe2xvNbVzgvd` (seed `upgrade_authority`); upgrades go through its owner-only `upgrade` (`dev.sh upgrade`). The deployment's settlement lookup table `4UFsq2ks2DcC29ErmEeHxqXWKLRWo26vs4W65S89bpWn` holds the forwarder's accounts and the test mint `9EHEFzyuY7sZEzTVm7C3uMkNZFMgm5ZeWjGjirZ3MVfr`'s escrow; it was closed 2026-10-13 (deactivated `3vFpJi5w65rCe9SJUHX3BisZpXrop7Kpnub7DCch5e4BuntfogXX5ziKdRKN1YkgphpQmQsjvwJeTn2UQU8NFtHY`, closed `44gGxJc4diRTuYe2xyN2XzLoHhiv49gUxvN7U5GPb5M7FhrNPu6LHTEEwcf1bp4p1aLPrL7auLc8FZ8c92W7VUh8`), since settlements are v1 transactions, which take no lookup table.
 

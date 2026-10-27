@@ -4,7 +4,7 @@ use solana_pubkey::{pubkey, Pubkey};
 
 /// SPL Token Forwarder program ID: the V2 forwarder's declared id, under which
 /// this repository builds and deploys it.
-pub const FORWARDER_PROGRAM_ID: Pubkey = pubkey!("BsfuXpxw8oCmZXnYijyQkUYNcCnuskFZbYizmWLnpSU7");
+pub const FORWARDER_PROGRAM_ID: Pubkey = pubkey!("34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4");
 
 #[cfg(test)]
 mod tests {

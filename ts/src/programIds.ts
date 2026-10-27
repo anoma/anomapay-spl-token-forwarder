@@ -7,5 +7,5 @@ import { PublicKey } from "@solana/web3.js";
  * this repository builds and deploys it.
  */
 export const FORWARDER_PROGRAM_ID = new PublicKey(
-  "BsfuXpxw8oCmZXnYijyQkUYNcCnuskFZbYizmWLnpSU7",
+  "34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4",
 );

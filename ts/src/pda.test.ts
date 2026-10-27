@@ -30,9 +30,10 @@ describe("PDA derivation", () => {
 
   it("forwarder escrow authority is the devnet forwarder's", () => {
     // Independent pin: the devnet forwarder's escrow authority, as
-    // docs/DEVNET_DEPLOYMENT.md records it; the Rust crate pins the same value.
+    // `solana find-program-derived-address <forwarder> string:escrow` derives
+    // it; the Rust crate pins the same value.
     const [authority, bump] = deriveForwarderEscrowAuthority(FORWARDER_PROGRAM_ID);
-    expect(authority.toBase58()).toBe("G78SQtzYuo4YKDEECzh25rckXeJFjLMXy44iWKKG5rDG");
+    expect(authority.toBase58()).toBe("A3srA2cw6o11TCSyMpBbnpLVnu6RLe6eGZEFz3d2m8h1");
     expect(bump).toBe(255);
   });
 });
