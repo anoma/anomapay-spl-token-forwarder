@@ -76,7 +76,7 @@ solana = [
   "dep:spl-associated-token-account-interface",
   "dep:spl-token-interface",
 ]
-# The submitter's plug-in (`submitter::SplTokenForwarder`, the adapter
+# The submitter's plug-in (`submitter::SplTokenForwarderCalls`, the adapter
 # client's `Forwarder` for this program) and the instances of both builds
 # (`instance`).
 rpc = [
