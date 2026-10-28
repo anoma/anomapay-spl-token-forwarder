@@ -92,25 +92,90 @@ fn the_staging_devnet_program_is_the_vendored_idls_address() {
     }
 }
 
+/// The env file `cluster`'s deployment is built and operated with
+/// (`env/<cluster>.env`).
+fn env_file(cluster: ClusterType) -> &'static str {
+    match cluster {
+        ClusterType::Devnet => include_str!("../../../env/devnet.env"),
+        other => panic!("no env file is named for {other:?}; name env/<cluster>.env here"),
+    }
+}
+
+/// The value `env_file` sets `variable` to, which it sets once.
+fn env_value<'a>(env_file: &'a str, variable: &str) -> &'a str {
+    let prefix = format!("{variable}=");
+    let values: Vec<&str> = env_file
+        .lines()
+        .filter_map(|line| line.strip_prefix(prefix.as_str()))
+        .collect();
+    assert_eq!(
+        values.len(),
+        1,
+        "the env file sets {variable} {} times: {values:?}",
+        values.len()
+    );
+    values[0]
+}
+
 /// The operator scripts deploy and operate the devnet forwarder at
 /// `env/devnet.env`'s `FORWARDER_PROGRAM_ID`: the record names the same one.
 #[test]
 fn the_records_devnet_address_is_env_devnets() {
     let devnet = staging_devnet_entry();
-    let env_file = include_str!("../../../env/devnet.env");
-    let lines: Vec<&str> = env_file
-        .lines()
-        .filter_map(|line| line.strip_prefix("FORWARDER_PROGRAM_ID="))
-        .collect();
-    assert_eq!(
-        lines.len(),
-        1,
-        "env/devnet.env sets FORWARDER_PROGRAM_ID {} times",
-        lines.len()
-    );
+    let address = env_value(env_file(ClusterType::Devnet), "FORWARDER_PROGRAM_ID");
     println!(
-        "staging devnet: {}, env/devnet.env: {}",
-        devnet["programId"], lines[0]
+        "staging devnet: {}, env/devnet.env: {address}",
+        devnet["programId"]
     );
-    assert_eq!(devnet["programId"].as_str(), Some(lines[0]));
+    assert_eq!(devnet["programId"].as_str(), Some(address));
+}
+
+/// The emergency-migrating build a cluster runs takes its legacy forwarder
+/// from the cluster's env file, and its instance answers
+/// `legacy_forwarder` from the IDL's `LEGACY_FORWARDER`: each recorded
+/// cluster's env file names the IDL's, and the record's program is the env
+/// file's.
+#[test]
+fn every_recorded_clusters_env_file_names_the_idls_legacy_forwarder_and_program() {
+    let idl: serde_json::Value = serde_json::from_str(include_str!(
+        "../idls/emergency_migrating_spl_token_forwarder.json"
+    ))
+    .unwrap();
+    let declared = idl["constants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|constant| constant["name"] == "LEGACY_FORWARDER")
+        .expect("the emergency-migrating IDL declares LEGACY_FORWARDER")["value"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let mut checked = 0;
+    for environment in ENVIRONMENTS {
+        for entry in raw_entries(environment) {
+            let cluster = cluster_of(&entry);
+            let env = env_file(cluster);
+            let legacy = env_value(env, "LEGACY_FORWARDER_PROGRAM_ID");
+            let program = env_value(env, "FORWARDER_PROGRAM_ID");
+            println!(
+                "{environment:?} {cluster:?}: LEGACY_FORWARDER_PROGRAM_ID {legacy}, the IDL's \
+                 LEGACY_FORWARDER {declared}; FORWARDER_PROGRAM_ID {program}, recorded {}",
+                entry["programId"]
+            );
+            assert_eq!(
+                legacy, declared,
+                "{environment:?} {cluster:?}: env/<cluster>.env's LEGACY_FORWARDER_PROGRAM_ID is \
+                 {legacy}, the emergency-migrating IDL's LEGACY_FORWARDER is {declared}"
+            );
+            assert_eq!(
+                entry["programId"].as_str(),
+                Some(program),
+                "{environment:?} {cluster:?}: the record's program is {}, the env file's \
+                 FORWARDER_PROGRAM_ID is {program}",
+                entry["programId"]
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 0, "the record has no entry to check");
 }
