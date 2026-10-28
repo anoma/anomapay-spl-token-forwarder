@@ -81,8 +81,7 @@ fn the_generated_migration_record_reads_the_programs() {
 }
 
 /// The client derives a resource's migration record address from the
-/// program's own seed. The IDL cannot check it: its seeds name the arg
-/// `nullifier`, which it lists as the handler's `_nullifier`.
+/// program's own seed.
 #[test]
 fn the_clients_migration_record_address_is_the_programs() {
     for nullifier in [[0u8; 32], [3; 32], [0xff; 32]] {

@@ -598,9 +598,8 @@ acct 8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR false false
     /// account name.
     /// The address the IDL gives the instruction account `account` of
     /// `program`: its fixed address, or its PDA when every seed is a
-    /// constant. None for a PDA with an `arg` seed: the IDLs name those
-    /// seeds' args with the handlers' underscored names, so no arg resolves
-    /// them.
+    /// constant. None for a PDA with an `arg` seed, whose value the account
+    /// alone does not give.
     pub(crate) fn idl_address(account: &serde_json::Value, program: &Pubkey) -> Option<Pubkey> {
         if let Some(address) = account["address"].as_str() {
             return Some(address.parse().unwrap());

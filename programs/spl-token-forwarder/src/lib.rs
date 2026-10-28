@@ -185,8 +185,12 @@ pub mod spl_token_forwarder {
     #[cfg(feature = "emergency-migrating")]
     pub fn init_migration_record(
         ctx: Context<InitMigrationRecord>,
-        _nullifier: [u8; 32],
+        nullifier: [u8; 32],
     ) -> Result<()> {
+        // Only the record's seeds read it, through `#[instruction]`. The IDL
+        // names the arg after this binding, and Anchor's TS resolver fills
+        // the seed by that name.
+        let _ = nullifier;
         ctx.accounts.migration_record.bump = ctx.bumps.migration_record;
         Ok(())
     }
@@ -281,9 +285,12 @@ pub mod spl_token_forwarder {
     /// written.
     pub fn init_nonce_bitmap(
         ctx: Context<InitNonceBitmap>,
-        _user: Pubkey,
-        _word_index: u64,
+        user: Pubkey,
+        word_index: u64,
     ) -> Result<()> {
+        // Only the bitmap's seeds read them, through `#[instruction]`, as in
+        // `init_migration_record`.
+        let _ = (user, word_index);
         ctx.accounts.nonce_bitmap.bump = ctx.bumps.nonce_bitmap;
         Ok(())
     }
