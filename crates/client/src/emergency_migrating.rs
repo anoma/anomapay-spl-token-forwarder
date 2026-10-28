@@ -171,7 +171,7 @@ acct 11111111111111111111111111111111 false false
 
     #[test]
     fn reinitialize_matches_the_idl() {
-        let forwarder = crate::generated::spl_token_forwarder::ID;
+        let forwarder = crate::generated::emergency_migrating_spl_token_forwarder::ID;
         let (owner, adapter) = (Pubkey::new_unique(), Pubkey::new_unique());
         let ix = reinitialize_ix(&forwarder, &owner, &adapter, [9; 32], &[[1; 32], [2; 32]]);
         let args = [
@@ -191,7 +191,7 @@ acct 11111111111111111111111111111111 false false
 
     #[test]
     fn init_migration_record_matches_the_idl() {
-        let forwarder = crate::generated::spl_token_forwarder::ID;
+        let forwarder = crate::generated::emergency_migrating_spl_token_forwarder::ID;
         let payer = Pubkey::new_unique();
         let ix = init_migration_record_ix(&forwarder, &payer, &[5; 32]);
         let idl = crate::idl::emergency_migrating_idl();

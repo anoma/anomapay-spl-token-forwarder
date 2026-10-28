@@ -25,7 +25,9 @@ pub fn forwarder_migrate_num_accounts(entries: usize) -> Option<u8> {
     u8::try_from(entries.checked_mul(3)?.checked_add(before_entries)?).ok()
 }
 
-/// Size of a nonce-bitmap account: the Anchor discriminator, the 256-bit word
-/// and the bump. A settlement's payer funds its rent when a wrap's word has no
-/// bitmap yet.
-pub const NONCE_BITMAP_ACCOUNT_SIZE: usize = 8 + 32 + 1;
+/// Size of a nonce-bitmap account: the Anchor discriminator and the
+/// `NonceBitmap` the IDL declares (the 256-bit word and the bump), as
+/// `build.rs` reads them from the IDL. A settlement's payer funds its rent
+/// when a wrap's word has no bitmap yet.
+pub const NONCE_BITMAP_ACCOUNT_SIZE: usize =
+    include!(concat!(env!("OUT_DIR"), "/nonce_bitmap_account_size.rs"));

@@ -27,19 +27,47 @@ solana-sdk-ids = { version = "3", optional = true }
 spl-associated-token-account-interface = { version = "2", optional = true }
 spl-token-interface = { version = "3", optional = true }
 
-# The submitter's plug-in (`rpc` feature): the adapter client's `Forwarder`
-# for this program.
+# The deployment record (`solana` feature): `deployments.json`.
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+
+# The submitter's plug-in and the instances (`rpc` feature): the adapter
+# client's `Forwarder` for this program, and the program's state read and
+# its `version` simulated over an RPC.
+solana-message = { version = "4", optional = true }
 solana-rpc-client = { version = "4", optional = true }
+solana-rpc-client-api = { version = "4", optional = true }
+solana-signature = { version = "3", optional = true }
+solana-transaction = { version = "4", optional = true }
+solana-transaction-error = { version = "3", optional = true }
+
+[build-dependencies]
+# Reads the IDL's account layouts for `build.rs`.
+serde_json = "1.0"
 
 [dev-dependencies]
-# Reads the vendored IDL.
+# Reads the vendored IDLs and the deployment record.
 serde_json = "1.0"
+# The clusters the record's chain ids name.
+solana-cluster-type = "3"
+tokio = { version = "1", features = ["macros", "rt"] }
+
+[[test]]
+name = "deployments"
+required-features = ["solana"]
+
+[[test]]
+name = "deployed"
+required-features = ["rpc"]
 
 [features]
 default = ["solana"]
-# The instruction builders, CPI segments and PDA derivation.
+# The instruction builders, CPI segments, PDA derivation and the deployment
+# record.
 solana = [
   "anoma-pa-solana-client/solana",
+  "dep:serde",
+  "dep:serde_json",
   "dep:solana-compute-budget-interface",
   "dep:solana-ed25519-program",
   "dep:solana-instruction",
@@ -48,9 +76,19 @@ solana = [
   "dep:spl-associated-token-account-interface",
   "dep:spl-token-interface",
 ]
-# The submitter's plug-in: `SplTokenForwarder`, the adapter client's
-# `Forwarder` for this program.
-rpc = ["solana", "anoma-pa-solana-client/rpc", "dep:solana-rpc-client"]
+# The submitter's plug-in (`submitter::SplTokenForwarder`, the adapter
+# client's `Forwarder` for this program) and the instances of both builds
+# (`instance`).
+rpc = [
+  "solana",
+  "anoma-pa-solana-client/rpc",
+  "dep:solana-message",
+  "dep:solana-rpc-client",
+  "dep:solana-rpc-client-api",
+  "dep:solana-signature",
+  "dep:solana-transaction",
+  "dep:solana-transaction-error",
+]
 
 # The cfgs `declare_program!`'s output tests: the Solana target, and the
 # `idl-build` feature of a program crate, which this crate is not.

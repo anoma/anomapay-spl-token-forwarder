@@ -25,15 +25,14 @@ use anoma_rm_risc0::Digest;
 use anoma_rm_risc0::resource::Resource;
 use anoma_rm_risc0::utils::bytes_to_words;
 use anomapay_spl_token_forwarder_client::emergency_migrating::{
-    derive_migration_record_pda, derive_vulnerable_logic_refs_pda, reinitialize_ix,
+    derive_vulnerable_logic_refs_pda, reinitialize_ix,
 };
-use anchor_lang::AccountDeserialize;
-use anomapay_spl_token_forwarder_client::generated::emergency_migrating_spl_token_forwarder::accounts::MigrationRecord;
 use anomapay_spl_token_forwarder_client::generated::emergency_migrating_spl_token_forwarder::constants::CONFIG_VERSION as EMERGENCY_MIGRATING_CONFIG_VERSION;
 use anomapay_spl_token_forwarder_client::generated::emergency_migrating_spl_token_forwarder::events::{
     Initialized, LogicRefReplaced, Migrated, VulnerableLogicRefListed,
 };
 use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::constants::CONFIG_VERSION;
+use anomapay_spl_token_forwarder_client::instance::EmergencyMigratingSplTokenForwarder;
 use anomapay_spl_token_forwarder_client::{
     MigrateEntry, MigrateInput, decode_vulnerable_logic_refs, encode_migrate_forwarder_input,
     forwarder_migrate_num_accounts,
@@ -110,28 +109,17 @@ async fn listed(env: &LocalEnv, program: &Pubkey) -> anyhow::Result<Vec<[u8; 32]
     Ok(decode_vulnerable_logic_refs(&data)?)
 }
 
-/// Whether the forwarder migrated the resource with `nullifier`, as the EVM
-/// draft's `isNullifierMigrated`: its record exists and says so.
+/// Whether the forwarder migrated the resource with `nullifier`, as the
+/// instance reads the EVM draft's `isNullifierMigrated`.
 async fn is_migrated<P>(
     env: &Environment<P>,
     program: &Pubkey,
     nullifier: [u8; 32],
 ) -> anyhow::Result<bool> {
-    let record = derive_migration_record_pda(program, &nullifier).0;
-    let rpc = &env.protocol_adapter.rpc;
     Ok(
-        match rpc
-            .get_account_with_commitment(&record, rpc.commitment())
-            .await?
-            .value
-        {
-            Some(account) => {
-                MigrationRecord::try_deserialize(&mut account.data.as_slice())
-                    .with_context(|| format!("the account {record} is not a migration record"))?
-                    .migrated
-            }
-            None => false,
-        },
+        EmergencyMigratingSplTokenForwarder::at(&env.protocol_adapter.rpc, *program)
+            .is_nullifier_migrated(&nullifier)
+            .await?,
     )
 }
 
@@ -652,6 +640,134 @@ async fn a_migration_records_every_nullifier_and_moves_no_tokens() -> anyhow::Re
         &before,
     )
     .await
+}
+
+/// The release the emergency-migrating build's IDL records, which its
+/// `version` answers.
+fn emergency_migrating_idl_version() -> anyhow::Result<String> {
+    let idl: serde_json::Value = serde_json::from_str(include_str!(
+        "../../client/idls/emergency_migrating_spl_token_forwarder.json"
+    ))?;
+    idl["metadata"]["version"]
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| anyhow::anyhow!("the IDL records no version: {}", idl["metadata"]))
+}
+
+/// `env/localnet.env`'s `LEGACY_FORWARDER_PROGRAM_ID`, which the local
+/// builds are built with.
+fn localnet_legacy_forwarder() -> anyhow::Result<Pubkey> {
+    let value = include_str!("../../../env/localnet.env")
+        .lines()
+        .find_map(|line| line.strip_prefix("LEGACY_FORWARDER_PROGRAM_ID="))
+        .context("env/localnet.env names no LEGACY_FORWARDER_PROGRAM_ID")?;
+    value
+        .parse()
+        .with_context(|| format!("LEGACY_FORWARDER_PROGRAM_ID={value} is not base58"))
+}
+
+// The client's emergency-migrating instance (`instance::
+// EmergencyMigratingSplTokenForwarder`) on the forwarder of an incident.
+// Before `reinitialize` it lists no logic ref and holds no migration record,
+// and its marker reads answer false, as the EVM draft's empty storage does.
+// After `reinitialize` lists the transfer logic ref and one migration records
+// the wrapped resource, every read answers that.
+#[tokio::test(flavor = "multi_thread")]
+async fn every_read_of_the_emergency_migrating_instance_answers_the_incident() -> anyhow::Result<()>
+{
+    let mut incident = before_the_incident(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
+    let rpc = incident.env.protocol_adapter.rpc.clone();
+    let program = incident.local.forwarder.program;
+    let instance = EmergencyMigratingSplTokenForwarder::at(&rpc, program);
+    let vulnerable = bytes(logic_ref());
+    let unlisted = bytes(random_logic_ref());
+    let entry = incident.entry()?;
+
+    let listed_before = instance.is_logic_ref_vulnerable(&vulnerable).await?;
+    let migrated_before = instance.is_nullifier_migrated(&entry.nullifier).await?;
+    println!(
+        "before reinitialize: is_logic_ref_vulnerable {listed_before}, \
+         is_nullifier_migrated {migrated_before}"
+    );
+    anyhow::ensure!(
+        !listed_before && !migrated_before,
+        "before reinitialize the forwarder lists the transfer logic ref ({listed_before}) or \
+         migrated the wrapped resource ({migrated_before})"
+    );
+
+    incident.deny_and_reinitialize().await?;
+    let tx = incident.prove_migration(vec![entry.clone()], 1).await?;
+    incident.env.protocol_adapter.settled(tx).await?;
+    // A record `init_migration_record` created, of a resource never migrated.
+    let unmigrated = [0x77; 32];
+    let payer = incident.env.protocol_adapter.payer_pubkey();
+    incident
+        .env
+        .send(
+            &[instance.init_migration_record_ix(&payer, &unmigrated)],
+            &[],
+        )
+        .await?;
+
+    for (logic_ref, expected) in [(vulnerable, true), (unlisted, false)] {
+        let read = instance.is_logic_ref_vulnerable(&logic_ref).await?;
+        println!("is_logic_ref_vulnerable({logic_ref:02x?}): {read}");
+        anyhow::ensure!(
+            read == expected,
+            "is_logic_ref_vulnerable({logic_ref:02x?}) is {read}, reinitialize listed only \
+             {vulnerable:02x?}"
+        );
+    }
+    for (nullifier, expected) in [
+        (entry.nullifier, true),
+        (unmigrated, false),
+        ([0x78; 32], false),
+    ] {
+        let read = instance.is_nullifier_migrated(&nullifier).await?;
+        println!("is_nullifier_migrated({nullifier:02x?}): {read}");
+        anyhow::ensure!(
+            read == expected,
+            "is_nullifier_migrated({nullifier:02x?}) is {read}, the one migration recorded \
+             only {:02x?}",
+            entry.nullifier
+        );
+    }
+
+    let read_logic_ref = instance.get_logic_ref().await?;
+    println!("get_logic_ref: {read_logic_ref:02x?}");
+    anyhow::ensure!(
+        read_logic_ref == bytes(PASSTHROUGH_LOGIC_VK),
+        "get_logic_ref() is {read_logic_ref:02x?}, reinitialize moved to the pass-through logic"
+    );
+    let adapter = instance.get_protocol_adapter().await?;
+    println!("get_protocol_adapter: {adapter}");
+    anyhow::ensure!(
+        adapter == incident.env.protocol_adapter.program,
+        "get_protocol_adapter() is {adapter}, the forwarder serves {}",
+        incident.env.protocol_adapter.program
+    );
+    let owner = instance.owner().await?;
+    println!("owner: {owner}");
+    anyhow::ensure!(
+        owner == incident.local.owner.pubkey(),
+        "owner() is {owner}, the forwarder was initialized with {}",
+        incident.local.owner.pubkey()
+    );
+    let version = instance.version(&payer).await?;
+    println!("version: {version}");
+    anyhow::ensure!(
+        version == emergency_migrating_idl_version()?,
+        "version() is {version}, the emergency-migrating IDL records {}",
+        emergency_migrating_idl_version()?
+    );
+    let legacy = instance.legacy_forwarder();
+    println!("legacy_forwarder: {legacy}");
+    anyhow::ensure!(
+        legacy == localnet_legacy_forwarder()?,
+        "legacy_forwarder() is {legacy}, the local build is built with {}",
+        localnet_legacy_forwarder()?
+    );
+    Ok(())
 }
 
 /// Settling a migration of `entries` fails with `error`, and records no

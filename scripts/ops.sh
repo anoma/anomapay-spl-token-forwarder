@@ -571,13 +571,18 @@ case "$COMMAND" in
     cargo clippy -p spl-token-forwarder --features "$DEV_FEATURES $EMERGENCY_MIGRATING_FEATURES" --all-targets -- -D warnings
     # `cpi` is how another program depends on this one to call it.
     cargo clippy -p spl-token-forwarder --features cpi --all-targets -- -D warnings
-    # The client's wire formats and generated bindings without the Solana SDK.
+    # The client's wire formats and generated bindings without the Solana SDK,
+    # and the client with its RPC code (the submitter, the instances).
     cargo clippy -p anomapay-spl-token-forwarder-client --no-default-features --all-targets -- -D warnings
+    cargo clippy -p anomapay-spl-token-forwarder-client --all-features --all-targets -- -D warnings
     (cd crates/integration-test && cargo clippy --all-targets --features e2e,scripts -- -D warnings)
     ;;
   unit-test)
     require_cmd cargo
     cargo test --workspace
+    # The client's RPC code (the instances), which the workspace's default
+    # features leave out.
+    cargo test -p anomapay-spl-token-forwarder-client --all-features
     cargo test -p spl-token-forwarder --features "$EMERGENCY_MIGRATING_FEATURES"
     # The committed IDLs' event discriminators, which need the IDL types.
     cargo test -p spl-token-forwarder --features idl-build --test event_signature
