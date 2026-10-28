@@ -4,7 +4,7 @@
  * malformed one throws an error saying what it is and why nothing is
  * guessed. Each script's top-level catch prints it and exits non-zero.
  */
-import { PublicKey } from "@solana/web3.js";
+import { address, type Address } from "@solana/kit";
 
 export function fail(message: string): never {
   console.error(`❌ ${message}`);
@@ -17,25 +17,17 @@ export function requireEnv(name: string, what: string): string {
   return value;
 }
 
-/** `raw`, a value of variable `name`, as a base58 pubkey. */
-export function parsePubkey(name: string, raw: string): PublicKey {
+/** `raw`, a value of variable `name`, as a base58 address. */
+export function parsePubkey(name: string, raw: string): Address {
   try {
-    return new PublicKey(raw);
+    return address(raw);
   } catch {
     throw new Error(`${name} is not a valid pubkey: "${raw}"`);
   }
 }
 
-export function requirePubkey(name: string, what: string): PublicKey {
+export function requirePubkey(name: string, what: string): Address {
   return parsePubkey(name, requireEnv(name, what));
-}
-
-/** Variable `name` as comma-separated base58 pubkeys; unset or empty is the empty list. */
-export function pubkeyList(name: string): PublicKey[] {
-  return (process.env[name] ?? "")
-    .split(",")
-    .filter((s) => s.length > 0)
-    .map((s) => parsePubkey(name, s));
 }
 
 /** A fixed-width hex byte string (an optional 0x prefix is accepted), as the byte array Anchor takes. */

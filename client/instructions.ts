@@ -4,9 +4,8 @@
  * builder; callers add signers and send.
  */
 import { Program } from "@anchor-lang/core";
-import { ComputeBudgetProgram, PublicKey } from "@solana/web3.js";
+import type { Address } from "@solana/kit";
 import { SplTokenForwarder } from "../target/types/spl_token_forwarder";
-import { UPGRADE_COMPUTE_UNIT_LIMIT } from "../ts/src/constants";
 
 /**
  * The forwarder's `initialize`, signed by `authority`, the program's upgrade
@@ -15,10 +14,10 @@ import { UPGRADE_COMPUTE_UNIT_LIMIT } from "../ts/src/constants";
  */
 export function initializeForwarder(
   forwarder: Program<SplTokenForwarder>,
-  adapterProgramId: PublicKey,
+  adapterProgramId: Address,
   logicRef: number[],
-  initialOwner: PublicKey,
-  authority: PublicKey,
+  initialOwner: Address,
+  authority: Address,
 ) {
   return forwarder.methods.initialize(adapterProgramId, logicRef, initialOwner).accountsPartial({ authority });
 }
@@ -28,23 +27,6 @@ export function initializeForwarder(
  * CONFIG_VERSION, after upgrading the program to that build. `authority`
  * must be the forwarder's owner.
  */
-export function reinitializeForwarder(forwarder: Program<SplTokenForwarder>, authority: PublicKey, logicRef: number[]) {
+export function reinitializeForwarder(forwarder: Program<SplTokenForwarder>, authority: Address, logicRef: number[]) {
   return forwarder.methods.reinitialize(logicRef).accountsPartial({ authority });
-}
-
-/**
- * The forwarder's `upgrade` by its owner: the program's code becomes
- * `buffer`'s, a loader buffer the owner wrote; the buffer's rent goes to
- * `spill`.
- */
-export function upgradeForwarder(
-  forwarder: Program<SplTokenForwarder>,
-  authority: PublicKey,
-  buffer: PublicKey,
-  spill: PublicKey,
-) {
-  return forwarder.methods
-    .upgrade()
-    .accountsPartial({ authority, buffer, spill })
-    .preInstructions([ComputeBudgetProgram.setComputeUnitLimit({ units: UPGRADE_COMPUTE_UNIT_LIMIT })]);
 }

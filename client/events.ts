@@ -2,8 +2,7 @@
  * The forwarder's events are Anchor CPI events: inner instructions of the
  * forwarder whose data `decodeForwarderEventInstruction` decodes.
  */
-import * as anchor from "@anchor-lang/core";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { getBase58Encoder, type Address, type Rpc, type Signature, type SolanaRpcApiMainnet } from "@solana/kit";
 import { decodeForwarderEventInstruction } from "../ts/src/events";
 
 /**
@@ -11,16 +10,23 @@ import { decodeForwarderEventInstruction } from "../ts/src/events";
  * emission order: each its IDL name and its fields under their IDL names.
  */
 export async function forwarderEventsOfSignature(
-  connection: Connection,
-  forwarder: PublicKey,
-  signature: string,
+  rpc: Rpc<SolanaRpcApiMainnet>,
+  forwarder: Address,
+  signature: Signature,
 ): Promise<ReturnType<typeof decodeForwarderEventInstruction>[]> {
-  const tx = await connection.getTransaction(signature, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
+  const tx = await rpc
+    .getTransaction(signature, { commitment: "confirmed", encoding: "json", maxSupportedTransactionVersion: 0 })
+    .send();
   if (!tx) throw new Error(`transaction ${signature} is not fetchable at confirmed commitment`);
-  const keys = tx.transaction.message.getAccountKeys({ accountKeysFromLookups: tx.meta?.loadedAddresses });
+  // The message's keys, then the keys its lookup tables loaded: writable, then read-only.
+  const keys = [
+    ...tx.transaction.message.accountKeys,
+    ...(tx.meta?.loadedAddresses?.writable ?? []),
+    ...(tx.meta?.loadedAddresses?.readonly ?? []),
+  ];
   return (tx.meta?.innerInstructions ?? []).flatMap((group) =>
     group.instructions
-      .filter((ix) => keys.get(ix.programIdIndex)?.equals(forwarder))
-      .map((ix) => decodeForwarderEventInstruction(anchor.utils.bytes.bs58.decode(ix.data))),
+      .filter((ix) => keys[ix.programIdIndex] === forwarder)
+      .map((ix) => decodeForwarderEventInstruction(Uint8Array.from(getBase58Encoder().encode(ix.data)))),
   );
 }
