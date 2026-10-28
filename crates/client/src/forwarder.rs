@@ -95,8 +95,8 @@ pub fn init_nonce_bitmap_ix(
             system_program: system_program::id(),
         },
         args::InitNonceBitmap {
-            _user: *user,
-            _word_index: word_index,
+            user: *user,
+            word_index,
         },
     )
 }

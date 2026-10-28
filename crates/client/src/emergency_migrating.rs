@@ -83,7 +83,7 @@ pub fn init_migration_record_ix(
             system_program: system_program::id(),
         },
         args::InitMigrationRecord {
-            _nullifier: *nullifier,
+            nullifier: *nullifier,
         },
     )
 }
