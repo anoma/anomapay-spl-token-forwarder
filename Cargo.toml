@@ -1,5 +1,5 @@
 [workspace]
-members = ["programs/*", "crates/client"]
+members = ["programs/*", "crates/client", "crates/program-tests"]
 resolver = "2"
 
 # solana-verify picks its deterministic build image from this version. Keep in

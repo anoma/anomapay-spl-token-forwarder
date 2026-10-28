@@ -37,7 +37,7 @@ pub use constants::*;
 pub use input::{
     decode_forwarder_input, encode_migrate_forwarder_input, encode_unwrap_forwarder_input,
     encode_wrap_forwarder_input, ForwarderInput, InputError, MigrateEntry, MigrateInput,
-    UnwrapInput, WrapInput, OP_WRAP,
+    UnwrapInput, WrapInput,
 };
 pub use wrap_message::{sha256, WrapMessage, WRAP_MESSAGE_LEN};
 

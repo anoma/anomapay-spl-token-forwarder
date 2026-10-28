@@ -14,7 +14,8 @@ Usage: ./scripts/ops.sh <command> [argument] [flags]
 Development:
   fmt            Check the formatting of every Rust workspace
   clippy         Lint the program (production, with its dev features, and as a
-                 CPI dependency) and the client crate, with no lint allowances
+                 CPI dependency), the client crate, and its tests against both
+                 builds of the program, with no lint allowances
   unit-test      The Rust unit tests at the local addresses
   build-dev      The development build (dev features on), with IDL and types
   build-release  The production build; checks its IDL is the development IDL
@@ -577,6 +578,8 @@ case "$COMMAND" in
     # and the client with its RPC code (the submitter, the instances).
     cargo clippy -p anomapay-spl-token-forwarder-client --no-default-features --all-targets -- -D warnings
     cargo clippy -p anomapay-spl-token-forwarder-client --all-features --all-targets -- -D warnings
+    # The client checked against the emergency-migrating build.
+    cargo clippy -p anomapay-spl-token-forwarder-program-tests --features emergency-migrating --all-targets -- -D warnings
     (cd crates/integration-test && cargo clippy --all-targets --features e2e,scripts -- -D warnings)
     ;;
   unit-test)
@@ -586,6 +589,9 @@ case "$COMMAND" in
     # features leave out.
     cargo test -p anomapay-spl-token-forwarder-client --all-features
     cargo test -p spl-token-forwarder --features "$EMERGENCY_MIGRATING_FEATURES"
+    # The client against the emergency-migrating build; the workspace pass
+    # runs it against the production build.
+    cargo test -p anomapay-spl-token-forwarder-program-tests --features emergency-migrating
     # The committed IDLs' event discriminators, which need the IDL types.
     cargo test -p spl-token-forwarder --features idl-build --test event_signature
     ;;
