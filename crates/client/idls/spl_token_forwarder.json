@@ -2,7 +2,7 @@
   "address": "34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4",
   "metadata": {
     "name": "spl_token_forwarder",
-    "version": "2.0.0-rc.8",
+    "version": "2.0.0-rc.9",
     "spec": "0.1.0",
     "description": "SPL Token forwarder for wrap/unwrap operations with Ed25519 signature verification"
   },
@@ -1164,6 +1164,14 @@
       "name": "OP_UNWRAP",
       "type": "u8",
       "value": "1"
+    },
+    {
+      "name": "OP_WRAP",
+      "docs": [
+        "Operation codes, the first byte of a `forward_call` input."
+      ],
+      "type": "u8",
+      "value": "0"
     }
   ]
 }

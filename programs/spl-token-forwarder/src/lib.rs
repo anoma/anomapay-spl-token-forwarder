@@ -71,6 +71,7 @@ pub struct Upgraded {
 }
 
 /// Operation codes, the first byte of a `forward_call` input.
+#[constant]
 pub const OP_WRAP: u8 = 0;
 #[constant]
 pub const OP_UNWRAP: u8 = 1;

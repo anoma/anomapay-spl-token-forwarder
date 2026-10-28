@@ -6,13 +6,8 @@
 use anchor_lang::{AnchorDeserialize, AnchorSerialize};
 
 use crate::generated::emergency_migrating_spl_token_forwarder::constants::OP_MIGRATE;
-use crate::generated::spl_token_forwarder::constants::OP_UNWRAP;
+use crate::generated::spl_token_forwarder::constants::{OP_UNWRAP, OP_WRAP};
 use crate::wrap_message::WrapMessage;
-
-/// Op byte prepended to `WrapInput`-shaped instruction data. The IDLs
-/// declare the other two: `OP_UNWRAP`, and the emergency-migrating build's
-/// `OP_MIGRATE`.
-pub const OP_WRAP: u8 = 0;
 
 /// `op`, then the Borsh encoding of `input`.
 fn with_op(op: u8, input: &impl AnchorSerialize) -> Vec<u8> {
@@ -200,6 +195,13 @@ mod tests {
             signature: [4; 64],
             ed25519_ix_index: 2,
         }
+    }
+
+    #[test]
+    fn op_wrap_is_the_idl_constant_and_the_encoded_op_byte() {
+        use crate::generated::spl_token_forwarder::constants::OP_WRAP;
+        assert_eq!(OP_WRAP, 0, "the IDL's OP_WRAP is the wire value 0");
+        assert_eq!(encode_wrap_forwarder_input(&wrap_input())[0], OP_WRAP);
     }
 
     #[test]
