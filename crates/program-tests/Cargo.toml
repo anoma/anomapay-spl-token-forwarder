@@ -1,0 +1,22 @@
+[package]
+name = "anomapay-spl-token-forwarder-program-tests"
+description = "Tests of the AnomaPay SPL token forwarder's client against its program."
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/anoma/anomapay-spl-token-forwarder"
+publish = false
+
+[dev-dependencies]
+anchor-lang = { workspace = true }
+anomapay-spl-token-forwarder-client = { path = "../client" }
+spl-token-forwarder = { path = "../../programs/spl-token-forwarder", features = ["no-entrypoint"] }
+
+[[test]]
+name = "emergency_migrating_program"
+required-features = ["emergency-migrating"]
+
+[features]
+# The `emergency_migrating_program` tests, against the program's
+# emergency-migrating build.
+emergency-migrating = ["spl-token-forwarder/emergency-migrating"]

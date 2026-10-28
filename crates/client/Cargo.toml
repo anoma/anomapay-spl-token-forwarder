@@ -51,21 +51,10 @@ serde_json = "1.0"
 # The clusters the record's chain ids name.
 solana-cluster-type = "3"
 tokio = { version = "1", features = ["macros", "rt"] }
-# The program, whose parsers, accounts and seeds the `program` tests check
-# this crate's encoders, decoders and PDA derivations against.
-spl-token-forwarder = { path = "../../programs/spl-token-forwarder", features = ["no-entrypoint"] }
 
 [[test]]
 name = "deployments"
 required-features = ["solana"]
-
-[[test]]
-name = "program"
-required-features = ["solana"]
-
-[[test]]
-name = "emergency_migrating_program"
-required-features = ["solana", "emergency-migrating-program"]
 
 [[test]]
 name = "deployed"
@@ -100,9 +89,6 @@ rpc = [
   "dep:solana-transaction",
   "dep:solana-transaction-error",
 ]
-# Tests only: the `emergency_migrating_program` tests, against the program's
-# emergency-migrating build.
-emergency-migrating-program = ["spl-token-forwarder/emergency-migrating"]
 
 # The cfgs `declare_program!`'s output tests: the Solana target, and the
 # `idl-build` feature of a program crate, which this crate is not.

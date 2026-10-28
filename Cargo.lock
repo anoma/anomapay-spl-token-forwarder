@@ -490,9 +490,17 @@ dependencies = [
  "solana-transaction",
  "solana-transaction-error",
  "spl-associated-token-account-interface",
- "spl-token-forwarder",
  "spl-token-interface",
  "tokio",
+]
+
+[[package]]
+name = "anomapay-spl-token-forwarder-program-tests"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anomapay-spl-token-forwarder-client",
+ "spl-token-forwarder",
 ]
 
 [[package]]

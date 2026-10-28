@@ -11,6 +11,7 @@ The adapter calls the forwarder through the external calls a settled transaction
 | `programs/spl-token-forwarder/` | The Anchor program and its Rust unit tests |
 | `crates/client/` | `anomapay-spl-token-forwarder-client`: the bindings generated from both builds' IDLs (its id, accounts, events, constants, instruction accounts and arguments), builders for the instructions it takes, the CPI segments a settlement passes it, its wire formats (the wrap authorization message, the wrap, unwrap and migrate inputs), the deployment record (`deployments.json`), the program at an address with its reads (`instance`), and the IDLs |
 | `ts/` | `@anomaorg/anomapay-spl-token-forwarder`: the client crate's counterpart in TypeScript (the IDLs' coders, the deployment record, the instances with their reads and instruction builders, the CPI segments, the wrap authorization message, the event decoder), which carries copies of the IDLs and the record it builds from `crates/client/` |
+| `crates/program-tests/` | Tests of the client crate's encoders, decoders and PDA derivations against both builds of the program; not published |
 | `crates/integration-test/` | The forwarder's integration tests on the adapter's harness, and the test programs they load |
 | `env/` | The forwarder's address per cluster, and the adapter's it is built against ([env/README.md](env/README.md)) |
 | `fixtures/` | The wrap authorization message every client must serialize alike |
@@ -28,7 +29,7 @@ Everything runs in the repository's Nix dev shell, which pins the Rust, Solana a
 |---|---|
 | `./scripts/dev.sh shell` / `run <cmd>` | Interactive Nix shell / one command in it, the local addresses exported |
 | `./scripts/dev.sh fmt` / `clippy` | Format check / lints with CI's flags |
-| `./scripts/dev.sh unit-test` | The Rust unit tests, the client's with all its features |
+| `./scripts/dev.sh unit-test` | The Rust unit tests, the client's with all its features, and the client against both builds of the program |
 | `./scripts/dev.sh build-dev` | Development build (the `dev-config-version` instruction enabled) |
 | `./scripts/dev.sh build-release` | Production build; checks its IDL is the development IDL minus the dev-only instruction |
 | `./scripts/dev.sh verify-build` | The deterministic solana-verify build |
