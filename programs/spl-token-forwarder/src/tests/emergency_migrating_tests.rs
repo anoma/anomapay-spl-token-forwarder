@@ -122,6 +122,21 @@ fn the_generated_migration_record_reads_the_programs() {
     assert_eq!(decoded.bump, 251);
 }
 
+/// The client derives a resource's migration record address from the
+/// program's own seed. The IDL cannot check it: its seeds name the arg
+/// `nullifier`, which it lists as the handler's `_nullifier`.
+#[test]
+fn the_clients_migration_record_address_is_the_programs() {
+    for nullifier in [[0u8; 32], [3; 32], [0xff; 32]] {
+        let client =
+            client::emergency_migrating::derive_migration_record_pda(&crate::ID, &nullifier);
+        let program =
+            Pubkey::find_program_address(&[MIGRATION_RECORD_SEED, &nullifier], &crate::ID);
+        println!("{nullifier:02x?}: {client:?}");
+        assert_eq!(client, program, "{nullifier:02x?}");
+    }
+}
+
 /// A record is recognized at its nullifier's canonical address under its
 /// stored bump, and nowhere else.
 #[test]

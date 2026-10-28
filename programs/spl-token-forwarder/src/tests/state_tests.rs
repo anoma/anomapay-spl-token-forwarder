@@ -265,6 +265,27 @@ fn canonical_bitmap(user: &Pubkey, word_index: u64) -> (Pubkey, u8) {
     )
 }
 
+/// The client derives a user's bitmap address from the program's own seed.
+/// The IDL cannot check it: its seeds name the args `user` and
+/// `word_index`, which it lists as the handler's `_user` and `_word_index`.
+#[test]
+fn the_clients_nonce_bitmap_address_is_the_programs() {
+    for (user, word_index) in [([7u8; 32], 0), ([8u8; 32], 3), ([9u8; 32], u64::MAX)] {
+        let user = Pubkey::new_from_array(user);
+        let client = anomapay_spl_token_forwarder_client::derive_nonce_bitmap_pda(
+            &crate::ID,
+            &user,
+            word_index,
+        );
+        println!("({user}, word {word_index}): {client:?}");
+        assert_eq!(
+            client,
+            canonical_bitmap(&user, word_index),
+            "({user}, word {word_index})"
+        );
+    }
+}
+
 /// A bitmap is recognized at the address its seeds and stored bump derive,
 /// and nowhere else: not as another user's bitmap, not as another word's.
 #[test]

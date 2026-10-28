@@ -42,8 +42,9 @@ arm-core = { package = "anoma-rm-core", version = "2.0.0-rc.7", optional = true 
 
 [dev-dependencies]
 # The off-chain encoder of this program's inputs, which the parser tests read,
-# and its decoders, which the tests check against the program's accounts.
-anomapay-spl-token-forwarder-client = { path = "../../crates/client", default-features = false }
+# and its decoders and PDA derivations, which the tests check against the
+# program's accounts and seeds.
+anomapay-spl-token-forwarder-client = { path = "../../crates/client" }
 hex-literal = "1.1"
 # Parsing the committed IDLs in the event signature test
 serde_json = "1.0"
