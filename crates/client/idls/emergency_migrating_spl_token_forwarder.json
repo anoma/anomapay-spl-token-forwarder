@@ -257,7 +257,7 @@
       ],
       "args": [
         {
-          "name": "_nullifier",
+          "name": "nullifier",
           "type": {
             "array": [
               "u8",
@@ -336,11 +336,11 @@
       ],
       "args": [
         {
-          "name": "_user",
+          "name": "user",
           "type": "pubkey"
         },
         {
-          "name": "_word_index",
+          "name": "word_index",
           "type": "u64"
         }
       ]

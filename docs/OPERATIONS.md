@@ -1,6 +1,6 @@
 # Operating the SPL token forwarder
 
-The SPL token forwarder holds AnomaPay's wrapped SPL tokens in escrow and executes the wrap and unwrap calls the adapter forwards to it. Its one authority, recorded in its config PDA at initialization, is the **owner**, which upgrades the program, rotates the logic ref and, while the adapter is paused, closes the forwarder's accounts. The adapter's own procedures (its deployment, owner, pause and kind table) are in the adapter repository's [docs/OPERATIONS.md](https://github.com/anoma/solana-protocol-adapter/blob/anthony/arm-v2-port/solana-pa-prototype/docs/OPERATIONS.md).
+The SPL token forwarder holds AnomaPay's wrapped SPL tokens in escrow and executes the wrap and unwrap calls the adapter forwards to it. Its one authority, recorded in its config PDA at initialization, is the **owner**, which upgrades the program, rotates the logic ref and, while the adapter is paused, closes the forwarder's accounts. The adapter's own procedures (its deployment, owner, pause and kind tree) are in the adapter repository's [docs/OPERATIONS.md](https://github.com/anoma/solana-protocol-adapter/blob/anthony/arm-v2-port/solana-pa-prototype/docs/OPERATIONS.md).
 
 Commands run through `./scripts/dev.sh`, which enters the Nix shell; cluster operations take `--cluster <localnet|devnet|mainnet>` (`scripts/ops.sh` lists every flag). devnet and mainnet operations go through the operator's RPC provider: pass `--url <rpc>` or set `DEVNET_RPC_URL` / `MAINNET_RPC_URL`; there is no public-endpoint default. The forwarder's commands take their parameters as `STF_*` environment variables (`scripts/forwarder.ts` lists them).
 
@@ -45,7 +45,7 @@ The logic ref changes whenever the resource circuit is rebuilt. It is rotated as
 STF_LOGIC_REF=<new 32-byte hex verifying key> ./scripts/dev.sh forwarder reinitialize --cluster <c>   # owner wallet
 ```
 
-Escrow and nonce bitmaps are untouched. The instruction emits `Initialized` with the new version, as OpenZeppelin's reinitializer does; read the new ref from the config account. Resources wrapped under the previous ref leave through the new one once the adapter's kind table lists the previous version as an alias of the new one (anoma/risc0-kind-tables ADR-0008, rule R2): a transaction converts each into a resource under the new ref, which then unwraps. Until that table's commitment is installed (the adapter's `set-kind-table`), they stay in escrow and can neither unwrap nor convert.
+Escrow and nonce bitmaps are untouched. The instruction emits `Initialized` with the new version, as OpenZeppelin's reinitializer does; read the new ref from the config account. Resources wrapped under the previous ref leave through the new one once the adapter's kind tree lists the previous version as an alias of the new one (anoma/risc0-kind-trees ADR-0008, rule R2): a transaction converts each into a resource under the new ref, which then unwraps. Until that tree's root is installed (the adapter's `set_kind_tree_root`, through its `set-kind-table` command), they stay in escrow and can neither unwrap nor convert.
 
 ## Checking a devnet deployment with a wrap and an unwrap
 

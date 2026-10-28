@@ -261,11 +261,11 @@
       ],
       "args": [
         {
-          "name": "_user",
+          "name": "user",
           "type": "pubkey"
         },
         {
-          "name": "_word_index",
+          "name": "word_index",
           "type": "u64"
         }
       ]
@@ -433,7 +433,7 @@
         "the owner upgrades the program in place (`upgrade`) and then calls",
         "this; it runs only while the config's version is below this build's.",
         "Resources under the previous ref leave through the new one once the",
-        "kind table lists the previous version as its alias: a transaction",
+        "kind tree lists the previous version as its alias: a transaction",
         "converts them, and the new resource unwraps."
       ],
       "discriminator": [

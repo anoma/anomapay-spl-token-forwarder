@@ -143,7 +143,7 @@ pub mod spl_token_forwarder {
     /// the owner upgrades the program in place (`upgrade`) and then calls
     /// this; it runs only while the config's version is below this build's.
     /// Resources under the previous ref leave through the new one once the
-    /// kind table lists the previous version as its alias: a transaction
+    /// kind tree lists the previous version as its alias: a transaction
     /// converts them, and the new resource unwraps.
     #[cfg(not(feature = "emergency-migrating"))]
     pub fn reinitialize(ctx: Context<OwnerOnly>, logic_ref: [u8; 32]) -> Result<()> {

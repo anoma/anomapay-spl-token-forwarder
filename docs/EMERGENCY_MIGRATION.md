@@ -8,10 +8,10 @@ This document lists the cases in which the forwarder moves to a new circuit vers
 
 - **Circuit version**: one build of the transfer resource's logic circuit, named by its logic ref (its verifying key).
 - **Active version**: the circuit version the forwarder's config accepts.
-- **Deprecated version**: a circuit version the kind tables list as an alias of the active one. Its resources convert into resources of the active version.
+- **Deprecated version**: a circuit version the kind trees list as an alias of the active one. Its resources convert into resources of the active version.
 - **Vulnerable logic ref**: the logic ref of a circuit version with a flaw, which the adapter denies on both of its denylists and the forwarder lists.
 - **Legacy-forwarder resource**: a resource with the cluster's legacy SPL token forwarder in its label, whose balances moved to this forwarder. No cluster has one: `LEGACY_FORWARDER_PROGRAM_ID` is the zero key in every `env/<cluster>.env`.
-- **Soft migration**: a transaction that consumes resources of a deprecated version and creates resources of the active version, through the kind table.
+- **Soft migration**: a transaction that consumes resources of a deprecated version and creates resources of the active version, through the kind tree.
 - **Emergency migration**: a transaction that creates resources of the active version for resources with a vulnerable logic ref. The adapter does not consume the old resources; the forwarder records their nullifiers, and the tokens stay in escrow.
 
 ## Cases
@@ -25,7 +25,7 @@ The examples name circuit versions with letters, in release order. Each case sta
 
 ### Voluntary upgrade
 
-No circuit version has a flaw. C improves B. This is the rotation in [OPERATIONS.md](OPERATIONS.md) ("Rotating the logic ref"): the kind tables release C with B as its alias, the adapter's owner stores the new kind table, the forwarder's owner upgrades the forwarder to a build that raises `CONFIG_VERSION` and calls its `reinitialize` with the logic ref of C, and owners of resources of A and B soft-migrate them to C. It needs no emergency migration.
+No circuit version has a flaw. C improves B. This is the rotation in [OPERATIONS.md](OPERATIONS.md) ("Rotating the logic ref"): the kind trees release C with B as its alias, the adapter's owner stores the new kind tree root, the forwarder's owner upgrades the forwarder to a build that raises `CONFIG_VERSION` and calls its `reinitialize` with the logic ref of C, and owners of resources of A and B soft-migrate them to C. It needs no emergency migration.
 
 After an incident, every later build must keep the emergency migration, because the resources with a listed logic ref have no other way out. A voluntary upgrade then also uses an emergency-migrating build, whose `reinitialize` lists at least one vulnerable logic ref.
 
@@ -36,7 +36,7 @@ Each incident follows these steps:
 1. The owner of the protocol adapter pauses it (the adapter's `pause`). The adapter then settles no transaction.
 2. The owner of the adapter denies each vulnerable logic ref with `deny_logic_refs`, on both denylists (`consumed: true` and `consumed: false`).
 3. The owner of the forwarder upgrades it in place to the emergency-migrating build, writing the build to a buffer and calling the forwarder's `upgrade` (no script builds or deploys it, as no script deploys the EVM draft), and calls its `reinitialize` with the logic ref of C and the vulnerable logic refs to list (see [Which resources can emergency-migrate](#which-resources-can-emergency-migrate)). The owner pays the rent of the list. C has no flaw and has the migrate call: only a circuit with the migrate call can start an emergency migration, so if the active version has none, the forwarder must move to a version that has one, even if the active version has no flaw.
-4. The kind tables release C as the active version. They keep a vulnerable version listed as deprecated, but no transaction can use its rows, because the adapter denies its logic ref. The owner of the adapter stores the new kind tree root. If B has no flaw, the owner deprecates its logic ref.
+4. The kind trees release C as the active version. They keep a vulnerable version listed as deprecated, but no transaction can use its rows, because the adapter denies its logic ref. The owner of the adapter stores the new kind tree root. If B has no flaw, the owner deprecates its logic ref.
 5. The owner of the adapter unpauses it.
 6. Resource owners emergency-migrate their resources with a vulnerable logic ref, and soft-migrate their resources of a deprecated version.
 

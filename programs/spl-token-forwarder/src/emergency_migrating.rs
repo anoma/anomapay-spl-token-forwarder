@@ -366,7 +366,7 @@ pub(crate) fn migrate<'info>(ctx: &Context<'info, ForwardCall<'info>>, input: &[
         // Every historical root works: the adapter creates no resource with
         // a vulnerable logic ref.
         if !is_root_valid(
-            &state,
+            &state.root,
             &config.protocol_adapter,
             pa_state.key,
             &Digest::from(entry.commitment_tree_root),
