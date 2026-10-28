@@ -59,7 +59,6 @@ pub fn reinitialize_ix(
             event_authority: derive_event_authority_pda(forwarder_program).0,
             program: *forwarder_program,
         },
-        vec![],
         args::Reinitialize {
             new_logic_ref,
             vulnerable_logic_refs: vulnerable_logic_refs.to_vec(),
@@ -83,7 +82,6 @@ pub fn init_migration_record_ix(
             migration_record: derive_migration_record_pda(forwarder_program, nullifier).0,
             system_program: system_program::id(),
         },
-        vec![],
         args::InitMigrationRecord {
             _nullifier: *nullifier,
         },

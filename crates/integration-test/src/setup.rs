@@ -53,22 +53,23 @@ pub const FORWARDER_EMERGENCY_MIGRATING_SO: &[u8] =
 /// as a later implementation's.
 pub const FORWARDER_EMERGENCY_MIGRATING_DEV_SO: &[u8] =
     include_bytes!("../programs/spl_token_forwarder_emergency_migrating_dev.so");
-const LOCALNET: &str = include_str!("../../../env/localnet.env");
+/// `env/localnet.env`, the addresses the local builds are built with.
+pub const LOCALNET: &str = include_str!("../../../env/localnet.env");
 #[cfg(feature = "e2e")]
 const DEVNET: &str = include_str!("../../../env/devnet.env");
 
 /// The tokens a test's user starts with, at the mint's 6 decimals: 1000.
 pub const USER_TOKENS: u64 = 1_000_000_000;
 
-/// The forwarder's address in an env file.
-fn forwarder_address(env_file: &str) -> anyhow::Result<Pubkey> {
+/// The address an env file sets `variable` to.
+pub fn env_address(env_file: &str, variable: &str) -> anyhow::Result<Pubkey> {
     let value = env_file
         .lines()
-        .find_map(|line| line.strip_prefix("FORWARDER_PROGRAM_ID="))
-        .context("the env file names no FORWARDER_PROGRAM_ID")?;
+        .find_map(|line| line.strip_prefix(variable)?.strip_prefix('='))
+        .with_context(|| format!("the env file names no {variable}"))?;
     value
         .parse()
-        .with_context(|| format!("FORWARDER_PROGRAM_ID={value} is not base58"))
+        .with_context(|| format!("{variable}={value} is not base58"))
 }
 
 /// The forwarder on an environment: the submitter registered with the
@@ -109,7 +110,7 @@ pub async fn deployed(build: Build) -> anyhow::Result<(LocalEnv, Pubkey)> {
 /// Deploys the forwarder `build` on `env` at its local address, its upgrade
 /// authority the adapter's payer, and not initialized; returns the address.
 fn deploy<P>(env: &Environment<P>, build: Build) -> anyhow::Result<Pubkey> {
-    let program = forwarder_address(LOCALNET)?;
+    let program = env_address(LOCALNET, "FORWARDER_PROGRAM_ID")?;
     let so = match build {
         Build::Production => FORWARDER_SO,
         Build::Development => FORWARDER_DEV_SO,
@@ -245,7 +246,7 @@ pub async fn e2e() -> anyhow::Result<(
     let forwarder = match runtime {
         E2eRuntime::Local => owned(&mut env, Build::Production).await?.forwarder,
         E2eRuntime::Devnet { .. } | E2eRuntime::Cluster { .. } => {
-            let program = forwarder_address(DEVNET)?;
+            let program = env_address(DEVNET, "FORWARDER_PROGRAM_ID")?;
             let config = config(&env, &program).await?;
             let pa = env.protocol_adapter.program;
             anyhow::ensure!(

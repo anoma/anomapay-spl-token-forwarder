@@ -24,19 +24,16 @@ use crate::pda::{
     derive_forwarder_config_pda, derive_forwarder_escrow_authority, derive_nonce_bitmap_pda,
 };
 
-/// The instruction of the forwarder at `forwarder_program` with `accounts`,
-/// then `remaining_accounts`, and `args`.
+/// The instruction of the forwarder at `forwarder_program` with `accounts`
+/// and `args`.
 pub(crate) fn instruction(
     forwarder_program: &Pubkey,
     accounts: impl ToAccountMetas,
-    remaining_accounts: Vec<AccountMeta>,
     args: impl InstructionData,
 ) -> Instruction {
-    let mut metas = accounts.to_account_metas(None);
-    metas.extend(remaining_accounts);
     Instruction {
         program_id: *forwarder_program,
-        accounts: metas,
+        accounts: accounts.to_account_metas(None),
         data: args.data(),
     }
 }
@@ -68,7 +65,6 @@ pub fn initialize_ix(
             upgrade_authority: derive_upgrade_authority_pda(forwarder_program).0,
             bpf_loader_upgradeable: bpf_loader_upgradeable::id(),
         },
-        vec![],
         args::Initialize {
             protocol_adapter: *protocol_adapter,
             logic_ref,
@@ -98,7 +94,6 @@ pub fn init_nonce_bitmap_ix(
             nonce_bitmap: derive_nonce_bitmap_pda(forwarder_program, user, word_index).0,
             system_program: system_program::id(),
         },
-        vec![],
         args::InitNonceBitmap {
             _user: *user,
             _word_index: word_index,
@@ -121,7 +116,6 @@ pub fn reinitialize_ix(
             event_authority: derive_event_authority_pda(forwarder_program).0,
             program: *forwarder_program,
         },
-        vec![],
         args::Reinitialize { logic_ref },
     )
 }
@@ -140,7 +134,6 @@ pub fn transfer_ownership_ix(
             event_authority: derive_event_authority_pda(forwarder_program).0,
             program: *forwarder_program,
         },
-        vec![],
         args::TransferOwnership {
             new_owner: *new_owner,
         },
@@ -157,7 +150,6 @@ pub fn renounce_ownership_ix(forwarder_program: &Pubkey, owner: &Pubkey) -> Inst
             event_authority: derive_event_authority_pda(forwarder_program).0,
             program: *forwarder_program,
         },
-        vec![],
         args::RenounceOwnership {},
     )
 }
@@ -194,7 +186,6 @@ pub fn upgrade_ixs(
                 event_authority: derive_event_authority_pda(forwarder_program).0,
                 program: *forwarder_program,
             },
-            vec![],
             args::Upgrade {},
         ),
     ]
@@ -203,12 +194,7 @@ pub fn upgrade_ixs(
 /// Build the forwarder's `version`, whose return data is the program's
 /// version string.
 pub fn version_ix(forwarder_program: &Pubkey) -> Instruction {
-    instruction(
-        forwarder_program,
-        accounts::Version {},
-        vec![],
-        args::Version {},
-    )
+    instruction(forwarder_program, accounts::Version {}, args::Version {})
 }
 
 /// Build the forwarder's `close_escrow`: while the adapter whose state is
@@ -234,7 +220,6 @@ pub fn close_escrow_ix(
             token_program: spl_token_interface::id(),
             pa_state: *pa_state,
         },
-        vec![],
         args::CloseEscrow {},
     )
 }
@@ -248,19 +233,21 @@ pub fn close_nonce_bitmaps_batch_ix(
     pa_state: &Pubkey,
     bitmaps: &[Pubkey],
 ) -> Instruction {
-    instruction(
+    let mut ix = instruction(
         forwarder_program,
         accounts::CloseNonceBitmapsBatch {
             authority: *owner,
             config: derive_forwarder_config_pda(forwarder_program).0,
             pa_state: *pa_state,
         },
+        args::CloseNonceBitmapsBatch {},
+    );
+    ix.accounts.extend(
         bitmaps
             .iter()
-            .map(|bitmap| AccountMeta::new(*bitmap, false))
-            .collect(),
-        args::CloseNonceBitmapsBatch {},
-    )
+            .map(|bitmap| AccountMeta::new(*bitmap, false)),
+    );
+    ix
 }
 
 /// Build the forwarder's `close_config`: while the adapter whose state is
@@ -278,7 +265,6 @@ pub fn close_config_ix(
             config: derive_forwarder_config_pda(forwarder_program).0,
             pa_state: *pa_state,
         },
-        vec![],
         args::CloseConfig {},
     )
 }
@@ -591,26 +577,18 @@ acct 8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR false false
 
     #[test]
     fn init_nonce_bitmap_ix_matches_the_forwarder_idl() {
-        let forwarder = Pubkey::new_unique();
-        let payer = Pubkey::new_unique();
-        let user = Pubkey::new_unique();
+        let forwarder = crate::generated::spl_token_forwarder::ID;
+        let (payer, user) = (Pubkey::new_unique(), Pubkey::new_unique());
         let ix = init_nonce_bitmap_ix(&forwarder, &payer, &user, 7);
-
-        assert_eq!(ix.program_id, forwarder);
-        // Discriminator from idls/spl_token_forwarder.json, then the two args.
-        assert_eq!(&ix.data[..8], &[214, 13, 125, 121, 72, 220, 241, 42]);
-        assert_eq!(&ix.data[8..40], user.as_ref());
-        assert_eq!(&ix.data[40..], &7u64.to_le_bytes());
-
-        let expected_bitmap = derive_nonce_bitmap_pda(&forwarder, &user, 7).0;
+        let args = [user.as_ref(), &7u64.to_le_bytes()].concat();
+        let by_name = assert_matches_the_idl(&crate::idl::idl(), &ix, "init_nonce_bitmap", &args);
+        assert_eq!(by_name("payer"), payer);
+        // The IDL's seeds of the bitmap name args it cannot resolve.
         assert_eq!(
-            ix.accounts,
-            vec![
-                AccountMeta::new(payer, true),
-                AccountMeta::new(expected_bitmap, false),
-                AccountMeta::new_readonly(system_program::id(), false),
-            ]
+            by_name("nonce_bitmap"),
+            derive_nonce_bitmap_pda(&forwarder, &user, 7).0
         );
+        assert_eq!(ix.accounts.len(), 3);
     }
 
     /// Checks `ix` against the instruction `name` of `idl`, either build's:
@@ -618,6 +596,27 @@ acct 8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR false false
     /// IDL's flags, its fixed address, or its PDA from the IDL's seeds when
     /// they are all constants. Returns the address `ix` passes for each IDL
     /// account name.
+    /// The address the IDL gives the instruction account `account` of
+    /// `program`: its fixed address, or its PDA when every seed is a
+    /// constant. None for a PDA with an `arg` seed: the IDLs name those
+    /// seeds' args with the handlers' underscored names, so no arg resolves
+    /// them.
+    pub(crate) fn idl_address(account: &serde_json::Value, program: &Pubkey) -> Option<Pubkey> {
+        if let Some(address) = account["address"].as_str() {
+            return Some(address.parse().unwrap());
+        }
+        let seeds = account["pda"]["seeds"].as_array()?;
+        if !seeds.iter().all(|seed| seed["kind"] == "const") {
+            return None;
+        }
+        let seeds: Vec<Vec<u8>> = seeds
+            .iter()
+            .map(|seed| serde_json::from_value(seed["value"].clone()).unwrap())
+            .collect();
+        let seeds: Vec<&[u8]> = seeds.iter().map(Vec::as_slice).collect();
+        Some(Pubkey::find_program_address(&seeds, program).0)
+    }
+
     pub(crate) fn assert_matches_the_idl(
         idl: &serde_json::Value,
         ix: &Instruction,
@@ -658,23 +657,8 @@ acct 8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR false false
                 account["signer"] == true,
                 "{account_name} signer"
             );
-            if let Some(address) = account["address"].as_str() {
-                assert_eq!(meta.pubkey.to_string(), address, "{account_name} address");
-            }
-            if let Some(seeds) = account["pda"]["seeds"]
-                .as_array()
-                .filter(|seeds| seeds.iter().all(|s| s["kind"] == "const"))
-            {
-                let seeds: Vec<Vec<u8>> = seeds
-                    .iter()
-                    .map(|s| serde_json::from_value(s["value"].clone()).unwrap())
-                    .collect();
-                let seeds: Vec<&[u8]> = seeds.iter().map(Vec::as_slice).collect();
-                assert_eq!(
-                    meta.pubkey,
-                    Pubkey::find_program_address(&seeds, &ix.program_id).0,
-                    "{account_name} PDA"
-                );
+            if let Some(declared) = idl_address(account, &ix.program_id) {
+                assert_eq!(meta.pubkey, declared, "{account_name} address");
             }
         }
         let addresses = ix

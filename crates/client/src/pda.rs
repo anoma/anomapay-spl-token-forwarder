@@ -43,6 +43,7 @@ pub fn derive_nonce_bitmap_pda(
 mod tests {
     use super::*;
     use crate::emergency_migrating::derive_vulnerable_logic_refs_pda;
+    use crate::forwarder::tests::idl_address;
     use crate::generated::spl_token_forwarder::ID;
 
     #[test]
@@ -56,26 +57,6 @@ mod tests {
             "A3srA2cw6o11TCSyMpBbnpLVnu6RLe6eGZEFz3d2m8h1"
         );
         assert_eq!(bump, 255);
-    }
-
-    /// The address the IDL gives `account` of the program `ID`: its fixed
-    /// address, or its PDA when every seed is a constant. None for a PDA
-    /// with an `arg` seed: the IDLs name those seeds' args with the
-    /// handlers' underscored names, so no arg resolves them.
-    fn idl_address(account: &serde_json::Value) -> Option<Pubkey> {
-        if let Some(address) = account["address"].as_str() {
-            return Some(address.parse().unwrap());
-        }
-        let seeds = account["pda"]["seeds"].as_array()?;
-        if !seeds.iter().all(|seed| seed["kind"] == "const") {
-            return None;
-        }
-        let seeds: Vec<Vec<u8>> = seeds
-            .iter()
-            .map(|seed| serde_json::from_value(seed["value"].clone()).unwrap())
-            .collect();
-        let seeds: Vec<&[u8]> = seeds.iter().map(Vec::as_slice).collect();
-        Some(Pubkey::find_program_address(&seeds, &ID).0)
     }
 
     /// Every instruction account of either IDL that one of the helpers
@@ -100,7 +81,7 @@ mod tests {
                     else {
                         continue;
                     };
-                    let declared = idl_address(account).unwrap_or_else(|| {
+                    let declared = idl_address(account, &ID).unwrap_or_else(|| {
                         panic!(
                             "{}.{name}: the IDL determines no address",
                             instruction["name"]

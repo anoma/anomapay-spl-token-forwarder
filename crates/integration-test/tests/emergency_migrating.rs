@@ -44,7 +44,6 @@ use anomapay_spl_token_forwarder_integration_test::setup::{
     self, FORWARDER_EMERGENCY_MIGRATING_DEV_SO, FORWARDER_EMERGENCY_MIGRATING_SO, Forwarder,
     OwnedForwarder, config, discriminator, event_order, same, set_config_version,
 };
-use anyhow::Context;
 use emergency_migrating_transfer_library::{
     EMERGENCY_MIGRATING_TOKEN_TRANSFER_ID, EmergencyMigratingTransferLogic,
 };
@@ -654,18 +653,6 @@ fn emergency_migrating_idl_version() -> anyhow::Result<String> {
         .ok_or_else(|| anyhow::anyhow!("the IDL records no version: {}", idl["metadata"]))
 }
 
-/// `env/localnet.env`'s `LEGACY_FORWARDER_PROGRAM_ID`, which the local
-/// builds are built with.
-fn localnet_legacy_forwarder() -> anyhow::Result<Pubkey> {
-    let value = include_str!("../../../env/localnet.env")
-        .lines()
-        .find_map(|line| line.strip_prefix("LEGACY_FORWARDER_PROGRAM_ID="))
-        .context("env/localnet.env names no LEGACY_FORWARDER_PROGRAM_ID")?;
-    value
-        .parse()
-        .with_context(|| format!("LEGACY_FORWARDER_PROGRAM_ID={value} is not base58"))
-}
-
 // The client's emergency-migrating instance (`instance::
 // EmergencyMigratingSplTokenForwarder`) on the forwarder of an incident.
 // Before `reinitialize` it lists no logic ref and holds no migration record,
@@ -761,11 +748,11 @@ async fn every_read_of_the_emergency_migrating_instance_answers_the_incident() -
         emergency_migrating_idl_version()?
     );
     let legacy = instance.legacy_forwarder();
+    let built_with = setup::env_address(setup::LOCALNET, "LEGACY_FORWARDER_PROGRAM_ID")?;
     println!("legacy_forwarder: {legacy}");
     anyhow::ensure!(
-        legacy == localnet_legacy_forwarder()?,
-        "legacy_forwarder() is {legacy}, the local build is built with {}",
-        localnet_legacy_forwarder()?
+        legacy == built_with,
+        "legacy_forwarder() is {legacy}, the local build is built with {built_with}"
     );
     Ok(())
 }
