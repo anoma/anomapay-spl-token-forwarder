@@ -21,3 +21,11 @@ export const FORWARDER_UNWRAP_NUM_ACCOUNTS = FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS
 export function forwarderMigrateNumAccounts(entries: number): number {
   return FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS + 2 + 3 * entries;
 }
+
+/**
+ * The compute-unit limit an upgrade asks for: the most a transaction may have
+ * (Agave's `MAX_COMPUTE_UNIT_LIMIT`), as the Rust crate's
+ * `UPGRADE_COMPUTE_UNIT_LIMIT`. The upgrade hashes the whole buffer, so its
+ * cost grows with the program's code.
+ */
+export const UPGRADE_COMPUTE_UNIT_LIMIT = 1_400_000;

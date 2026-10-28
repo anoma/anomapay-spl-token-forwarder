@@ -179,9 +179,11 @@ write_test_program() {
 }
 
 # Yarn's install of the operator scripts' dependencies, exactly as yarn.lock
-# pins them.
+# pins them, and the IDLs and deployment record the TS package's sources,
+# which the scripts import, read from its build output (ts/src/data/).
 ensure_node_modules() {
   yarn install --frozen-lockfile
+  (cd ts && npm run copy-data)
 }
 
 # ---------- cluster resolution ----------

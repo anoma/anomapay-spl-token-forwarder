@@ -1,9 +1,11 @@
-// Program-derived-address helpers for the SPL Token Forwarder.
-//
-// These mirror the seed schemas baked into the on-chain program. They are pure
-// functions: same inputs always produce the same PublicKey + bump.
+// Program-derived-address helpers for the SPL Token Forwarder: its own from
+// the seeds its IDLs declare, and the adapter's that a migration reads, whose
+// seeds no forwarder IDL declares. They are pure functions: same inputs
+// always produce the same PublicKey + bump.
 
 import { PublicKey } from "@solana/web3.js";
+
+import { emergencyMigratingIdl, idl, idlPda, idlSeed } from "./idl.js";
 
 const u64Le = (value: bigint): Uint8Array => {
   const buf = new Uint8Array(8);
@@ -11,18 +13,13 @@ const u64Le = (value: bigint): Uint8Array => {
   return buf;
 };
 
-/** Derive the forwarder's global config PDA. */
-export function deriveForwarderConfigPda(
-  forwarderProgram: PublicKey,
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [new TextEncoder().encode("config")],
-    forwarderProgram,
-  );
+/** Derive the forwarder's global config PDA. Seed: `[CONFIG_SEED]`. */
+export function deriveForwarderConfigPda(forwarderProgram: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([idlSeed(idl, "CONFIG_SEED")], forwarderProgram);
 }
 
 /**
- * Derive the forwarder's escrow authority. Seed: `["escrow"]`.
+ * Derive the forwarder's escrow authority. Seed: `[ESCROW_SEED]`.
  *
  * One PDA owns every mint's escrow: each escrow is the Associated Token Account
  * of this authority and the mint, as the EVM forwarder holds every token at its
@@ -30,33 +27,60 @@ export function deriveForwarderConfigPda(
  * instruction before a wrap.
  */
 export function deriveForwarderEscrowAuthority(forwarderProgram: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync([new TextEncoder().encode("escrow")], forwarderProgram);
+  return PublicKey.findProgramAddressSync([idlSeed(idl, "ESCROW_SEED")], forwarderProgram);
 }
 
-/** Derive the forwarder's nonce bitmap PDA. `word_index = nonce / 256`. */
+/** Derive the forwarder's nonce bitmap PDA. Seed: `[NONCE_BITMAP_SEED, user, word_index_le]`, `word_index = nonce / NONCES_PER_WORD`. */
 export function deriveNonceBitmapPda(
   forwarderProgram: PublicKey,
   user: PublicKey,
   wordIndex: bigint,
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
-    [
-      new TextEncoder().encode("nonce_bitmap"),
-      user.toBuffer(),
-      u64Le(wordIndex),
-    ],
+    [idlSeed(idl, "NONCE_BITMAP_SEED"), user.toBuffer(), u64Le(wordIndex)],
     forwarderProgram,
   );
 }
 
-/** Derive the emergency-migrating build's vulnerable logic refs. Seed: `["vulnerable_logic_refs"]`. */
+/** Derive the emergency-migrating build's vulnerable logic refs. Seed: `[VULNERABLE_LOGIC_REFS_SEED]`. */
 export function deriveVulnerableLogicRefsPda(forwarderProgram: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync([new TextEncoder().encode("vulnerable_logic_refs")], forwarderProgram);
+  return PublicKey.findProgramAddressSync(
+    [idlSeed(emergencyMigratingIdl, "VULNERABLE_LOGIC_REFS_SEED")],
+    forwarderProgram,
+  );
 }
 
-/** Derive the emergency-migrating build's record of the resource with `nullifier`. Seed: `["migration_record", nullifier]`. */
+/** Derive the emergency-migrating build's record of the resource with `nullifier`. Seed: `[MIGRATION_RECORD_SEED, nullifier]`. */
 export function deriveMigrationRecordPda(forwarderProgram: PublicKey, nullifier: Uint8Array): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync([new TextEncoder().encode("migration_record"), nullifier], forwarderProgram);
+  return PublicKey.findProgramAddressSync(
+    [idlSeed(emergencyMigratingIdl, "MIGRATION_RECORD_SEED"), nullifier],
+    forwarderProgram,
+  );
+}
+
+/**
+ * Derive the forwarder's event authority, from the seeds its IDL declares.
+ *
+ * Anchor's `#[event_cpi]` signs each event self-invocation with this PDA and
+ * requires it, followed by the program's own address, after an instruction's
+ * other named accounts: the forwarder's instructions that emit events (inside
+ * the forwarder CPI segment for `forward_call`).
+ */
+export function deriveEventAuthorityPda(forwarderProgram: PublicKey): PublicKey {
+  return idlPda(idl, "initialize", "event_authority", forwarderProgram);
+}
+
+/** Derive the forwarder's upgrade authority, through which only the program upgrades itself, from the seeds its IDL declares. */
+export function deriveUpgradeAuthorityPda(forwarderProgram: PublicKey): PublicKey {
+  return idlPda(idl, "initialize", "upgrade_authority", forwarderProgram);
+}
+
+/** The upgradeable loader, which owns every upgradeable program's ProgramData account. */
+export const BPF_LOADER_UPGRADEABLE = new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111");
+
+/** Derive the upgradeable loader's ProgramData account of `program`, which `initialize` and `upgrade` take. */
+export function deriveProgramDataAddress(program: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync([program.toBuffer()], BPF_LOADER_UPGRADEABLE)[0];
 }
 
 /** Derive the adapter's state account, which a migration reads. Seed: `["pa_state"]`. */
@@ -88,20 +112,5 @@ export function deriveAdapterNullifierPda(
   return PublicKey.findProgramAddressSync(
     [new TextEncoder().encode("nullifier"), paState.toBuffer(), nullifier],
     protocolAdapter,
-  );
-}
-
-/**
- * Derive a program's event authority PDA. Seed: `["__event_authority"]`.
- *
- * Anchor's `#[event_cpi]` signs each event self-invocation with this PDA and
- * requires it, followed by the program's own address, after an instruction's
- * other named accounts: the forwarder's instructions that emit events (inside
- * the forwarder CPI segment for `forward_call`).
- */
-export function deriveEventAuthorityPda(program: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [new TextEncoder().encode("__event_authority")],
-    program,
   );
 }

@@ -23,6 +23,15 @@ A first deploy reads the forwarder's keypair path from the uncommitted `env/<clu
 
 The program's upgrade authority, the deployer, initializes the config, as the EVM proxy runs its initializer at deployment; no other signer can. It hands the upgrade authority to the program's PDA. The config pins the adapter program id (`env/<cluster>.env`), the logic ref and the owner. A wrap is only executed when the adapter forwards it for a resource carrying that logic ref. One escrow authority, a PDA of the forwarder, owns every mint's escrow: the associated token account of the authority and the mint, as the EVM forwarder holds every token at its own address. `forwarder init` with `STF_TOKEN_MINT` creates a mint's escrow account, and the same command adds further mints later.
 
+The client's deployment record, `crates/client/deployments.json`, names the program each environment runs on each cluster (staging on devnet, production on mainnet-beta) with the slot of its first deployment, `null` until it is deployed; the clients find a cluster's forwarder there. After a first deployment, write that slot into its entry, then check the recorded programs and their reads with the Helius endpoint:
+
+```sh
+HELIUS_DEVNET_URL=<the Helius devnet endpoint> ./scripts/dev.sh run cargo test -p anomapay-spl-token-forwarder-client --all-features --test deployed -- --ignored
+HELIUS_DEVNET_URL=<the Helius devnet endpoint> ./scripts/dev.sh run npm --prefix ts run test:deployed
+```
+
+Run the same checks after every upgrade.
+
 ## Nonce bitmaps
 
 A wrap's replay protection is a per-user, per-256-nonce-word bitmap account. The adapter forwards no signer to the forwarder, so the forwarder cannot create that account during a wrap; the submitter creates it with the permissionless `init_nonce_bitmap` instruction (any payer), which does nothing when the word's bitmap exists, so a submitter sends it with every wrap without reading the chain; the wrap fails with `NonceBitmapMissing` when the bitmap is absent. The init fits in the settlement transaction itself, after the ed25519 instructions the wraps' inputs point at; the client's `settlement_calls` builds it so.

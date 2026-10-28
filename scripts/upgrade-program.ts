@@ -22,7 +22,6 @@ import { upgradeForwarder } from "../client/instructions";
 import { deriveUpgradeAuthorityPda } from "../client/pda";
 import { bufferExecutableHash, deployedExecutableHash, upgradeAuthority } from "../client/upgrade";
 import { forwarderEventsOfSignature } from "../client/events";
-import type { UpgradedEvent } from "../ts/src/events";
 import { fail, parsePubkey } from "./cli-utils";
 
 async function main() {
@@ -53,9 +52,9 @@ async function main() {
   const signature = await upgradeForwarder(program, wallet, buffer, wallet).rpc({ commitment: "confirmed" });
 
   const events = await forwarderEventsOfSignature(provider.connection, program.programId, signature);
-  const upgraded = events.find((e): e is UpgradedEvent => e.name === "Upgraded");
+  const upgraded = events.find((e) => e.name === "Upgraded");
   if (!upgraded) throw new Error(`transaction ${signature} landed without Upgraded`);
-  const announced = Buffer.from(upgraded.implementationHash);
+  const announced = Buffer.from(upgraded.data.implementation_hash);
   const deployed = await deployedExecutableHash(provider.connection, program.programId);
   if (!announced.equals(expected) || !deployed.equals(expected)) {
     throw new Error(
