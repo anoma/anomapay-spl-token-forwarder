@@ -42,11 +42,15 @@ arm-core = { package = "anoma-rm-core", version = "2.0.0-rc.8.1", optional = tru
 
 [dev-dependencies]
 hex-literal = "1.1"
-# Parsing the committed IDLs in the event signature test
+# Parsing the committed IDLs in the event signature and arg seed tests
 serde_json = "1.0"
 
 [[test]]
 name = "event_signature"
+required-features = ["idl-build"]
+
+[[test]]
+name = "idl_seeds"
 required-features = ["idl-build"]
 
 [lints.rust]
