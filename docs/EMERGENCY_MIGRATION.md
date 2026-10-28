@@ -128,7 +128,7 @@ An emergency migration does not consume the resource at the adapter; the forward
 
 ## Notes on the build
 
-- The build is a Cargo feature of the forwarder program rather than a separate program, because an upgrade on Solana replaces a program's code at its address, as the EVM proxy's upgrade replaces its implementation. `dev.sh test-program` writes it for the integration tests (`crates/integration-test/tests/emergency_migrating.rs`); `dev.sh typecheck` checks its IDL (`crates/client/idl/emergency_migrating_spl_token_forwarder.json`).
+- The build is a Cargo feature of the forwarder program rather than a separate program, because an upgrade on Solana replaces a program's code at its address, as the EVM proxy's upgrade replaces its implementation. `dev.sh test-program` writes it for the integration tests (`crates/integration-test/tests/emergency_migrating.rs`); `dev.sh typecheck` checks its IDL (`crates/client/idls/emergency_migrating_spl_token_forwarder.json`).
 - Its `CONFIG_VERSION` is one more than the production build's, as the EVM draft's `reinitializer(2)` is one more than `ERC20Forwarder.initialize`'s version. `reinitialize` is owner-only: if the owner does not call it right after the upgrade, nobody else can choose the logic ref and the list.
 - Its `reinitialize` replaces the production build's, which takes only a logic ref; the EVM draft's `reinitialize` likewise has the vulnerable list.
 - The production build accepts no `Migrate` call (`UnknownOperation`), as the EVM `ERC20Forwarder`'s call type has no `Migrate`.

@@ -3,12 +3,13 @@
 //! installs the scripts' dependencies and builds the types they import.
 
 use anoma_pa_solana_client::derive_upgrade_authority_pda;
-use anomapay_spl_token_forwarder_client::{CONFIG_VERSION, derive_forwarder_escrow_authority};
+use anomapay_spl_token_forwarder_client::derive_forwarder_escrow_authority;
+use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::constants::CONFIG_VERSION;
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::scripts::{hex, run_script};
 use anomapay_spl_token_forwarder_integration_test::setup::{
     self, Build, FORWARDER_SO, balance, config, executable_hash, expected_config, give_sol,
-    new_mint, upgrade_authority,
+    new_mint, same, upgrade_authority,
 };
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -34,7 +35,7 @@ async fn init_initializes_a_deployed_forwarder_as_requested() -> anyhow::Result<
     vars.push(("STF_TOKEN_MINT", mint.to_string()));
     let ran = run_script(
         &env,
-        &env.protocol_adapter.payer,
+        env.protocol_adapter.payer()?,
         "forwarder.ts",
         &["init"],
         &vars,
@@ -47,7 +48,7 @@ async fn init_initializes_a_deployed_forwarder_as_requested() -> anyhow::Result<
     let stored = config(&env, &program).await?;
     let expected = expected_config(&env, &owner);
     anyhow::ensure!(
-        stored == expected,
+        same(&stored, &expected),
         "the config is {stored:?}, not {expected:?}"
     );
     let authority = upgrade_authority(&env, &program).await?;
@@ -73,7 +74,7 @@ async fn init_accepts_an_existing_config_that_holds_the_requested_values() -> an
     let vars = init_vars(logic_ref().into(), &local.owner.pubkey());
     let ran = run_script(
         &env,
-        &env.protocol_adapter.payer,
+        env.protocol_adapter.payer()?,
         "forwarder.ts",
         &["init"],
         &vars,
@@ -94,7 +95,7 @@ async fn init_refuses_an_existing_config_that_differs_from_the_request() -> anyh
     let vars = init_vars(Keypair::new().pubkey().to_bytes(), &local.owner.pubkey());
     let ran = run_script(
         &env,
-        &env.protocol_adapter.payer,
+        env.protocol_adapter.payer()?,
         "forwarder.ts",
         &["init"],
         &vars,
@@ -144,7 +145,7 @@ async fn publish_idl_writes_the_canonical_idl_account() -> anyhow::Result<()> {
     let (env, _) = setup::deployed(Build::Production).await?;
     let ran = run_script(
         &env,
-        &env.protocol_adapter.payer,
+        env.protocol_adapter.payer()?,
         "publish-idl.ts",
         &["target/idl/spl_token_forwarder.json"],
         &[],
@@ -166,7 +167,7 @@ async fn publish_idl_writes_the_canonical_idl_account() -> anyhow::Result<()> {
 async fn upgrade_takes_the_path_the_upgrade_authority_leaves_and_installs_the_owners_buffer()
 -> anyhow::Result<()> {
     let (env, _) = setup::deployed(Build::Production).await?;
-    let payer = &env.protocol_adapter.payer;
+    let payer = env.protocol_adapter.payer()?;
     let ran = run_script(&env, payer, "upgrade-program.ts", &["path"], &[])?;
     anyhow::ensure!(ran.success && ran.stdout.trim() == "loader", "{ran}");
 

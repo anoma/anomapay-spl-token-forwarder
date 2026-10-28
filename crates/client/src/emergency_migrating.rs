@@ -1,34 +1,39 @@
 //! The emergency-migrating build's instructions and its migration segment,
 //! as the EVM bindings' `emergency_migrating_erc20_forwarder` module binds
 //! the draft. Its wire format (`MigrateInput`, `OP_MIGRATE`) is in
-//! [`input`](crate::input), which compiles without the Solana SDK.
+//! [`input`](crate::input), which compiles without the Solana SDK. The
+//! instructions are built over the generated `client::accounts` and
+//! `client::args` of `generated::emergency_migrating_spl_token_forwarder`.
 
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 use solana_sdk_ids::system_program;
 
 use anoma_pa_solana_client::{
-    anchor_instruction_disc, derive_event_authority_pda, derive_nullifier_pda, derive_pa_state_pda,
-    derive_root_marker_pda,
+    derive_event_authority_pda, derive_nullifier_pda, derive_pa_state_pda, derive_root_marker_pda,
 };
 
-use crate::forwarder::forwarder_segment_head;
+use crate::forwarder::{forwarder_segment_head, instruction};
+use crate::generated::emergency_migrating_spl_token_forwarder::client::{accounts, args};
+use crate::generated::emergency_migrating_spl_token_forwarder::constants::{
+    MIGRATION_RECORD_SEED, VULNERABLE_LOGIC_REFS_SEED,
+};
 use crate::input::MigrateEntry;
 use crate::pda::derive_forwarder_config_pda;
 
 /// Derive the vulnerable logic refs' account. Seed:
-/// `["vulnerable_logic_refs"]`.
+/// `[VULNERABLE_LOGIC_REFS_SEED]`.
 pub fn derive_vulnerable_logic_refs_pda(forwarder_program: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[b"vulnerable_logic_refs"], forwarder_program)
+    Pubkey::find_program_address(&[VULNERABLE_LOGIC_REFS_SEED], forwarder_program)
 }
 
 /// Derive the migration record of the resource with `nullifier`. Seed:
-/// `["migration_record", nullifier]`.
+/// `[MIGRATION_RECORD_SEED, nullifier]`.
 pub fn derive_migration_record_pda(
     forwarder_program: &Pubkey,
     nullifier: &[u8; 32],
 ) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[b"migration_record", nullifier], forwarder_program)
+    Pubkey::find_program_address(&[MIGRATION_RECORD_SEED, nullifier], forwarder_program)
 }
 
 /// Build the emergency-migrating build's `reinitialize`: after upgrading the
@@ -43,25 +48,22 @@ pub fn reinitialize_ix(
     new_logic_ref: [u8; 32],
     vulnerable_logic_refs: &[[u8; 32]],
 ) -> Instruction {
-    let mut data = anchor_instruction_disc("reinitialize").to_vec();
-    data.extend_from_slice(&new_logic_ref);
-    let count =
-        u32::try_from(vulnerable_logic_refs.len()).expect("fewer than 2^32 vulnerable logic refs");
-    data.extend_from_slice(&count.to_le_bytes());
-    data.extend_from_slice(vulnerable_logic_refs.as_flattened());
-    Instruction {
-        program_id: *forwarder_program,
-        accounts: vec![
-            AccountMeta::new(*owner, true),
-            AccountMeta::new(derive_forwarder_config_pda(forwarder_program).0, false),
-            AccountMeta::new(derive_vulnerable_logic_refs_pda(forwarder_program).0, false),
-            AccountMeta::new_readonly(derive_pa_state_pda(protocol_adapter).0, false),
-            AccountMeta::new_readonly(system_program::id(), false),
-            AccountMeta::new_readonly(derive_event_authority_pda(forwarder_program).0, false),
-            AccountMeta::new_readonly(*forwarder_program, false),
-        ],
-        data,
-    }
+    instruction(
+        forwarder_program,
+        accounts::Reinitialize {
+            authority: *owner,
+            config: derive_forwarder_config_pda(forwarder_program).0,
+            vulnerable_logic_refs: derive_vulnerable_logic_refs_pda(forwarder_program).0,
+            pa_state: derive_pa_state_pda(protocol_adapter).0,
+            system_program: system_program::id(),
+            event_authority: derive_event_authority_pda(forwarder_program).0,
+            program: *forwarder_program,
+        },
+        args::Reinitialize {
+            new_logic_ref,
+            vulnerable_logic_refs: vulnerable_logic_refs.to_vec(),
+        },
+    )
 }
 
 /// Build the permissionless `init_migration_record`, which creates the
@@ -73,20 +75,17 @@ pub fn init_migration_record_ix(
     payer: &Pubkey,
     nullifier: &[u8; 32],
 ) -> Instruction {
-    let mut data = anchor_instruction_disc("init_migration_record").to_vec();
-    data.extend_from_slice(nullifier);
-    Instruction {
-        program_id: *forwarder_program,
-        accounts: vec![
-            AccountMeta::new(*payer, true),
-            AccountMeta::new(
-                derive_migration_record_pda(forwarder_program, nullifier).0,
-                false,
-            ),
-            AccountMeta::new_readonly(system_program::id(), false),
-        ],
-        data,
-    }
+    instruction(
+        forwarder_program,
+        accounts::InitMigrationRecord {
+            payer: *payer,
+            migration_record: derive_migration_record_pda(forwarder_program, nullifier).0,
+            system_program: system_program::id(),
+        },
+        args::InitMigrationRecord {
+            _nullifier: *nullifier,
+        },
+    )
 }
 
 /// Build the migration forwarder CPI segment for `entries`, through the
@@ -128,11 +127,49 @@ pub fn build_migrate_forwarder_accounts(
 mod tests {
     use super::*;
     use crate::constants::forwarder_migrate_num_accounts;
-    use crate::forwarder::tests::{assert_event_accounts, assert_matches_the_idl};
+    use crate::forwarder::tests::{
+        assert_event_accounts, assert_is_expected, assert_matches_the_idl, key,
+    };
+
+    /// Each instruction `the_builders_write_the_expected_instructions` builds,
+    /// in the form of `forwarder`'s `EXPECTED`.
+    const EXPECTED: &str = "\
+== emergency_migrating_reinitialize
+program cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN
+data 87ffcda1dfa25e8903030303030303030303030303030303030303030303030303030303030303030200000005050505050505050505050505050505050505050505050505050505050505050606060606060606060606060606060606060606060606060606060606060606
+acct 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi true true
+acct 8uZ1Xjv8Jsyfi98uTWryPLi1GrLijtpsgA45EqGhJMEb false true
+acct G6rYRax9Sm5wfnzuQfxYu4AKZxhhmUq4ifW9YgRgwo6W false true
+acct 7ZjH1XmCbc4CjMghfx6A7vnCv9cgwbDyk1uUULs72w5N false false
+acct 11111111111111111111111111111111 false false
+acct BaNhKDjFJTKQhS1To1XK8eApMSYBoMUNky6wKrf4RX5N false false
+acct cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN false false
+== init_migration_record
+program cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN
+data 0b2279b9f727d9cc0505050505050505050505050505050505050505050505050505050505050505
+acct 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi true true
+acct 8tjz1v1PzVkq3gpyV82ADm9cr9C9Q9jHszpsqsgQXKDp false true
+acct 11111111111111111111111111111111 false false
+";
+
+    #[test]
+    fn the_builders_write_the_expected_instructions() {
+        let p = key(9);
+        assert_is_expected(
+            EXPECTED,
+            "emergency_migrating_reinitialize",
+            &reinitialize_ix(&p, &key(1), &key(2), [3; 32], &[[5; 32], [6; 32]]),
+        );
+        assert_is_expected(
+            EXPECTED,
+            "init_migration_record",
+            &init_migration_record_ix(&p, &key(1), &[5; 32]),
+        );
+    }
 
     #[test]
     fn reinitialize_matches_the_idl() {
-        let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
+        let forwarder = crate::generated::emergency_migrating_spl_token_forwarder::ID;
         let (owner, adapter) = (Pubkey::new_unique(), Pubkey::new_unique());
         let ix = reinitialize_ix(&forwarder, &owner, &adapter, [9; 32], &[[1; 32], [2; 32]]);
         let args = [
@@ -152,7 +189,7 @@ mod tests {
 
     #[test]
     fn init_migration_record_matches_the_idl() {
-        let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
+        let forwarder = crate::generated::emergency_migrating_spl_token_forwarder::ID;
         let payer = Pubkey::new_unique();
         let ix = init_migration_record_ix(&forwarder, &payer, &[5; 32]);
         let idl = crate::idl::emergency_migrating_idl();

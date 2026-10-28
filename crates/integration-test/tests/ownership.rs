@@ -9,13 +9,16 @@ use anoma_pa_solana_client::derive_program_data_address;
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::executed::Executed;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
+use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::events::{
+    OwnershipTransferred, Upgraded,
+};
 use anomapay_spl_token_forwarder_client::{
-    ForwarderEvent, derive_forwarder_config_pda, reinitialize_ix, renounce_ownership_ix,
-    transfer_ownership_ix, upgrade_ixs,
+    derive_forwarder_config_pda, reinitialize_ix, renounce_ownership_ix, transfer_ownership_ix,
+    upgrade_ixs,
 };
 use anomapay_spl_token_forwarder_integration_test::refusal::NOT_THE_OWNER;
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, FORWARDER_SO, OwnedForwarder, config, events, executable_hash,
+    self, FORWARDER_SO, OwnedForwarder, config, executable_hash, sole_event,
 };
 use solana_keypair::Keypair;
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
@@ -92,25 +95,21 @@ async fn transfer_ownership_moves_the_ownership_at_once_and_announces_it() -> an
             &[owner],
         )
         .await?;
-    let events = events(
+    let transferred = sole_event::<OwnershipTransferred>(
         &Executed::read(&env.protocol_adapter.rpc, &signature).await?,
         &local.forwarder.program,
     )?;
-    let [ForwarderEvent::OwnershipTransferred(transferred)] = &events[..] else {
-        anyhow::bail!("transfer_ownership emits {events:?}, not one OwnershipTransferred");
-    };
     anyhow::ensure!(
-        transferred.previous_owner == owner.pubkey().to_bytes()
-            && transferred.new_owner == successor.pubkey().to_bytes(),
+        transferred.previous_owner == owner.pubkey() && transferred.new_owner == successor.pubkey(),
         "OwnershipTransferred {transferred:?} is not from {} to {}",
         owner.pubkey(),
         successor.pubkey()
     );
     let config = config(&env, &local.forwarder.program).await?;
     anyhow::ensure!(
-        config.owner == successor.pubkey().to_bytes(),
+        config.owner == successor.pubkey(),
         "the config's owner is {}, not the successor",
-        Pubkey::new_from_array(config.owner)
+        config.owner
     );
 
     expect_integration_panic(Needle::Static(NOT_THE_OWNER))(
@@ -135,15 +134,12 @@ async fn renounced_ownership_is_announced_and_closes_reinitialize_and_upgrade() 
             &[owner],
         )
         .await?;
-    let events = events(
+    let transferred = sole_event::<OwnershipTransferred>(
         &Executed::read(&env.protocol_adapter.rpc, &signature).await?,
         &local.forwarder.program,
     )?;
-    let [ForwarderEvent::OwnershipTransferred(transferred)] = &events[..] else {
-        anyhow::bail!("renounce_ownership emits {events:?}, not one OwnershipTransferred");
-    };
     anyhow::ensure!(
-        transferred.previous_owner == owner.pubkey().to_bytes() && transferred.new_owner == [0; 32],
+        transferred.previous_owner == owner.pubkey() && transferred.new_owner == Pubkey::default(),
         "OwnershipTransferred {transferred:?} is not from the owner to the zero key"
     );
 
@@ -207,7 +203,7 @@ async fn upgrade_refuses_an_account_that_is_not_a_loader_buffer() -> anyhow::Res
 async fn upgrade_refuses_a_buffer_someone_other_than_the_owner_wrote() -> anyhow::Result<()> {
     let (env, local) = setup::local().await?;
     let buffer = env
-        .write_buffer(FORWARDER_SO, env.protocol_adapter.payer.pubkey())
+        .write_buffer(FORWARDER_SO, env.protocol_adapter.payer_pubkey())
         .await?;
     let owner = &local.owner;
     expect_integration_panic(Needle::Static("Incorrect authority provided"))(
@@ -245,17 +241,14 @@ async fn upgrade_replaces_the_code_with_the_owners_buffer_announces_its_executab
         )
         .await?;
 
-    let events = events(
+    let upgraded = sole_event::<Upgraded>(
         &Executed::read(&env.protocol_adapter.rpc, &signature).await?,
         &local.forwarder.program,
     )?;
-    let [ForwarderEvent::Upgraded(upgraded)] = &events[..] else {
-        anyhow::bail!("upgrade emits {events:?}, not one Upgraded");
-    };
     anyhow::ensure!(
-        upgraded.executable_hash == expected,
+        upgraded.implementation_hash == expected,
         "Upgraded announces {:02x?}, not the buffer's executable hash {expected:02x?}",
-        upgraded.executable_hash
+        upgraded.implementation_hash
     );
     let program_data = rpc
         .get_account_data(&derive_program_data_address(&program))

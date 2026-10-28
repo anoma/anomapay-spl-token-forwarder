@@ -12,6 +12,7 @@
 
 use anchor_lang::prelude::*;
 use arm_core::Digest;
+use protocol_adapter::events::event_discriminator;
 use protocol_adapter::nullifier::derive_nullifier_pda;
 use protocol_adapter::root::is_root_valid;
 use protocol_adapter::state::PAStateAccount;
@@ -123,7 +124,7 @@ pub struct MigrateEntry {
 
 /// Mirrors EVM: `event LogicRefReplaced(bytes32 indexed previousLogicRef,
 /// bytes32 indexed newLogicRef);`
-#[event]
+#[event(discriminator = &event_discriminator("LogicRefReplaced([u8;32],[u8;32])"))]
 pub struct LogicRefReplaced {
     pub previous_logic_ref: [u8; 32],
     pub new_logic_ref: [u8; 32],
@@ -133,7 +134,7 @@ pub struct LogicRefReplaced {
 /// vulnerableLogicRef, bytes32 indexed nullifier);`. A migration moves no
 /// tokens, so an indexer adding up the `Wrapped` and `Unwrapped` amounts must
 /// not count it.
-#[event]
+#[event(discriminator = &event_discriminator("Migrated(pubkey,[u8;32],[u8;32])"))]
 pub struct Migrated {
     pub token: Pubkey,
     pub vulnerable_logic_ref: [u8; 32],
@@ -141,7 +142,7 @@ pub struct Migrated {
 }
 
 /// Mirrors EVM: `event VulnerableLogicRefListed(bytes32 indexed logicRef);`
-#[event]
+#[event(discriminator = &event_discriminator("VulnerableLogicRefListed([u8;32])"))]
 pub struct VulnerableLogicRefListed {
     pub logic_ref: [u8; 32],
 }

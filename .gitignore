@@ -7,3 +7,6 @@ env/*.keys.env
 .anchor
 # Devnet wallet (a private key)
 scripts/devnet-wallet.json
+# The IDLs and the deployment record the TS package copies from crates/client/
+# at build and pack time (`npm run copy-data`).
+ts/src/data/

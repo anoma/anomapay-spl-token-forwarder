@@ -6,13 +6,7 @@
 import { Program } from "@anchor-lang/core";
 import { ComputeBudgetProgram, PublicKey } from "@solana/web3.js";
 import { SplTokenForwarder } from "../target/types/spl_token_forwarder";
-
-/**
- * The most compute units a transaction may use. `upgrade` runs under it,
- * since it hashes the whole buffer (sha256's cost grows with the length)
- * before the loader's own work.
- */
-export const MAX_COMPUTE_UNIT_LIMIT = 1_400_000;
+import { UPGRADE_COMPUTE_UNIT_LIMIT } from "../ts/src/constants";
 
 /**
  * The forwarder's `initialize`, signed by `authority`, the program's upgrade
@@ -52,5 +46,5 @@ export function upgradeForwarder(
   return forwarder.methods
     .upgrade()
     .accountsPartial({ authority, buffer, spill })
-    .preInstructions([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_COMPUTE_UNIT_LIMIT })]);
+    .preInstructions([ComputeBudgetProgram.setComputeUnitLimit({ units: UPGRADE_COMPUTE_UNIT_LIMIT })]);
 }

@@ -1,42 +1,43 @@
-//! Client bindings for the AnomaPay SPL Token Forwarder: the instructions it
-//! takes, the CPI segments a settlement passes it, its wire formats (the wrap
-//! authorization message, the wrap, unwrap and migrate inputs) and its
-//! events. The emergency-migrating build's instructions are in
-//! [`emergency_migrating`]. The adapter's own bindings are
-//! anoma-pa-solana-client's.
+//! Client bindings for the AnomaPay SPL Token Forwarder. Its id, accounts,
+//! events, constants, errors and instruction accounts and arguments are
+//! generated from its IDLs ([`generated`]); the rest is what the IDLs do not
+//! describe: the instruction builders over the generated code with the PDAs
+//! they derive, the CPI segments a settlement passes the forwarder, its wire
+//! formats (the wrap authorization message, the wrap, unwrap and migrate
+//! inputs), and the emergency-migrating build's `VulnerableLogicRefs`
+//! account. The emergency-migrating build's instructions are in
+//! [`emergency_migrating`]. The deployment record is [`deployments`], and
+//! the program at an address, with its reads and builders, is
+//! [`instance`]. The adapter's own bindings are anoma-pa-solana-client's;
+//! its `decode_cpi_event` reads the generated events.
 
 pub mod accounts;
 pub mod constants;
-pub mod events;
+pub mod generated;
 pub mod input;
 pub mod wrap_message;
 
 #[cfg(feature = "solana")]
+pub mod deployments;
+#[cfg(feature = "solana")]
 pub mod emergency_migrating;
 #[cfg(feature = "solana")]
 pub mod forwarder;
+#[cfg(feature = "rpc")]
+pub mod instance;
 #[cfg(feature = "solana")]
 pub mod pda;
-#[cfg(feature = "solana")]
-pub mod program_ids;
 #[cfg(feature = "solana")]
 pub mod settlement;
 #[cfg(feature = "rpc")]
 pub mod submitter;
 
-pub use accounts::{
-    decode_config, decode_migration_record, decode_nonce_bitmap, decode_vulnerable_logic_refs,
-    AccountDecodeError, ConfigAccount, MigrationRecordAccount, NonceBitmapAccount,
-};
+pub use accounts::{decode_vulnerable_logic_refs, AccountDecodeError};
 pub use constants::*;
-pub use events::{
-    decode_forwarder_event_instruction, ForwarderEvent, InitializedEvent, LogicRefReplacedEvent,
-    MigratedEvent, UnwrappedEvent, VulnerableLogicRefListedEvent, WrappedEvent,
-};
 pub use input::{
     decode_forwarder_input, encode_migrate_forwarder_input, encode_unwrap_forwarder_input,
     encode_wrap_forwarder_input, ForwarderInput, InputError, MigrateEntry, MigrateInput,
-    UnwrapInput, WrapInput, OP_MIGRATE, OP_UNWRAP, OP_WRAP,
+    UnwrapInput, WrapInput, OP_WRAP,
 };
 pub use wrap_message::{sha256, WrapMessage, WRAP_MESSAGE_LEN};
 
@@ -52,17 +53,16 @@ pub use pda::{
     derive_forwarder_config_pda, derive_forwarder_escrow_authority, derive_nonce_bitmap_pda,
 };
 #[cfg(feature = "solana")]
-pub use program_ids::*;
-#[cfg(feature = "solana")]
 pub use settlement::{settlement_calls, CallsError};
 
-/// The vendored IDL, which the unit tests check the hand-written items against.
-#[cfg(test)]
+/// The vendored IDLs, which the unit tests of the instruction builders and
+/// the PDA helpers check them against.
+#[cfg(all(test, feature = "solana"))]
 mod idl {
     pub(crate) fn idl() -> serde_json::Value {
         serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/idl/spl_token_forwarder.json"
+            "/idls/spl_token_forwarder.json"
         )))
         .unwrap()
     }
@@ -71,20 +71,8 @@ mod idl {
     pub(crate) fn emergency_migrating_idl() -> serde_json::Value {
         serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/idl/emergency_migrating_spl_token_forwarder.json"
+            "/idls/emergency_migrating_spl_token_forwarder.json"
         )))
         .unwrap()
-    }
-
-    /// The fields of the IDL's type `name`.
-    pub(crate) fn fields<'a>(idl: &'a serde_json::Value, name: &str) -> &'a [serde_json::Value] {
-        idl["types"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|t| t["name"] == name)
-            .unwrap_or_else(|| panic!("the IDL declares no type {name}"))["type"]["fields"]
-            .as_array()
-            .unwrap()
     }
 }

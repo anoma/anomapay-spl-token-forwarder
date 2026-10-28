@@ -1175,14 +1175,180 @@ dependencies = [
 ]
 
 [[package]]
+name = "anchor-attribute-access-control"
+version = "1.2.1"
+source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "anchor-attribute-account"
+version = "1.2.1"
+source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+dependencies = [
+ "anchor-syn",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "anchor-attribute-constant"
+version = "1.2.1"
+source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+dependencies = [
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "anchor-attribute-error"
+version = "1.2.1"
+source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+dependencies = [
+ "anchor-syn",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "anchor-attribute-event"
+version = "1.2.1"
+source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+dependencies = [
+ "anchor-syn",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "anchor-attribute-program"
+version = "1.2.1"
+source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+dependencies = [
+ "anchor-lang-idl 0.1.4 (git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0)",
+ "anchor-syn",
+ "anyhow",
+ "heck 0.5.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "anchor-derive-accounts"
+version = "1.2.1"
+source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+dependencies = [
+ "anchor-syn",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "anchor-derive-serde"
+version = "1.2.1"
+source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+dependencies = [
+ "proc-macro-crate 3.5.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "anchor-derive-space"
+version = "1.2.1"
+source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "anchor-lang"
+version = "1.2.1"
+source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+dependencies = [
+ "anchor-attribute-access-control",
+ "anchor-attribute-account",
+ "anchor-attribute-constant",
+ "anchor-attribute-error",
+ "anchor-attribute-event",
+ "anchor-attribute-program",
+ "anchor-derive-accounts",
+ "anchor-derive-serde",
+ "anchor-derive-space",
+ "anchor-lang-error",
+ "base64 0.21.7",
+ "bincode",
+ "borsh 1.8.1",
+ "bytemuck",
+ "const-crypto",
+ "serde",
+ "solana-account-info 3.1.1",
+ "solana-clock 3.1.1",
+ "solana-cpi 3.1.0",
+ "solana-define-syscall 3.0.0",
+ "solana-feature-gate-interface 3.1.0",
+ "solana-instruction 3.4.1",
+ "solana-instructions-sysvar 3.0.1",
+ "solana-invoke",
+ "solana-loader-v3-interface 6.1.1",
+ "solana-msg 3.1.0",
+ "solana-program-entrypoint 3.1.1",
+ "solana-program-error 3.0.1",
+ "solana-program-memory 3.1.0",
+ "solana-program-option 3.1.0",
+ "solana-program-pack 3.1.0",
+ "solana-pubkey 3.0.0",
+ "solana-sdk-ids 3.1.0",
+ "solana-stake-interface 2.0.2",
+ "solana-system-interface 3.2.0",
+ "solana-sysvar 3.1.1",
+ "solana-sysvar-id 3.1.0",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "anchor-lang-error"
+version = "1.2.1"
+source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+dependencies = [
+ "anchor-attribute-error",
+ "borsh 1.8.1",
+ "solana-msg 3.1.0",
+ "solana-program-error 3.0.1",
+ "solana-pubkey 3.0.0",
+]
+
+[[package]]
 name = "anchor-lang-idl"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47914b4290ae2bdf4ec203aa821e6eba86d7c78ef497918938038dcc6919f953"
 dependencies = [
- "anchor-lang-idl-spec",
+ "anchor-lang-idl-spec 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "anyhow",
  "heck 0.3.3",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "anchor-lang-idl"
+version = "0.1.4"
+source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+dependencies = [
+ "anchor-lang-idl-spec 0.1.0 (git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0)",
+ "anyhow",
+ "heck 0.5.0",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -1199,6 +1365,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "anchor-lang-idl-spec"
+version = "0.1.0"
+source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+dependencies = [
+ "anyhow",
+ "serde",
+]
+
+[[package]]
+name = "anchor-syn"
+version = "1.2.1"
+source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+dependencies = [
+ "bs58",
+ "heck 0.5.0",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "sha2 0.11.0",
+ "syn 2.0.119",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1212,11 +1402,26 @@ name = "anoma-pa-solana-client"
 version = "0.7.0"
 source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=7ed4f3ee29ec4f8840fd20599e28f2e50a79fb37#7ed4f3ee29ec4f8840fd20599e28f2e50a79fb37"
 dependencies = [
- "anoma-rm-risc0",
  "bincode",
- "risc0-zkvm",
  "serde",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "anoma-pa-solana-client"
+version = "0.8.0"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?tag=bindings%2Fv0.8.0#8cc3c3a7fb54c9926b8e1ea9b280a99457f679aa"
+dependencies = [
+ "anchor-lang",
+ "anoma-rm-risc0",
+ "base64 0.22.1",
+ "bincode",
+ "heck 0.5.0",
+ "risc0-zkvm",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "solana-cluster-type 3.1.0",
  "solana-instruction 3.4.1",
  "solana-message 4.4.1",
  "solana-pubkey 3.0.0",
@@ -1230,10 +1435,11 @@ dependencies = [
 
 [[package]]
 name = "anoma-pa-solana-integration-test"
-version = "0.3.0"
-source = "git+https://github.com/anoma/solana-protocol-adapter?rev=46d67c46219f31518349efa79deaf1300cf2ea84#46d67c46219f31518349efa79deaf1300cf2ea84"
+version = "0.4.0"
+source = "git+https://github.com/anoma/solana-protocol-adapter?tag=bindings%2Fv0.4.0#3aad226fe1227b4d1813403a663d9963e61b19d5"
 dependencies = [
- "anoma-pa-solana-client",
+ "anchor-lang",
+ "anoma-pa-solana-client 0.8.0",
  "anoma-pa-testkit",
  "anoma-risc0-kind-tables",
  "anoma-rm-risc0",
@@ -1243,6 +1449,7 @@ dependencies = [
  "dotenvy",
  "futures 0.3.34",
  "serde_json",
+ "solana-cluster-type 3.1.0",
  "solana-commitment-config",
  "solana-instruction 3.4.1",
  "solana-keypair",
@@ -1256,8 +1463,12 @@ dependencies = [
  "solana-signer",
  "solana-transaction 4.1.6",
  "solana-transaction-status-client-types",
+ "spl-associated-token-account-interface",
+ "spl-token-2022-interface 2.1.0",
+ "spl-token-interface 2.0.0",
  "surfpool-sdk",
  "tokio",
+ "url 2.5.8",
 ]
 
 [[package]]
@@ -1358,40 +1569,49 @@ dependencies = [
 [[package]]
 name = "anomapay-spl-token-forwarder-client"
 version = "0.4.0"
+source = "git+https://github.com/anoma/anomapay-spl-token-forwarder?rev=e122e5106298bad753af89286705424b851fbba2#e122e5106298bad753af89286705424b851fbba2"
 dependencies = [
- "anoma-pa-solana-client",
+ "anoma-pa-solana-client 0.7.0",
  "base64 0.22.1",
  "sha2 0.10.9",
- "solana-compute-budget-interface",
- "solana-ed25519-program",
- "solana-instruction 3.4.1",
- "solana-pubkey 3.0.0",
- "solana-rpc-client",
- "solana-sdk-ids 3.1.0",
- "spl-associated-token-account-interface",
- "spl-token-interface 3.0.0",
 ]
 
 [[package]]
 name = "anomapay-spl-token-forwarder-client"
-version = "0.4.0"
-source = "git+https://github.com/anoma/anomapay-spl-token-forwarder?rev=e122e5106298bad753af89286705424b851fbba2#e122e5106298bad753af89286705424b851fbba2"
+version = "0.5.0"
 dependencies = [
- "anoma-pa-solana-client",
+ "anchor-lang",
+ "anoma-pa-solana-client 0.8.0",
  "base64 0.22.1",
+ "serde",
+ "serde_json",
  "sha2 0.10.9",
+ "solana-compute-budget-interface",
+ "solana-ed25519-program",
+ "solana-instruction 3.4.1",
+ "solana-message 4.4.1",
+ "solana-pubkey 3.0.0",
+ "solana-rpc-client",
+ "solana-rpc-client-api",
+ "solana-sdk-ids 3.1.0",
+ "solana-signature",
+ "solana-transaction 4.1.6",
+ "solana-transaction-error 3.3.2",
+ "spl-associated-token-account-interface",
+ "spl-token-interface 3.0.0",
 ]
 
 [[package]]
 name = "anomapay-spl-token-forwarder-integration-test"
 version = "0.1.0"
 dependencies = [
- "anoma-pa-solana-client",
+ "anchor-lang",
+ "anoma-pa-solana-client 0.8.0",
  "anoma-pa-solana-integration-test",
  "anoma-pa-testkit",
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",
- "anomapay-spl-token-forwarder-client 0.4.0",
+ "anomapay-spl-token-forwarder-client 0.5.0",
  "anyhow",
  "base64 0.22.1",
  "bincode",
@@ -2941,6 +3161,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "const-crypto"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c06f1eb05f06cf2e380fdded278fbf056a38974299d77960555a311dcf91a52"
+dependencies = [
+ "keccak-const",
+ "sha2-const-stable",
+]
+
+[[package]]
 name = "const-hex"
 version = "1.19.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3239,9 +3469,9 @@ dependencies = [
 
 [[package]]
 name = "ctutils"
-version = "0.4.2"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d5515a3834141de9eafb9717ad39eea8247b5674e6066c404e8c4b365d2a29e"
+checksum = "fe3e9d21d39e6f39ff46e03d5b621424f88ee23d8a1672c6bfc9ccc7f2da4f6a"
 dependencies = [
  "cmov",
 ]
@@ -4021,7 +4251,7 @@ source = "git+https://github.com/anoma/anomapay-solana-resource?tag=v2.0.0-rc.9#
 dependencies = [
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",
- "anomapay-spl-token-forwarder-client 0.4.0 (git+https://github.com/anoma/anomapay-spl-token-forwarder?rev=e122e5106298bad753af89286705424b851fbba2)",
+ "anomapay-spl-token-forwarder-client 0.4.0",
  "serde",
  "transfer_witness",
 ]
@@ -5960,6 +6190,12 @@ dependencies = [
  "digest 0.10.7",
  "sha3-asm",
 ]
+
+[[package]]
+name = "keccak-const"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57d8d8ce877200136358e0bbff3a77965875db3af755a11e1fa6b1b3e2df13ea"
 
 [[package]]
 name = "keccak-hash"
@@ -10573,7 +10809,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a1ae28868e1bfb26d542c636bc05163db7f04f17bdc5feda065eb32c8caab2a"
 dependencies = [
- "anchor-lang-idl",
+ "anchor-lang-idl 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
  "solana-idl-classic",
  "thiserror 1.0.69",
@@ -10684,6 +10920,20 @@ dependencies = [
  "solana-sdk-ids 3.1.0",
  "solana-serialize-utils 3.1.2",
  "solana-sysvar-id 3.1.0",
+]
+
+[[package]]
+name = "solana-invoke"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "84737807e1a4d6d9bbad8358c442ba8a7eb5a260b0f20a20edb98d6b9845b07e"
+dependencies = [
+ "solana-account-info 3.1.1",
+ "solana-define-syscall 3.0.0",
+ "solana-instruction 3.4.1",
+ "solana-program-entrypoint 3.1.1",
+ "solana-stable-layout 3.0.1",
+ "solana-sysvar 3.1.1",
 ]
 
 [[package]]
@@ -11538,6 +11788,19 @@ dependencies = [
 
 [[package]]
 name = "solana-rent"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e860d5499a705369778647e97d760f7670adfb6fc8419dd3d568deccd46d5487"
+dependencies = [
+ "serde",
+ "serde_derive",
+ "solana-sdk-ids 3.1.0",
+ "solana-sdk-macro 3.0.1",
+ "solana-sysvar-id 3.1.0",
+]
+
+[[package]]
+name = "solana-rent"
 version = "4.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39f0d780bf8e8a1fe8b5b5fce1acad6b209485b86dec246e7523d5e4a8b7c7fc"
@@ -12224,6 +12487,25 @@ dependencies = [
 
 [[package]]
 name = "solana-stake-interface"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9bc26191b533f9a6e5a14cca05174119819ced680a80febff2f5051a713f0db"
+dependencies = [
+ "num-traits",
+ "serde",
+ "serde_derive",
+ "solana-clock 3.1.1",
+ "solana-cpi 3.1.0",
+ "solana-instruction 3.4.1",
+ "solana-program-error 3.0.1",
+ "solana-pubkey 3.0.0",
+ "solana-system-interface 2.0.0",
+ "solana-sysvar 3.1.1",
+ "solana-sysvar-id 3.1.0",
+]
+
+[[package]]
+name = "solana-stake-interface"
 version = "4.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "252b4291eb25a5a356149ed4d4a940d5f655186210fa84b5d0d8d55c3dd42a81"
@@ -12552,6 +12834,38 @@ dependencies = [
  "solana-slot-history 2.2.1",
  "solana-stake-interface 1.2.1",
  "solana-sysvar-id 2.2.1",
+]
+
+[[package]]
+name = "solana-sysvar"
+version = "3.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6690d3dd88f15c21edff68eb391ef8800df7a1f5cec84ee3e8d1abf05affdf74"
+dependencies = [
+ "base64 0.22.1",
+ "bincode",
+ "lazy_static",
+ "serde",
+ "serde_derive",
+ "solana-account-info 3.1.1",
+ "solana-clock 3.1.1",
+ "solana-define-syscall 4.0.1",
+ "solana-epoch-rewards 3.1.0",
+ "solana-epoch-schedule 3.2.0",
+ "solana-fee-calculator 3.2.2",
+ "solana-hash 4.5.0",
+ "solana-instruction 3.4.1",
+ "solana-last-restart-slot 3.1.0",
+ "solana-program-entrypoint 3.1.1",
+ "solana-program-error 3.0.1",
+ "solana-program-memory 3.1.0",
+ "solana-pubkey 4.2.1",
+ "solana-rent 3.1.0",
+ "solana-sdk-ids 3.1.0",
+ "solana-sdk-macro 3.0.1",
+ "solana-slot-hashes 3.1.0",
+ "solana-slot-history 3.1.0",
+ "solana-sysvar-id 3.1.0",
 ]
 
 [[package]]
@@ -13141,7 +13455,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae838dffc11f1858c80435dde65308685c3d8fc7cb8dfd9af08205a429907bf5"
 dependencies = [
- "anchor-lang-idl",
+ "anchor-lang-idl 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json",
  "solana-idl-classic",
  "solana-idl-converter",
@@ -13585,7 +13899,7 @@ dependencies = [
  "agave-feature-set",
  "agave-geyser-plugin-interface",
  "agave-reserved-account-keys",
- "anchor-lang-idl",
+ "anchor-lang-idl 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "async-trait",
  "base64 0.22.1",
  "bincode",
@@ -13726,7 +14040,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5ad28c8c5cc3434732f475cda2d15ff51a654e27f8c1d9968ad28592d78a407"
 dependencies = [
  "agave-feature-set",
- "anchor-lang-idl",
+ "anchor-lang-idl 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "base64 0.22.1",
  "blake3",
  "chrono",
@@ -14326,7 +14640,7 @@ source = "git+https://github.com/anoma/anomapay-solana-resource?tag=v2.0.0-rc.9#
 dependencies = [
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",
- "anomapay-spl-token-forwarder-client 0.4.0 (git+https://github.com/anoma/anomapay-spl-token-forwarder?rev=e122e5106298bad753af89286705424b851fbba2)",
+ "anomapay-spl-token-forwarder-client 0.4.0",
  "hex-literal",
  "k256",
  "serde",
@@ -14338,10 +14652,10 @@ name = "transfer_witness"
 version = "2.0.0-rc.9"
 source = "git+https://github.com/anoma/anomapay-solana-resource?tag=v2.0.0-rc.9#a5163281d53d8401c66c71f76ee45ca4965d9ba0"
 dependencies = [
- "anoma-pa-solana-client",
+ "anoma-pa-solana-client 0.7.0",
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",
- "anomapay-spl-token-forwarder-client 0.4.0 (git+https://github.com/anoma/anomapay-spl-token-forwarder?rev=e122e5106298bad753af89286705424b851fbba2)",
+ "anomapay-spl-token-forwarder-client 0.4.0",
  "bincode",
  "k256",
  "serde",
@@ -14485,7 +14799,7 @@ version = "0.3.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fe1206411eaf8d5886f4313834ec9ff073e644e9b73fea0e57207296f6e7cd0"
 dependencies = [
- "anchor-lang-idl",
+ "anchor-lang-idl 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "borsh 1.8.1",
  "bs58",
  "lazy_static",

@@ -25,19 +25,24 @@ use anoma_rm_risc0::Digest;
 use anoma_rm_risc0::resource::Resource;
 use anoma_rm_risc0::utils::bytes_to_words;
 use anomapay_spl_token_forwarder_client::emergency_migrating::{
-    derive_migration_record_pda, derive_vulnerable_logic_refs_pda, reinitialize_ix,
+    derive_vulnerable_logic_refs_pda, reinitialize_ix,
 };
+use anomapay_spl_token_forwarder_client::generated::emergency_migrating_spl_token_forwarder::constants::CONFIG_VERSION as EMERGENCY_MIGRATING_CONFIG_VERSION;
+use anomapay_spl_token_forwarder_client::generated::emergency_migrating_spl_token_forwarder::events::{
+    Initialized, LogicRefReplaced, Migrated, VulnerableLogicRefListed,
+};
+use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::constants::CONFIG_VERSION;
+use anomapay_spl_token_forwarder_client::instance::EmergencyMigratingSplTokenForwarder;
 use anomapay_spl_token_forwarder_client::{
-    CONFIG_VERSION, ForwarderEvent, LogicRefReplacedEvent, MigrateEntry, MigrateInput,
-    MigratedEvent, VulnerableLogicRefListedEvent, decode_migration_record,
-    decode_vulnerable_logic_refs, encode_migrate_forwarder_input, forwarder_migrate_num_accounts,
+    MigrateEntry, MigrateInput, decode_vulnerable_logic_refs, encode_migrate_forwarder_input,
+    forwarder_migrate_num_accounts,
 };
 use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
 use anomapay_spl_token_forwarder_integration_test::logic::{logic_ref, random_logic_ref};
 use anomapay_spl_token_forwarder_integration_test::refusal::{NOT_THE_OWNER, balances};
 use anomapay_spl_token_forwarder_integration_test::setup::{
     self, FORWARDER_EMERGENCY_MIGRATING_DEV_SO, FORWARDER_EMERGENCY_MIGRATING_SO, Forwarder,
-    OwnedForwarder, config, events, set_config_version,
+    OwnedForwarder, config, discriminator, event_order, same, set_config_version,
 };
 use emergency_migrating_transfer_library::{
     EMERGENCY_MIGRATING_TOKEN_TRANSFER_ID, EmergencyMigratingTransferLogic,
@@ -50,10 +55,6 @@ use transfer_library::TransferLogic;
 
 /// 100 tokens at the mint's 6 decimals.
 const AMOUNT: u64 = 100_000_000;
-
-/// The config version of the emergency-migrating build: one more than the
-/// production build's.
-const EMERGENCY_MIGRATING_CONFIG_VERSION: u64 = CONFIG_VERSION + 1;
 
 fn bytes(digest: Digest) -> [u8; 32] {
     digest.into()
@@ -107,24 +108,17 @@ async fn listed(env: &LocalEnv, program: &Pubkey) -> anyhow::Result<Vec<[u8; 32]
     Ok(decode_vulnerable_logic_refs(&data)?)
 }
 
-/// Whether the forwarder migrated the resource with `nullifier`, as the EVM
-/// draft's `isNullifierMigrated`: its record exists and says so.
+/// Whether the forwarder migrated the resource with `nullifier`, as the
+/// instance reads the EVM draft's `isNullifierMigrated`.
 async fn is_migrated<P>(
     env: &Environment<P>,
     program: &Pubkey,
     nullifier: [u8; 32],
 ) -> anyhow::Result<bool> {
-    let record = derive_migration_record_pda(program, &nullifier).0;
-    let rpc = &env.protocol_adapter.rpc;
     Ok(
-        match rpc
-            .get_account_with_commitment(&record, rpc.commitment())
-            .await?
-            .value
-        {
-            Some(account) => decode_migration_record(&account.data)?.migrated,
-            None => false,
-        },
+        EmergencyMigratingSplTokenForwarder::at(&env.protocol_adapter.rpc, *program)
+            .is_nullifier_migrated(&nullifier)
+            .await?,
     )
 }
 
@@ -213,19 +207,23 @@ async fn migrated<P>(
     migrated: &[([u8; 32], [u8; 32])],
     before: &[u64],
 ) -> anyhow::Result<()> {
-    let emitted = events(executed, &forwarder.program)?;
-    let expected: Vec<ForwarderEvent> = migrated
+    let order = event_order(executed, &forwarder.program)?;
+    anyhow::ensure!(
+        order == vec![discriminator::<Migrated>(); migrated.len()],
+        "the migration emits the events {order:02x?}, not {} Migrated",
+        migrated.len()
+    );
+    let emitted = executed.events::<Migrated>(&forwarder.program)?;
+    let expected: Vec<Migrated> = migrated
         .iter()
-        .map(|&(vulnerable_logic_ref, nullifier)| {
-            ForwarderEvent::Migrated(MigratedEvent {
-                token: forwarder.mint.to_bytes(),
-                vulnerable_logic_ref,
-                nullifier,
-            })
+        .map(|&(vulnerable_logic_ref, nullifier)| Migrated {
+            token: forwarder.mint,
+            vulnerable_logic_ref,
+            nullifier,
         })
         .collect();
     anyhow::ensure!(
-        emitted == expected,
+        same(&emitted, &expected),
         "the migration emits {emitted:?}, not {expected:?}"
     );
     for &(_, nullifier) in migrated {
@@ -346,28 +344,48 @@ async fn reinitialize_replaces_the_logic_ref_lists_the_passed_refs_and_announces
         listed == [bytes(first), bytes(second)],
         "the forwarder lists {listed:02x?}"
     );
-    let emitted = events(
-        &Executed::read(&env.protocol_adapter.rpc, &signature).await?,
-        &program,
-    )?;
-    let expected = vec![
-        ForwarderEvent::VulnerableLogicRefListed(VulnerableLogicRefListedEvent {
+    let executed = Executed::read(&env.protocol_adapter.rpc, &signature).await?;
+    let order = event_order(&executed, &program)?;
+    anyhow::ensure!(
+        order
+            == [
+                discriminator::<VulnerableLogicRefListed>(),
+                discriminator::<VulnerableLogicRefListed>(),
+                discriminator::<LogicRefReplaced>(),
+                discriminator::<Initialized>(),
+            ],
+        "reinitialize emits the events {order:02x?}, not two VulnerableLogicRefListed, \
+         LogicRefReplaced, then Initialized"
+    );
+    let listed_events = executed.events::<VulnerableLogicRefListed>(&program)?;
+    let expected_listed = vec![
+        VulnerableLogicRefListed {
             logic_ref: bytes(first),
-        }),
-        ForwarderEvent::VulnerableLogicRefListed(VulnerableLogicRefListedEvent {
+        },
+        VulnerableLogicRefListed {
             logic_ref: bytes(second),
-        }),
-        ForwarderEvent::LogicRefReplaced(LogicRefReplacedEvent {
-            previous_logic_ref: bytes(logic_ref()),
-            new_logic_ref: bytes(new),
-        }),
-        ForwarderEvent::Initialized(anomapay_spl_token_forwarder_client::InitializedEvent {
-            version: EMERGENCY_MIGRATING_CONFIG_VERSION,
-        }),
+        },
     ];
     anyhow::ensure!(
-        emitted == expected,
-        "reinitialize emits {emitted:?}, not {expected:?}"
+        same(&listed_events, &expected_listed),
+        "reinitialize lists {listed_events:?}, not {expected_listed:?}"
+    );
+    let replaced = executed.events::<LogicRefReplaced>(&program)?;
+    let expected_replaced = vec![LogicRefReplaced {
+        previous_logic_ref: bytes(logic_ref()),
+        new_logic_ref: bytes(new),
+    }];
+    anyhow::ensure!(
+        same(&replaced, &expected_replaced),
+        "reinitialize announces {replaced:?}, not {expected_replaced:?}"
+    );
+    let initialized = executed.events::<Initialized>(&program)?;
+    let expected_initialized = vec![Initialized {
+        version: EMERGENCY_MIGRATING_CONFIG_VERSION,
+    }];
+    anyhow::ensure!(
+        same(&initialized, &expected_initialized),
+        "reinitialize announces {initialized:?}, not {expected_initialized:?}"
     );
     Ok(())
 }
@@ -387,15 +405,12 @@ async fn reinitialize_keeps_the_logic_ref_and_lists_the_vulnerable_refs() -> any
         .await?;
     anyhow::ensure!(config(&env, &program).await?.logic_ref == bytes(logic_ref()));
     anyhow::ensure!(listed(&env, &program).await? == [bytes(deprecated)]);
-    let emitted = events(
-        &Executed::read(&env.protocol_adapter.rpc, &signature).await?,
-        &program,
-    )?;
+    let replaced = Executed::read(&env.protocol_adapter.rpc, &signature)
+        .await?
+        .events::<LogicRefReplaced>(&program)?;
     anyhow::ensure!(
-        !emitted
-            .iter()
-            .any(|event| matches!(event, ForwarderEvent::LogicRefReplaced(_))),
-        "reinitialize announces a replacement of a kept logic ref: {emitted:?}"
+        replaced.is_empty(),
+        "reinitialize announces a replacement of a kept logic ref: {replaced:?}"
     );
     Ok(())
 }
@@ -626,6 +641,122 @@ async fn a_migration_records_every_nullifier_and_moves_no_tokens() -> anyhow::Re
     .await
 }
 
+/// The release the emergency-migrating build's IDL records, which its
+/// `version` answers.
+fn emergency_migrating_idl_version() -> anyhow::Result<String> {
+    let idl: serde_json::Value = serde_json::from_str(include_str!(
+        "../../client/idls/emergency_migrating_spl_token_forwarder.json"
+    ))?;
+    idl["metadata"]["version"]
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| anyhow::anyhow!("the IDL records no version: {}", idl["metadata"]))
+}
+
+// The client's emergency-migrating instance (`instance::
+// EmergencyMigratingSplTokenForwarder`) on the forwarder of an incident.
+// Before `reinitialize` it lists no logic ref and holds no migration record,
+// and its marker reads answer false, as the EVM draft's empty storage does.
+// After `reinitialize` lists the transfer logic ref and one migration records
+// the wrapped resource, every read answers that.
+#[tokio::test(flavor = "multi_thread")]
+async fn every_read_of_the_emergency_migrating_instance_answers_the_incident() -> anyhow::Result<()>
+{
+    let mut incident = before_the_incident(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
+    let rpc = incident.env.protocol_adapter.rpc.clone();
+    let program = incident.local.forwarder.program;
+    let instance = EmergencyMigratingSplTokenForwarder::at(&rpc, program);
+    let vulnerable = bytes(logic_ref());
+    let unlisted = bytes(random_logic_ref());
+    let entry = incident.entry()?;
+
+    let listed_before = instance.is_logic_ref_vulnerable(&vulnerable).await?;
+    let migrated_before = instance.is_nullifier_migrated(&entry.nullifier).await?;
+    println!(
+        "before reinitialize: is_logic_ref_vulnerable {listed_before}, \
+         is_nullifier_migrated {migrated_before}"
+    );
+    anyhow::ensure!(
+        !listed_before && !migrated_before,
+        "before reinitialize the forwarder lists the transfer logic ref ({listed_before}) or \
+         migrated the wrapped resource ({migrated_before})"
+    );
+
+    incident.deny_and_reinitialize().await?;
+    let tx = incident.prove_migration(vec![entry.clone()], 1).await?;
+    incident.env.protocol_adapter.settled(tx).await?;
+    // A record `init_migration_record` created, of a resource never migrated.
+    let unmigrated = [0x77; 32];
+    let payer = incident.env.protocol_adapter.payer_pubkey();
+    incident
+        .env
+        .send(
+            &[instance.init_migration_record_ix(&payer, &unmigrated)],
+            &[],
+        )
+        .await?;
+
+    for (logic_ref, expected) in [(vulnerable, true), (unlisted, false)] {
+        let read = instance.is_logic_ref_vulnerable(&logic_ref).await?;
+        println!("is_logic_ref_vulnerable({logic_ref:02x?}): {read}");
+        anyhow::ensure!(
+            read == expected,
+            "is_logic_ref_vulnerable({logic_ref:02x?}) is {read}, reinitialize listed only \
+             {vulnerable:02x?}"
+        );
+    }
+    for (nullifier, expected) in [
+        (entry.nullifier, true),
+        (unmigrated, false),
+        ([0x78; 32], false),
+    ] {
+        let read = instance.is_nullifier_migrated(&nullifier).await?;
+        println!("is_nullifier_migrated({nullifier:02x?}): {read}");
+        anyhow::ensure!(
+            read == expected,
+            "is_nullifier_migrated({nullifier:02x?}) is {read}, the one migration recorded \
+             only {:02x?}",
+            entry.nullifier
+        );
+    }
+
+    let read_logic_ref = instance.get_logic_ref().await?;
+    println!("get_logic_ref: {read_logic_ref:02x?}");
+    anyhow::ensure!(
+        read_logic_ref == bytes(PASSTHROUGH_LOGIC_VK),
+        "get_logic_ref() is {read_logic_ref:02x?}, reinitialize moved to the pass-through logic"
+    );
+    let adapter = instance.get_protocol_adapter().await?;
+    println!("get_protocol_adapter: {adapter}");
+    anyhow::ensure!(
+        adapter == incident.env.protocol_adapter.program,
+        "get_protocol_adapter() is {adapter}, the forwarder serves {}",
+        incident.env.protocol_adapter.program
+    );
+    let owner = instance.owner().await?;
+    println!("owner: {owner}");
+    anyhow::ensure!(
+        owner == incident.local.owner.pubkey(),
+        "owner() is {owner}, the forwarder was initialized with {}",
+        incident.local.owner.pubkey()
+    );
+    let version = instance.version(&payer).await?;
+    println!("version: {version}");
+    anyhow::ensure!(
+        version == emergency_migrating_idl_version()?,
+        "version() is {version}, the emergency-migrating IDL records {}",
+        emergency_migrating_idl_version()?
+    );
+    let legacy = instance.legacy_forwarder();
+    let built_with = setup::env_address(setup::LOCALNET, "LEGACY_FORWARDER_PROGRAM_ID")?;
+    println!("legacy_forwarder: {legacy}");
+    anyhow::ensure!(
+        legacy == built_with,
+        "legacy_forwarder() is {legacy}, the local build is built with {built_with}"
+    );
+    Ok(())
+}
+
 /// Settling a migration of `entries` fails with `error`, and records no
 /// nullifier.
 async fn refuses_migration(
@@ -843,7 +974,7 @@ async fn a_migration_refuses_trailing_bytes() -> anyhow::Result<()> {
     let accounts = anomapay_spl_token_forwarder_client::settlement::settlement_calls(
         &program,
         &incident.env.protocol_adapter.program,
-        &incident.env.protocol_adapter.payer.pubkey(),
+        &incident.env.protocol_adapter.payer_pubkey(),
         &[migrate_call(
             &program,
             encode_migrate_forwarder_input(&migration),

@@ -1,8 +1,8 @@
 {
-  "address": "BsfuXpxw8oCmZXnYijyQkUYNcCnuskFZbYizmWLnpSU7",
+  "address": "34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4",
   "metadata": {
     "name": "spl_token_forwarder",
-    "version": "2.0.0-rc.7",
+    "version": "2.0.0-rc.8",
     "spec": "0.1.0",
     "description": "SPL Token forwarder for wrap/unwrap operations with Ed25519 signature verification"
   },
@@ -35,7 +35,7 @@
         {
           "name": "config",
           "writable": true,
-          "address": "6wu5mRw8RN1euy4AUsQoHTU5HraEGGXYhmrucG41bMdq"
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
         },
         {
           "name": "pa_state"
@@ -78,7 +78,7 @@
         },
         {
           "name": "config",
-          "address": "6wu5mRw8RN1euy4AUsQoHTU5HraEGGXYhmrucG41bMdq"
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
         },
         {
           "name": "escrow_ata",
@@ -86,7 +86,7 @@
         },
         {
           "name": "escrow_authority",
-          "address": "G78SQtzYuo4YKDEECzh25rckXeJFjLMXy44iWKKG5rDG"
+          "address": "A3srA2cw6o11TCSyMpBbnpLVnu6RLe6eGZEFz3d2m8h1"
         },
         {
           "name": "recipient_ata",
@@ -132,7 +132,7 @@
         },
         {
           "name": "config",
-          "address": "6wu5mRw8RN1euy4AUsQoHTU5HraEGGXYhmrucG41bMdq"
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
         },
         {
           "name": "pa_state"
@@ -162,7 +162,7 @@
       "accounts": [
         {
           "name": "config",
-          "address": "6wu5mRw8RN1euy4AUsQoHTU5HraEGGXYhmrucG41bMdq"
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
         },
         {
           "name": "ix_sysvar",
@@ -396,7 +396,7 @@
           "docs": [
             "This program, which the `Initialized` event's self-invocation needs."
           ],
-          "address": "BsfuXpxw8oCmZXnYijyQkUYNcCnuskFZbYizmWLnpSU7"
+          "address": "34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4"
         },
         {
           "name": "program_data",
@@ -406,7 +406,7 @@
             "hands the authority to `upgrade_authority`."
           ],
           "writable": true,
-          "address": "DuBUDTZJvomWyQ757HzdKaG4F7gXtaEzJaMEoRfkcX2b"
+          "address": "8RDK7t1dBPn6FgNdJBE4QQirfLvu4mckMatpDXCdeRZb"
         },
         {
           "name": "system_program",
@@ -528,7 +528,7 @@
         {
           "name": "config",
           "writable": true,
-          "address": "6wu5mRw8RN1euy4AUsQoHTU5HraEGGXYhmrucG41bMdq"
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
         },
         {
           "name": "vulnerable_logic_refs",
@@ -537,7 +537,7 @@
             "them at every later one."
           ],
           "writable": true,
-          "address": "Hg5mVf1cDV3bANYsdsxwp4rAFb5y5umMG7fKhsT6Qkai"
+          "address": "E6jEDPdAWRPyASSQ8MKhqkymsKAnrutRVcXpkfr6Rcm1"
         },
         {
           "name": "pa_state",
@@ -605,7 +605,7 @@
         {
           "name": "config",
           "writable": true,
-          "address": "6wu5mRw8RN1euy4AUsQoHTU5HraEGGXYhmrucG41bMdq"
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
         },
         {
           "name": "event_authority"
@@ -641,7 +641,7 @@
         {
           "name": "config",
           "writable": true,
-          "address": "6wu5mRw8RN1euy4AUsQoHTU5HraEGGXYhmrucG41bMdq"
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
         },
         {
           "name": "event_authority"
@@ -685,7 +685,7 @@
         },
         {
           "name": "config",
-          "address": "6wu5mRw8RN1euy4AUsQoHTU5HraEGGXYhmrucG41bMdq"
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
         },
         {
           "name": "program_data",
@@ -693,7 +693,7 @@
             "address pins it."
           ],
           "writable": true,
-          "address": "DuBUDTZJvomWyQ757HzdKaG4F7gXtaEzJaMEoRfkcX2b"
+          "address": "8RDK7t1dBPn6FgNdJBE4QQirfLvu4mckMatpDXCdeRZb"
         },
         {
           "name": "upgraded_program",
@@ -701,7 +701,7 @@
             "the address pins it."
           ],
           "writable": true,
-          "address": "BsfuXpxw8oCmZXnYijyQkUYNcCnuskFZbYizmWLnpSU7"
+          "address": "34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4"
         },
         {
           "name": "buffer",
@@ -835,105 +835,105 @@
     {
       "name": "Initialized",
       "discriminator": [
-        208,
-        213,
-        115,
-        98,
-        115,
-        82,
-        201,
-        209
+        167,
+        111,
+        190,
+        136,
+        109,
+        29,
+        191,
+        90
       ]
     },
     {
       "name": "LogicRefReplaced",
       "discriminator": [
-        221,
-        160,
-        132,
-        217,
-        133,
-        12,
-        66,
-        140
+        247,
+        53,
+        158,
+        213,
+        33,
+        165,
+        201,
+        225
       ]
     },
     {
       "name": "Migrated",
       "discriminator": [
-        2,
-        66,
-        164,
-        53,
-        158,
-        122,
-        128,
-        236
+        181,
+        32,
+        135,
+        150,
+        54,
+        73,
+        55,
+        54
       ]
     },
     {
       "name": "OwnershipTransferred",
       "discriminator": [
-        172,
-        61,
-        205,
-        183,
-        250,
-        50,
-        38,
-        98
+        71,
+        234,
+        56,
+        148,
+        14,
+        39,
+        34,
+        42
       ]
     },
     {
       "name": "Unwrapped",
       "discriminator": [
-        25,
-        86,
-        93,
-        80,
-        145,
-        113,
-        86,
-        93
+        154,
+        254,
+        126,
+        18,
+        244,
+        97,
+        129,
+        147
       ]
     },
     {
       "name": "Upgraded",
       "discriminator": [
-        138,
-        25,
-        89,
-        37,
-        127,
-        140,
-        213,
-        146
+        136,
+        228,
+        110,
+        228,
+        183,
+        148,
+        97,
+        109
       ]
     },
     {
       "name": "VulnerableLogicRefListed",
       "discriminator": [
-        6,
-        130,
-        188,
-        245,
-        237,
-        245,
-        223,
-        179
+        156,
+        34,
+        116,
+        82,
+        169,
+        152,
+        235,
+        121
       ]
     },
     {
       "name": "Wrapped",
       "discriminator": [
-        11,
-        127,
-        145,
-        31,
-        206,
-        134,
-        73,
-        130
+        255,
+        133,
+        209,
+        238,
+        236,
+        4,
+        112,
+        232
       ]
     }
   ],
@@ -1403,13 +1403,13 @@
       "name": "Upgraded",
       "docs": [
         "Mirrors ERC1967: `event Upgraded(address indexed implementation);`, the",
-        "new code named by its executable hash, as the adapter's `UpgradedEvent`."
+        "new code named by its executable hash, as the adapter's `Upgraded`."
       ],
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "executable_hash",
+            "name": "implementation_hash",
             "type": {
               "array": [
                 "u8",

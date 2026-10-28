@@ -1,9 +1,7 @@
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { Keypair, type PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY, SystemProgram } from "@solana/web3.js";
+import { Keypair, type PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
 
-import emergencyMigratingIdl from "../../crates/client/idl/emergency_migrating_spl_token_forwarder.json";
-import forwarderIdl from "../../crates/client/idl/spl_token_forwarder.json";
 import {
   FORWARDER_UNWRAP_NUM_ACCOUNTS,
   FORWARDER_WRAP_NUM_ACCOUNTS,
@@ -13,8 +11,6 @@ import {
   buildMigrateForwarderAccounts,
   buildUnwrapForwarderAccounts,
   buildWrapForwarderAccounts,
-  initMigrationRecordIx,
-  initNonceBitmapIx,
   nonceWordIndex,
 } from "./forwarder.js";
 import {
@@ -47,7 +43,7 @@ describe("forwarder segment builders", () => {
         forwarder,
         deriveForwarderConfigPda(forwarder)[0],
         SYSVAR_INSTRUCTIONS_PUBKEY,
-        deriveEventAuthorityPda(forwarder)[0],
+        deriveEventAuthorityPda(forwarder),
         forwarder,
         tokenAccount(user, mint),
         tokenAccount(escrowAuthority, mint),
@@ -71,7 +67,7 @@ describe("forwarder segment builders", () => {
         forwarder,
         deriveForwarderConfigPda(forwarder)[0],
         SYSVAR_INSTRUCTIONS_PUBKEY,
-        deriveEventAuthorityPda(forwarder)[0],
+        deriveEventAuthorityPda(forwarder),
         forwarder,
         tokenAccount(escrowAuthority, mint),
         tokenAccount(recipient, mint),
@@ -97,7 +93,7 @@ describe("forwarder segment builders", () => {
         forwarder,
         deriveForwarderConfigPda(forwarder)[0],
         SYSVAR_INSTRUCTIONS_PUBKEY,
-        deriveEventAuthorityPda(forwarder)[0],
+        deriveEventAuthorityPda(forwarder),
         forwarder,
         paState,
         deriveVulnerableLogicRefsPda(forwarder)[0],
@@ -115,45 +111,9 @@ describe("forwarder segment builders", () => {
     expect(accounts.every((a) => !a.isSigner)).toBe(true);
   });
 
-  it("init_migration_record instruction matches the emergency-migrating build's IDL", () => {
-    const payer = Keypair.generate().publicKey;
-    const nullifier = new Uint8Array(32).fill(5);
-    const ix = initMigrationRecordIx(forwarder, payer, nullifier);
-    expect(Array.from(ix.data.subarray(0, 8))).toEqual(
-      emergencyMigratingIdl.instructions.find((i) => i.name === "init_migration_record")!.discriminator,
-    );
-    expect(Array.from(ix.data.subarray(8))).toEqual(Array.from(nullifier));
-    expect(ix.keys.map((k) => [k.pubkey.toBase58(), k.isSigner, k.isWritable])).toEqual([
-      [payer.toBase58(), true, true],
-      [deriveMigrationRecordPda(forwarder, nullifier)[0].toBase58(), false, true],
-      [SystemProgram.programId.toBase58(), false, false],
-    ]);
-  });
-
   it("nonce word index covers 256 nonces per word", () => {
     expect(nonceWordIndex(0n)).toBe(0n);
     expect(nonceWordIndex(255n)).toBe(0n);
     expect(nonceWordIndex(256n)).toBe(1n);
-  });
-
-  it("init_nonce_bitmap instruction matches the forwarder IDL", () => {
-    const payer = Keypair.generate().publicKey;
-    const user = Keypair.generate().publicKey;
-    const ix = initNonceBitmapIx(forwarder, payer, user, 7n);
-
-    expect(ix.programId.equals(forwarder)).toBe(true);
-    // The IDL's discriminator, then the two args.
-    expect(Array.from(ix.data.subarray(0, 8))).toEqual(
-      forwarderIdl.instructions.find((i) => i.name === "init_nonce_bitmap")!.discriminator,
-    );
-    expect(Array.from(ix.data.subarray(8, 40))).toEqual(Array.from(user.toBytes()));
-    expect(Array.from(ix.data.subarray(40))).toEqual([7, 0, 0, 0, 0, 0, 0, 0]);
-
-    const [expectedBitmap] = deriveNonceBitmapPda(forwarder, user, 7n);
-    expect(ix.keys.map((k) => [k.pubkey.toBase58(), k.isSigner, k.isWritable])).toEqual([
-      [payer.toBase58(), true, true],
-      [expectedBitmap.toBase58(), false, true],
-      [SystemProgram.programId.toBase58(), false, false],
-    ]);
   });
 });

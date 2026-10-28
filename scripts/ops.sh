@@ -179,9 +179,11 @@ write_test_program() {
 }
 
 # Yarn's install of the operator scripts' dependencies, exactly as yarn.lock
-# pins them.
+# pins them, and the IDLs and deployment record the TS package's sources,
+# which the scripts import, read from its build output (ts/src/data/).
 ensure_node_modules() {
   yarn install --frozen-lockfile
+  (cd ts && npm run copy-data)
 }
 
 # ---------- cluster resolution ----------
@@ -571,14 +573,21 @@ case "$COMMAND" in
     cargo clippy -p spl-token-forwarder --features "$DEV_FEATURES $EMERGENCY_MIGRATING_FEATURES" --all-targets -- -D warnings
     # `cpi` is how another program depends on this one to call it.
     cargo clippy -p spl-token-forwarder --features cpi --all-targets -- -D warnings
-    # The client's wire formats and event decoders without the Solana SDK.
+    # The client's wire formats and generated bindings without the Solana SDK,
+    # and the client with its RPC code (the submitter, the instances).
     cargo clippy -p anomapay-spl-token-forwarder-client --no-default-features --all-targets -- -D warnings
+    cargo clippy -p anomapay-spl-token-forwarder-client --all-features --all-targets -- -D warnings
     (cd crates/integration-test && cargo clippy --all-targets --features e2e,scripts -- -D warnings)
     ;;
   unit-test)
     require_cmd cargo
     cargo test --workspace
+    # The client's RPC code (the instances), which the workspace's default
+    # features leave out.
+    cargo test -p anomapay-spl-token-forwarder-client --all-features
     cargo test -p spl-token-forwarder --features "$EMERGENCY_MIGRATING_FEATURES"
+    # The committed IDLs' event discriminators, which need the IDL types.
+    cargo test -p spl-token-forwarder --features idl-build --test event_signature
     ;;
   build-dev)
     require_cmd anchor
@@ -628,13 +637,13 @@ case "$COMMAND" in
     release_idl
     # The client bindings' copy of the IDL, which their decoders are tested
     # against, is the program's.
-    if ! cmp "$PROGRAM_IDL" crates/client/idl/spl_token_forwarder.json; then
-      echo "❌ crates/client/idl/spl_token_forwarder.json is not the program's IDL; copy $PROGRAM_IDL over it." >&2
+    if ! cmp "$PROGRAM_IDL" crates/client/idls/spl_token_forwarder.json; then
+      echo "❌ crates/client/idls/spl_token_forwarder.json is not the program's IDL; copy $PROGRAM_IDL over it." >&2
       exit 1
     fi
     emergency_migrating_idl
-    if ! cmp "$EMERGENCY_MIGRATING_IDL" crates/client/idl/emergency_migrating_spl_token_forwarder.json; then
-      echo "❌ crates/client/idl/emergency_migrating_spl_token_forwarder.json is not the emergency-migrating build's IDL; copy $EMERGENCY_MIGRATING_IDL over it." >&2
+    if ! cmp "$EMERGENCY_MIGRATING_IDL" crates/client/idls/emergency_migrating_spl_token_forwarder.json; then
+      echo "❌ crates/client/idls/emergency_migrating_spl_token_forwarder.json is not the emergency-migrating build's IDL; copy $EMERGENCY_MIGRATING_IDL over it." >&2
       exit 1
     fi
     yarn run typecheck

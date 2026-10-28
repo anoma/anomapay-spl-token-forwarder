@@ -25,6 +25,7 @@ mod tests;
 #[cfg(feature = "emergency-migrating")]
 pub use emergency_migrating::*;
 pub use error::ErrorCode;
+use protocol_adapter::events::event_discriminator;
 use protocol_adapter::state::UPGRADE_AUTHORITY_SEED;
 pub use state::*;
 
@@ -32,7 +33,7 @@ pub use state::*;
 declare_id!(Pubkey::from_str_const(env!("FORWARDER_PROGRAM_ID")));
 
 /// Mirrors EVM: `event Wrapped(address indexed token, address indexed from, uint128 amount);`
-#[event]
+#[event(discriminator = &event_discriminator("Wrapped(pubkey,pubkey,u64)"))]
 pub struct Wrapped {
     pub token: Pubkey,
     pub from: Pubkey,
@@ -40,7 +41,7 @@ pub struct Wrapped {
 }
 
 /// Mirrors EVM: `event Unwrapped(address indexed token, address indexed to, uint128 amount);`
-#[event]
+#[event(discriminator = &event_discriminator("Unwrapped(pubkey,pubkey,u64)"))]
 pub struct Unwrapped {
     pub token: Pubkey,
     pub to: Pubkey,
@@ -48,7 +49,7 @@ pub struct Unwrapped {
 }
 
 /// Mirrors OpenZeppelin Initializable: `event Initialized(uint64 version);`
-#[event]
+#[event(discriminator = &event_discriminator("Initialized(u64)"))]
 pub struct Initialized {
     pub version: u64,
 }
@@ -56,17 +57,17 @@ pub struct Initialized {
 /// Mirrors OpenZeppelin Ownable: `event OwnershipTransferred(address indexed
 /// previousOwner, address indexed newOwner);`. The zero key stands for no
 /// owner: the previous owner when `initialize` sets the first one, the new owner when `renounce_ownership` gives it up.
-#[event]
+#[event(discriminator = &event_discriminator("OwnershipTransferred(pubkey,pubkey)"))]
 pub struct OwnershipTransferred {
     pub previous_owner: Pubkey,
     pub new_owner: Pubkey,
 }
 
 /// Mirrors ERC1967: `event Upgraded(address indexed implementation);`, the
-/// new code named by its executable hash, as the adapter's `UpgradedEvent`.
-#[event]
+/// new code named by its executable hash, as the adapter's `Upgraded`.
+#[event(discriminator = &event_discriminator("Upgraded([u8;32])"))]
 pub struct Upgraded {
-    pub executable_hash: [u8; 32],
+    pub implementation_hash: [u8; 32],
 }
 
 /// Operation codes, the first byte of a `forward_call` input.
@@ -245,10 +246,12 @@ pub mod spl_token_forwarder {
     pub fn upgrade(ctx: Context<UpgradeProgram>) -> Result<()> {
         // The event first: the self-invocation that carries it must run this
         // code, which the loader replaces below.
-        let executable_hash =
+        let implementation_hash =
             protocol_adapter::upgrade::executable_hash(&ctx.accounts.buffer.try_borrow_data()?)
                 .ok_or(ErrorCode::InvalidUpgradeBuffer)?;
-        emit_cpi!(Upgraded { executable_hash });
+        emit_cpi!(Upgraded {
+            implementation_hash
+        });
         protocol_adapter::upgrade::upgrade_program(
             &crate::ID,
             ctx.bumps.upgrade_authority,

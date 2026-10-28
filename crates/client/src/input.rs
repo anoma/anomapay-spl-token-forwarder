@@ -1,19 +1,27 @@
 //! The forwarder's instruction data: the op byte and the wrap or unwrap
 //! input, which a resource's external call carries as its instruction data.
+//! Each input after the op byte is the Borsh encoding of the program's own
+//! input type, which the program parses with `try_from_slice`.
 
-use anoma_pa_solana_client::cursor::{Cursor, Truncated};
+use anchor_lang::{AnchorDeserialize, AnchorSerialize};
 
+use crate::generated::emergency_migrating_spl_token_forwarder::constants::OP_MIGRATE;
+use crate::generated::spl_token_forwarder::constants::OP_UNWRAP;
 use crate::wrap_message::WrapMessage;
 
-/// Op byte prepended to `WrapInput`-shaped instruction data.
+/// Op byte prepended to `WrapInput`-shaped instruction data. The IDLs
+/// declare the other two: `OP_UNWRAP`, and the emergency-migrating build's
+/// `OP_MIGRATE`.
 pub const OP_WRAP: u8 = 0;
 
-/// Op byte prepended to `UnwrapInput`-shaped instruction data.
-pub const OP_UNWRAP: u8 = 1;
-
-/// Op byte prepended to `MigrateInput`-shaped instruction data, which only
-/// the emergency-migrating build accepts.
-pub const OP_MIGRATE: u8 = 2;
+/// `op`, then the Borsh encoding of `input`.
+fn with_op(op: u8, input: &impl AnchorSerialize) -> Vec<u8> {
+    let mut buf = vec![op];
+    input
+        .serialize(&mut buf)
+        .expect("a Vec takes any input of fewer than 2^32 migration entries");
+    buf
+}
 
 /// Build the 186-byte forwarder instruction data for the wrap `input`.
 ///
@@ -21,17 +29,7 @@ pub const OP_MIGRATE: u8 = 2;
 /// deadline_le_i64(8) + action_tree_root(32) + signature(64) +
 /// ed25519_ix_index(1)`.
 pub fn encode_wrap_forwarder_input(input: &WrapInput) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(186);
-    buf.push(OP_WRAP);
-    buf.extend_from_slice(&input.token_mint);
-    buf.extend_from_slice(&input.amount.to_le_bytes());
-    buf.extend_from_slice(&input.user);
-    buf.extend_from_slice(&input.nonce.to_le_bytes());
-    buf.extend_from_slice(&input.deadline.to_le_bytes());
-    buf.extend_from_slice(&input.action_tree_root);
-    buf.extend_from_slice(&input.signature);
-    buf.push(input.ed25519_ix_index);
-    buf
+    with_op(OP_WRAP, input)
 }
 
 /// Build the 73-byte forwarder instruction data for an unwrap.
@@ -42,12 +40,14 @@ pub fn encode_unwrap_forwarder_input(
     amount: u64,
     recipient: &[u8; 32],
 ) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(73);
-    buf.push(OP_UNWRAP);
-    buf.extend_from_slice(token_mint);
-    buf.extend_from_slice(&amount.to_le_bytes());
-    buf.extend_from_slice(recipient);
-    buf
+    with_op(
+        OP_UNWRAP,
+        &UnwrapInput {
+            token_mint: *token_mint,
+            amount,
+            recipient: *recipient,
+        },
+    )
 }
 
 /// Build the forwarder instruction data for the migration `input`, which
@@ -55,22 +55,9 @@ pub fn encode_unwrap_forwarder_input(
 ///
 /// Layout: `op(1) + token_mint(32) + quantity_le(8) +
 /// entry_count_le_u32(4)`, then per entry `nullifier(32) +
-/// commitment_tree_root(32) + vulnerable_logic_ref(32) + forwarder(32)`:
-/// the Borsh encoding of the program's `MigrateInput` after the op byte.
+/// commitment_tree_root(32) + vulnerable_logic_ref(32) + forwarder(32)`.
 pub fn encode_migrate_forwarder_input(input: &MigrateInput) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(1 + 32 + 8 + 4 + 128 * input.entries.len());
-    buf.push(OP_MIGRATE);
-    buf.extend_from_slice(&input.token_mint);
-    buf.extend_from_slice(&input.quantity.to_le_bytes());
-    let count = u32::try_from(input.entries.len()).expect("a batch holds fewer than 2^32 entries");
-    buf.extend_from_slice(&count.to_le_bytes());
-    for entry in &input.entries {
-        buf.extend_from_slice(&entry.nullifier);
-        buf.extend_from_slice(&entry.commitment_tree_root);
-        buf.extend_from_slice(&entry.vulnerable_logic_ref);
-        buf.extend_from_slice(&entry.forwarder);
-    }
-    buf
+    with_op(OP_MIGRATE, input)
 }
 
 /// A forwarder call's instruction data, decoded: what a submitter reads from
@@ -86,7 +73,7 @@ pub enum ForwarderInput {
 /// MigrateEntry[] entries)`: the forwarder records the entries' nullifiers,
 /// which moves no tokens. `quantity` is the batch's total in SPL Token's
 /// width, which the trigger's logic checks and the forwarder does not read.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
 pub struct MigrateInput {
     pub token_mint: [u8; 32],
     pub quantity: u64,
@@ -94,7 +81,7 @@ pub struct MigrateInput {
 }
 
 /// One resource of a migration batch, as the EVM draft's `MigrateEntry`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
 pub struct MigrateEntry {
     pub nullifier: [u8; 32],
     /// The commitment tree root the resource is proven against.
@@ -109,7 +96,7 @@ pub struct MigrateEntry {
 /// `user`'s token account, authorized by the user's ed25519 signature, which
 /// the settlement transaction verifies in the ed25519 instruction at
 /// `ed25519_ix_index`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
 pub struct WrapInput {
     pub token_mint: [u8; 32],
     pub amount: u64,
@@ -150,7 +137,7 @@ impl WrapInput {
 
 /// An unwrap's input: the forwarder releases `amount` of `token_mint` from
 /// escrow to `recipient`'s token account.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
 pub struct UnwrapInput {
     pub token_mint: [u8; 32],
     pub amount: u64,
@@ -181,83 +168,21 @@ impl core::fmt::Display for InputError {
 
 impl std::error::Error for InputError {}
 
-fn read_wrap(input: &mut Cursor) -> Result<WrapInput, Truncated> {
-    Ok(WrapInput {
-        token_mint: input.array_32("token_mint")?,
-        amount: input.u64_le("amount")?,
-        user: input.array_32("user")?,
-        nonce: input.u64_le("nonce")?,
-        // The i64's little-endian bytes, read as a u64 and reinterpreted.
-        deadline: input.u64_le("deadline")? as i64,
-        action_tree_root: input.array_32("action_tree_root")?,
-        signature: input
-            .take(64, "signature")?
-            .try_into()
-            .expect("take returns the 64 bytes it was asked for"),
-        ed25519_ix_index: input.u8("ed25519_ix_index")?,
-    })
-}
-
-/// A migration's input after the op byte, which must end with its last
-/// entry; None when it holds fewer or more bytes than its entry count
-/// names.
-fn read_migrate(input: &[u8]) -> Option<MigrateInput> {
-    let mut cursor = Cursor::new(input, 0);
-    let token_mint = cursor.array_32("token_mint").ok()?;
-    let quantity = cursor.u64_le("quantity").ok()?;
-    let count = cursor.u32_le("entry_count").ok()? as usize;
-    if cursor.remaining() != 128 * count {
-        return None;
-    }
-    let mut entry = || -> Result<MigrateEntry, Truncated> {
-        Ok(MigrateEntry {
-            nullifier: cursor.array_32("nullifier")?,
-            commitment_tree_root: cursor.array_32("commitment_tree_root")?,
-            vulnerable_logic_ref: cursor.array_32("vulnerable_logic_ref")?,
-            forwarder: cursor.array_32("forwarder")?,
-        })
-    };
-    let entries = (0..count)
-        .map(|_| entry().expect("the remaining bytes hold every entry"))
-        .collect();
-    Some(MigrateInput {
-        token_mint,
-        quantity,
-        entries,
-    })
-}
-
-fn read_unwrap(input: &mut Cursor) -> Result<UnwrapInput, Truncated> {
-    Ok(UnwrapInput {
-        token_mint: input.array_32("token_mint")?,
-        amount: input.u64_le("amount")?,
-        recipient: input.array_32("recipient")?,
-    })
-}
-
 /// Decode a forwarder call's instruction data, as the forwarder parses it.
 pub fn decode_forwarder_input(data: &[u8]) -> Result<ForwarderInput, InputError> {
     let (&op, input) = data.split_first().ok_or(InputError::UnknownOp(None))?;
-    let mut cursor = Cursor::new(input, 0);
-    match op {
-        OP_WRAP if input.len() == 185 => Ok(ForwarderInput::Wrap(
-            read_wrap(&mut cursor).expect("a 185-byte input holds every wrap field"),
-        )),
-        OP_UNWRAP if input.len() == 72 => Ok(ForwarderInput::Unwrap(
-            read_unwrap(&mut cursor).expect("a 72-byte input holds every unwrap field"),
-        )),
-        OP_MIGRATE => read_migrate(input)
-            .map(ForwarderInput::Migrate)
-            .ok_or(InputError::Length {
-                op,
-                len: input.len(),
-            }),
-        OP_WRAP | OP_UNWRAP => Err(InputError::Length {
-            op,
-            len: input.len(),
-        }),
-        op => Err(InputError::UnknownOp(Some(op))),
-    }
+    let decoded = match op {
+        OP_WRAP => WrapInput::try_from_slice(input).map(ForwarderInput::Wrap),
+        OP_UNWRAP => UnwrapInput::try_from_slice(input).map(ForwarderInput::Unwrap),
+        OP_MIGRATE => MigrateInput::try_from_slice(input).map(ForwarderInput::Migrate),
+        op => return Err(InputError::UnknownOp(Some(op))),
+    };
+    // Every field is fixed-size or a length-prefixed list of fixed-size
+    // entries: Borsh refuses only too few or too many bytes.
+    decoded.map_err(|_| InputError::Length {
+        op,
+        len: input.len(),
+    })
 }
 
 #[cfg(test)]

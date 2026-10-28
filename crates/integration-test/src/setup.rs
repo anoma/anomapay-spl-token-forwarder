@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use anoma_pa_solana_client::anchor_instruction_disc;
+use anchor_lang::{AccountDeserialize, AnchorDeserialize, AnchorSerialize, Discriminator};
 use anoma_pa_solana_client::settlement::CallAccounts;
 use anoma_pa_solana_integration_test::envs::common::environment::Environment;
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
@@ -12,10 +12,17 @@ use anoma_pa_testkit::environment::Prover;
 use anoma_pa_testkit::transaction::Transaction;
 use anoma_pa_testkit::{execute_tx, prove_actions};
 use anoma_rm_risc0::resource::Resource;
+use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::accounts::{
+    Config, NonceBitmap,
+};
+#[cfg(feature = "e2e")]
+use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::client::args::InitNonceBitmap;
+use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::constants::{
+    CONFIG_VERSION, NONCES_PER_WORD,
+};
 use anomapay_spl_token_forwarder_client::{
-    CONFIG_VERSION, ConfigAccount, ForwarderEvent, decode_config,
-    decode_forwarder_event_instruction, derive_forwarder_config_pda,
-    derive_forwarder_escrow_authority, initialize_ix, sha256, upgrade_ixs,
+    derive_forwarder_config_pda, derive_forwarder_escrow_authority, initialize_ix, sha256,
+    upgrade_ixs,
 };
 use anyhow::Context;
 use solana_instruction::{AccountMeta, Instruction};
@@ -31,7 +38,7 @@ use transfer_library::TransferLogic;
 use crate::fixtures::{self, ShieldedOwner, WrapTerms};
 use crate::logic::Logic;
 use crate::submitter::Rewritten;
-use anomapay_spl_token_forwarder_client::submitter::SplTokenForwarder;
+use anomapay_spl_token_forwarder_client::submitter::SplTokenForwarderCalls;
 
 /// The forwarder builds the local tests load: the deterministic builds at
 /// the local addresses (`dev.sh test-program`), production and development.
@@ -46,29 +53,30 @@ pub const FORWARDER_EMERGENCY_MIGRATING_SO: &[u8] =
 /// as a later implementation's.
 pub const FORWARDER_EMERGENCY_MIGRATING_DEV_SO: &[u8] =
     include_bytes!("../programs/spl_token_forwarder_emergency_migrating_dev.so");
-const LOCALNET: &str = include_str!("../../../env/localnet.env");
+/// `env/localnet.env`, the addresses the local builds are built with.
+pub const LOCALNET: &str = include_str!("../../../env/localnet.env");
 #[cfg(feature = "e2e")]
 const DEVNET: &str = include_str!("../../../env/devnet.env");
 
 /// The tokens a test's user starts with, at the mint's 6 decimals: 1000.
 pub const USER_TOKENS: u64 = 1_000_000_000;
 
-/// The forwarder's address in an env file.
-fn forwarder_address(env_file: &str) -> anyhow::Result<Pubkey> {
+/// The address an env file sets `variable` to.
+pub fn env_address(env_file: &str, variable: &str) -> anyhow::Result<Pubkey> {
     let value = env_file
         .lines()
-        .find_map(|line| line.strip_prefix("FORWARDER_PROGRAM_ID="))
-        .context("the env file names no FORWARDER_PROGRAM_ID")?;
+        .find_map(|line| line.strip_prefix(variable)?.strip_prefix('='))
+        .with_context(|| format!("the env file names no {variable}"))?;
     value
         .parse()
-        .with_context(|| format!("FORWARDER_PROGRAM_ID={value} is not base58"))
+        .with_context(|| format!("{variable}={value} is not base58"))
 }
 
 /// The forwarder on an environment: the submitter registered with the
 /// adapter, a mint it serves, and a user holding the mint's tokens who has
 /// approved the forwarder's escrow authority as delegate.
 pub struct Forwarder {
-    pub submitter: Arc<SplTokenForwarder>,
+    pub submitter: Arc<SplTokenForwarderCalls>,
     pub program: Pubkey,
     pub mint: Pubkey,
     pub user: Keypair,
@@ -102,19 +110,19 @@ pub async fn deployed(build: Build) -> anyhow::Result<(LocalEnv, Pubkey)> {
 /// Deploys the forwarder `build` on `env` at its local address, its upgrade
 /// authority the adapter's payer, and not initialized; returns the address.
 fn deploy<P>(env: &Environment<P>, build: Build) -> anyhow::Result<Pubkey> {
-    let program = forwarder_address(LOCALNET)?;
+    let program = env_address(LOCALNET, "FORWARDER_PROGRAM_ID")?;
     let so = match build {
         Build::Production => FORWARDER_SO,
         Build::Development => FORWARDER_DEV_SO,
     };
-    env.deploy_program(program, so, env.protocol_adapter.payer.pubkey())?;
+    env.deploy_program(program, so, env.protocol_adapter.payer_pubkey())?;
     Ok(program)
 }
 
 /// Initializes the forwarder `program` on `env` for the adapter and the
 /// transfer resource's logic ref, with a new owner, which it returns.
 async fn initialize<P>(env: &Environment<P>, program: Pubkey) -> anyhow::Result<Keypair> {
-    let payer = env.protocol_adapter.payer.pubkey();
+    let payer = env.protocol_adapter.payer_pubkey();
     let owner = Keypair::new();
     env.send(
         &[initialize_ix(
@@ -225,8 +233,8 @@ async fn e2e_environment() -> anyhow::Result<(
 /// The e2e environment (`E2E_RUNTIME`) with the forwarder: on its own
 /// runtime, the forwarder deployed and initialized for the adapter and the
 /// transfer resource's logic ref, as the local environment's; on a fork of
-/// devnet, the forwarder devnet runs, checked to serve the devnet adapter and
-/// the transfer resource's logic ref.
+/// devnet or on devnet itself, the forwarder devnet runs, checked to serve
+/// the devnet adapter and the transfer resource's logic ref.
 #[cfg(feature = "e2e")]
 pub async fn e2e() -> anyhow::Result<(
     anoma_pa_solana_integration_test::envs::e2e::Environment,
@@ -237,14 +245,14 @@ pub async fn e2e() -> anyhow::Result<(
     let (mut env, runtime) = e2e_environment().await?;
     let forwarder = match runtime {
         E2eRuntime::Local => owned(&mut env, Build::Production).await?.forwarder,
-        E2eRuntime::Devnet { .. } => {
-            let program = forwarder_address(DEVNET)?;
+        E2eRuntime::Devnet { .. } | E2eRuntime::Cluster { .. } => {
+            let program = env_address(DEVNET, "FORWARDER_PROGRAM_ID")?;
             let config = config(&env, &program).await?;
             let pa = env.protocol_adapter.program;
             anyhow::ensure!(
-                config.protocol_adapter == pa.to_bytes(),
+                config.protocol_adapter == pa,
                 "the devnet forwarder serves the adapter {}, not {pa}",
-                Pubkey::new_from_array(config.protocol_adapter)
+                config.protocol_adapter
             );
             anyhow::ensure!(
                 config.logic_ref == <[u8; 32]>::from(crate::logic::logic_ref()),
@@ -252,6 +260,11 @@ pub async fn e2e() -> anyhow::Result<(
                 anoma_rm_risc0::Digest::from_bytes(config.logic_ref),
                 crate::logic::logic_ref()
             );
+            // The settlement of a wrap whose word has no bitmap carries the
+            // forwarder's `init_nonce_bitmap`, which a live cluster refuses
+            // unless allowed.
+            env.protocol_adapter
+                .allow_on_live_cluster(program, InitNonceBitmap::DISCRIMINATOR)?;
             serve(&mut env, program).await?
         }
     };
@@ -259,15 +272,24 @@ pub async fn e2e() -> anyhow::Result<(
 }
 
 /// The e2e environment (`E2E_RUNTIME`) with the production forwarder
-/// deployed at its local address and initialized by a test owner, on either
-/// runtime: a test of the owner's operations (an upgrade, `reinitialize`)
-/// needs the owner's key, which devnet's forwarder's owner keeps.
+/// deployed at its local address and initialized by a test owner, on its own
+/// runtime or a fork of devnet: a test of the owner's operations (an
+/// upgrade, `reinitialize`) needs the owner's key, which devnet's
+/// forwarder's owner keeps. The cluster runtime, where nothing is deployed
+/// but by the operator, is refused.
 #[cfg(feature = "e2e")]
 pub async fn e2e_owned() -> anyhow::Result<(
     anoma_pa_solana_integration_test::envs::e2e::Environment,
     OwnedForwarder,
 )> {
-    let (mut env, _) = e2e_environment().await?;
+    use anoma_pa_solana_integration_test::envs::e2e::E2eRuntime;
+
+    let (mut env, runtime) = e2e_environment().await?;
+    anyhow::ensure!(
+        !matches!(runtime, E2eRuntime::Cluster { .. }),
+        "E2E_RUNTIME is cluster: an owner's operations deploy a forwarder of their own, which \
+         only a runtime of the tests' own or a fork of devnet takes"
+    );
     let owned = owned(&mut env, Build::Production).await?;
     Ok((env, owned))
 }
@@ -288,11 +310,11 @@ async fn serve_mint<P>(
     program: Pubkey,
     mint: Pubkey,
 ) -> anyhow::Result<Forwarder> {
-    let payer = env.protocol_adapter.payer.pubkey();
+    let payer = env.protocol_adapter.payer_pubkey();
     let user = Keypair::new();
     fund(env, &program, &mint, &user, USER_TOKENS).await?;
 
-    let submitter = Arc::new(SplTokenForwarder::new(
+    let submitter = Arc::new(SplTokenForwarderCalls::new(
         program,
         env.protocol_adapter.program,
         payer,
@@ -311,7 +333,7 @@ async fn serve_mint<P>(
 
 /// A new mint of 6 decimals whose authority is the adapter's payer.
 pub async fn new_mint<P>(env: &Environment<P>) -> anyhow::Result<Pubkey> {
-    let payer = env.protocol_adapter.payer.pubkey();
+    let payer = env.protocol_adapter.payer_pubkey();
     let mint = Keypair::new();
     let space = spl_token_interface::state::Mint::LEN;
     let rent = env
@@ -367,7 +389,7 @@ pub async fn token_account<P>(
     owner: &Pubkey,
     mint: &Pubkey,
 ) -> anyhow::Result<Pubkey> {
-    let payer = env.protocol_adapter.payer.pubkey();
+    let payer = env.protocol_adapter.payer_pubkey();
     env.send(
         &[create_associated_token_account_idempotent(
             &payer,
@@ -390,7 +412,7 @@ pub async fn mint_to<P>(
     account: &Pubkey,
     amount: u64,
 ) -> anyhow::Result<()> {
-    let payer = env.protocol_adapter.payer.pubkey();
+    let payer = env.protocol_adapter.payer_pubkey();
     env.send(
         &[spl_token_interface::instruction::mint_to(
             &spl_token_interface::id(),
@@ -439,25 +461,38 @@ pub async fn fund<P>(
 /// Sets `to`'s balance to `lamports`: what a new signer that pays for an
 /// account needs.
 pub fn give_sol<P>(env: &Environment<P>, to: &Pubkey, lamports: u64) -> anyhow::Result<()> {
-    env.surfnet
+    env.surfnet()?
         .cheatcodes()
         .fund_sol(to, lamports)
         .with_context(|| format!("failed to fund {to} with {lamports} lamports"))
 }
 
+/// Whether two values of a generated type, which derives no `PartialEq`,
+/// are equal: whether their Borsh encodings are.
+pub fn same<T: AnchorSerialize>(a: &T, b: &T) -> bool {
+    let encoding = |value: &T| {
+        let mut bytes = Vec::new();
+        value
+            .serialize(&mut bytes)
+            .expect("a Vec takes any Borsh encoding");
+        bytes
+    };
+    encoding(a) == encoding(b)
+}
+
 /// The config `initialize` stores on `env` for the adapter, the transfer
 /// resource's logic ref and `owner`.
-pub fn expected_config<P>(env: &Environment<P>, owner: &Pubkey) -> ConfigAccount {
-    ConfigAccount {
-        protocol_adapter: env.protocol_adapter.program.to_bytes(),
+pub fn expected_config<P>(env: &Environment<P>, owner: &Pubkey) -> Config {
+    Config {
+        protocol_adapter: env.protocol_adapter.program,
         logic_ref: crate::logic::logic_ref().into(),
         version: CONFIG_VERSION,
-        owner: owner.to_bytes(),
+        owner: *owner,
     }
 }
 
 /// The forwarder `program`'s config on `env`.
-pub async fn config<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::Result<ConfigAccount> {
+pub async fn config<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::Result<Config> {
     let (config, _) = derive_forwarder_config_pda(program);
     let data = env
         .protocol_adapter
@@ -465,7 +500,8 @@ pub async fn config<P>(env: &Environment<P>, program: &Pubkey) -> anyhow::Result
         .get_account_data(&config)
         .await
         .with_context(|| format!("the forwarder {program} has no config {config}"))?;
-    Ok(decode_config(&data)?)
+    Config::try_deserialize(&mut data.as_slice())
+        .with_context(|| format!("the account {config} of {program} is not a config"))
 }
 
 /// `local` with the development build, whose config the owner then puts
@@ -485,7 +521,9 @@ pub async fn set_config_version<P>(
     version: u64,
 ) -> anyhow::Result<()> {
     let (program, owner) = (local.forwarder.program, local.owner.pubkey());
-    let mut data = anchor_instruction_disc("dev_set_config_version").to_vec();
+    // The development builds' instruction, which the release IDLs leave
+    // out: Anchor's discriminator of it.
+    let mut data = sha256(b"global:dev_set_config_version")[..8].to_vec();
     data.extend_from_slice(&version.to_le_bytes());
     let set = Instruction {
         program_id: program,
@@ -501,13 +539,58 @@ pub async fn set_config_version<P>(
     Ok(())
 }
 
-/// The forwarder `program`'s events in the transaction `executed`, in the
-/// order it emitted them.
-pub fn events(executed: &Executed, program: &Pubkey) -> anyhow::Result<Vec<ForwarderEvent>> {
+/// The nonce bitmap at `address` on `env`.
+pub async fn nonce_bitmap<P>(
+    env: &Environment<P>,
+    address: &Pubkey,
+) -> anyhow::Result<NonceBitmap> {
+    let data = env
+        .protocol_adapter
+        .rpc
+        .get_account_data(address)
+        .await
+        .with_context(|| format!("there is no nonce bitmap {address}"))?;
+    NonceBitmap::try_deserialize(&mut data.as_slice())
+        .with_context(|| format!("the account {address} is not a nonce bitmap"))
+}
+
+/// Whether a wrap has used `nonce`, which falls in `bitmap`'s word: the
+/// program's bit `nonce % NONCES_PER_WORD`, least significant first.
+pub fn nonce_is_used(bitmap: &NonceBitmap, nonce: u64) -> bool {
+    let bit = nonce % NONCES_PER_WORD;
+    bitmap.bits[(bit / 8) as usize] & (1 << (bit % 8)) != 0
+}
+
+/// The discriminators of the forwarder `program`'s events in the
+/// transaction `executed`, in the order it emitted them: the order the
+/// typed reads (`Executed::events`) do not keep across event types.
+pub fn event_order(executed: &Executed, program: &Pubkey) -> anyhow::Result<Vec<[u8; 8]>> {
     Ok(executed
         .cpi_events(program)
-        .map(decode_forwarder_event_instruction)
+        .map(anoma_pa_solana_client::cpi_event_discriminator)
         .collect::<Result<_, _>>()?)
+}
+
+/// The event `E` the forwarder `program` emitted in the transaction
+/// `executed`, its only event.
+pub fn sole_event<E: Discriminator + AnchorDeserialize>(
+    executed: &Executed,
+    program: &Pubkey,
+) -> anyhow::Result<E> {
+    let order = event_order(executed, program)?;
+    anyhow::ensure!(
+        order == [discriminator::<E>()],
+        "{program} emitted the events {order:02x?}, not one {}",
+        std::any::type_name::<E>()
+    );
+    Ok(executed.events::<E>(program)?.remove(0))
+}
+
+/// The discriminator of the event `E`, as `event_order` lists it.
+pub fn discriminator<E: Discriminator>() -> [u8; 8] {
+    E::DISCRIMINATOR
+        .try_into()
+        .expect("an event discriminator is 8 bytes")
 }
 
 /// The executable hash of a program's code, as `solana-verify

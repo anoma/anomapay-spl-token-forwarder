@@ -1,201 +1,58 @@
-// Decoder for the SPL Token Forwarder's events.
+// Anchor's framing of the forwarder's CPI events.
 //
-// The forwarder emits every event as a self-invocation (Anchor `#[event_cpi]`):
-// an inner instruction whose program is the forwarder and whose data is the
-// 8-byte event tag, the event's 8-byte discriminator
-// (`sha256("event:<Name>")[..8]`), and the Borsh-encoded body. Readers pass
-// each forwarder-addressed inner instruction of a transaction through
-// `decodeForwarderEventInstruction`. Events never appear in the program log.
+// The forwarder emits every event as a self-invocation (Anchor
+// `#[event_cpi]`): an inner instruction whose program is the forwarder and
+// whose data is the 8-byte event tag, the event's discriminator, and its
+// Borsh body. Readers take a transaction's inner instructions and pass each
+// forwarder-addressed one through `decodeForwarderEventInstruction`, which
+// reads the event with the emergency-migrating build's coder: that build
+// declares the production build's events and its own. Events never appear in
+// the program log.
 
-import { bytesToHex } from "@noble/hashes/utils";
-import {
-  type FixedSizeDecoder,
-  fixDecoderSize,
-  getBytesDecoder,
-  getStructDecoder,
-  getU64Decoder,
-  transformDecoder,
-} from "@solana/codecs";
-
-import { anchorDiscriminator } from "./discriminator.js";
+import { borshLength } from "./borsh.js";
+import { emergencyMigratingCoder } from "./coder.js";
+import { emergencyMigratingIdl } from "./idl.js";
 
 /** `anchor_lang::event::EVENT_IX_TAG_LE`: the u64 `0x1d9acb512ea545e4` little-endian. */
 export const EVENT_IX_TAG = new Uint8Array([0xe4, 0x45, 0xa5, 0x2e, 0x51, 0xcb, 0x9a, 0x1d]);
 
-/** The forwarder escrowed `amount` of the token whose mint is `token` from `from`, as the EVM forwarder's `Wrapped`. */
-export interface WrappedEvent {
-  name: "Wrapped";
-  token: Uint8Array;
-  from: Uint8Array;
-  amount: bigint;
-}
-
-/** The forwarder released `amount` of the token whose mint is `token` to `to`, as the EVM forwarder's `Unwrapped`. */
-export interface UnwrappedEvent {
-  name: "Unwrapped";
-  token: Uint8Array;
-  to: Uint8Array;
-  amount: bigint;
-}
-
-/**
- * `initialize` or `reinitialize` set the forwarder's configuration to
- * `version`, as OpenZeppelin Initializable's `Initialized(version)`.
- */
-export interface InitializedEvent {
-  name: "Initialized";
-  version: bigint;
-}
-
-/**
- * The ownership moved from `previousOwner` to `newOwner`, as OpenZeppelin
- * Ownable's `OwnershipTransferred`; the zero key stands for no owner (the
- * previous owner at `initialize`, the new owner once renounced).
- */
-export interface OwnershipTransferredEvent {
-  name: "OwnershipTransferred";
-  previousOwner: Uint8Array;
-  newOwner: Uint8Array;
-}
-
-/**
- * The owner upgraded the forwarder to the code whose executable hash is
- * `executableHash` (sha256 of the code without trailing zero bytes, what
- * `solana-verify get-program-hash` reports), as ERC1967's `Upgraded`.
- */
-export interface UpgradedEvent {
-  name: "Upgraded";
-  executableHash: Uint8Array;
-}
-
-/**
- * The emergency-migrating build's `reinitialize` replaced the logic ref
- * `previousLogicRef` with `newLogicRef`, as the EVM draft's `LogicRefReplaced`.
- */
-export interface LogicRefReplacedEvent {
-  name: "LogicRefReplaced";
-  previousLogicRef: Uint8Array;
-  newLogicRef: Uint8Array;
-}
-
-/**
- * The emergency-migrating build migrated the resource with `nullifier` and the
- * logic ref `vulnerableLogicRef`, whose token's mint is `token`, as the EVM
- * draft's `Migrated`. No tokens moved: an indexer adding up `Wrapped` and
- * `Unwrapped` amounts must not count it.
- */
-export interface MigratedEvent {
-  name: "Migrated";
-  token: Uint8Array;
-  vulnerableLogicRef: Uint8Array;
-  nullifier: Uint8Array;
-}
-
-/**
- * The emergency-migrating build's `reinitialize` listed `logicRef` as
- * vulnerable, as the EVM draft's `VulnerableLogicRefListed`.
- */
-export interface VulnerableLogicRefListedEvent {
-  name: "VulnerableLogicRefListed";
-  logicRef: Uint8Array;
-}
-
-/** One SPL Token Forwarder event, of either build. */
-export type ForwarderEvent =
-  | WrappedEvent
-  | UnwrappedEvent
-  | InitializedEvent
-  | OwnershipTransferredEvent
-  | UpgradedEvent
-  | LogicRefReplacedEvent
-  | MigratedEvent
-  | VulnerableLogicRefListedEvent;
-
 export class EventDecodeError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "EventDecodeError";
   }
 }
 
-/** A Borsh `[u8; 32]`. */
-const bytes32 = transformDecoder(fixDecoderSize(getBytesDecoder(), 32), (b) => Uint8Array.from(b));
-const u64 = getU64Decoder();
-
-/** A body field: its name in the TypeScript event, and its Borsh decoder. */
-type BodyField = readonly [string, FixedSizeDecoder<Uint8Array | bigint>];
+const base64 = (bytes: Uint8Array): string => btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""));
 
 /**
- * The reader of event `name`'s body, whose Borsh fields are `fields` in
- * order. A body that ends inside a field names the field (by its name in the
- * program, snake_case); bytes past the last field are refused.
+ * The event in `data`, the instruction data of one forwarder event
+ * self-invocation: its IDL name and its fields under their IDL names, as the
+ * coder decodes them. Refuses data without the event tag, a discriminator no
+ * IDL event has, a body that does not decode, a body that ends short, and
+ * bytes after the body.
  */
-function bodyReader<N extends ForwarderEvent["name"], const F extends readonly BodyField[]>(name: N, fields: F) {
-  const decoder = getStructDecoder(fields);
-  return (body: Uint8Array) => {
-    let end = 0;
-    for (const [field, fieldDecoder] of fields) {
-      end += fieldDecoder.fixedSize;
-      if (body.length < end) {
-        const programName = field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
-        throw new EventDecodeError(`event truncated while reading ${programName}`);
-      }
-    }
-    if (body.length > end) {
-      throw new EventDecodeError(`${body.length - end} trailing byte(s) after the event body`);
-    }
-    return { name, ...decoder.decode(body) };
-  };
-}
-
-const BODY_READERS: { [N in ForwarderEvent["name"]]: (body: Uint8Array) => Extract<ForwarderEvent, { name: N }> } = {
-  Wrapped: bodyReader("Wrapped", [
-    ["token", bytes32],
-    ["from", bytes32],
-    ["amount", u64],
-  ]),
-  Unwrapped: bodyReader("Unwrapped", [
-    ["token", bytes32],
-    ["to", bytes32],
-    ["amount", u64],
-  ]),
-  Initialized: bodyReader("Initialized", [["version", u64]]),
-  OwnershipTransferred: bodyReader("OwnershipTransferred", [
-    ["previousOwner", bytes32],
-    ["newOwner", bytes32],
-  ]),
-  Upgraded: bodyReader("Upgraded", [["executableHash", bytes32]]),
-  LogicRefReplaced: bodyReader("LogicRefReplaced", [
-    ["previousLogicRef", bytes32],
-    ["newLogicRef", bytes32],
-  ]),
-  Migrated: bodyReader("Migrated", [
-    ["token", bytes32],
-    ["vulnerableLogicRef", bytes32],
-    ["nullifier", bytes32],
-  ]),
-  VulnerableLogicRefListed: bodyReader("VulnerableLogicRefListed", [["logicRef", bytes32]]),
-};
-
-/** Each event's body reader, by the hex of its discriminator. */
-const READERS_BY_DISCRIMINATOR = new Map<string, (body: Uint8Array) => ForwarderEvent>(
-  Object.entries(BODY_READERS).map(([name, read]) => [bytesToHex(anchorDiscriminator("event", name)), read]),
-);
-
-const DISCRIMINATOR_END = EVENT_IX_TAG.length + 8;
-
-/** Decode the instruction data of one SPL Token Forwarder event self-invocation. */
-export function decodeForwarderEventInstruction(data: Uint8Array): ForwarderEvent {
-  if (data.length < EVENT_IX_TAG.length || bytesToHex(data.subarray(0, EVENT_IX_TAG.length)) !== bytesToHex(EVENT_IX_TAG)) {
-    throw new EventDecodeError("instruction data does not start with the Anchor event tag");
+export function decodeForwarderEventInstruction(data: Uint8Array): { name: string; data: any } {
+  const tag = data.subarray(0, EVENT_IX_TAG.length);
+  if (tag.length !== EVENT_IX_TAG.length || !tag.every((b, i) => b === EVENT_IX_TAG[i])) {
+    throw new EventDecodeError("the instruction data does not start with the event tag");
   }
-  if (data.length < DISCRIMINATOR_END) {
-    throw new EventDecodeError("event truncated while reading event discriminator");
+  const rest = data.subarray(EVENT_IX_TAG.length);
+  let event: { name: string; data: any } | null;
+  try {
+    event = emergencyMigratingCoder.events.decode(base64(rest));
+  } catch (e) {
+    throw new EventDecodeError(`the event body does not decode: ${e}`, { cause: e });
   }
-  const discriminator = bytesToHex(data.subarray(EVENT_IX_TAG.length, DISCRIMINATOR_END));
-  const read = READERS_BY_DISCRIMINATOR.get(discriminator);
-  if (read === undefined) {
-    throw new EventDecodeError(`unknown event discriminator ${discriminator}`);
+  if (event === null) {
+    const discriminator = Array.from(rest.subarray(0, 8), (b) => b.toString(16).padStart(2, "0")).join("");
+    throw new EventDecodeError(`no IDL event has the discriminator ${discriminator}`);
   }
-  return read(data.subarray(DISCRIMINATOR_END));
+  const name = event.name;
+  const discriminator = emergencyMigratingIdl.events!.find((e) => e.name === name)!.discriminator;
+  const body = rest.length - discriminator.length;
+  const read = borshLength(emergencyMigratingIdl, event.data, { defined: { name } });
+  if (read < body) throw new EventDecodeError(`${body - read} trailing byte(s) after the ${name} body`);
+  if (read > body) throw new EventDecodeError(`the ${name} body ends ${read - body} byte(s) short`);
+  return event;
 }

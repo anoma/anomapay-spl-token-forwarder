@@ -25,38 +25,9 @@ pub fn forwarder_migrate_num_accounts(entries: usize) -> Option<u8> {
     u8::try_from(entries.checked_mul(3)?.checked_add(before_entries)?).ok()
 }
 
-/// Nonces per nonce-bitmap account. The bitmap for `nonce` is the one for
-/// word `nonce / NONCES_PER_WORD`.
-pub const NONCES_PER_WORD: u64 = 256;
-
-/// Size of a nonce-bitmap account: the Anchor discriminator, the 256-bit word
-/// and the bump. A settlement's payer funds its rent when a wrap's word has no
-/// bitmap yet.
-pub const NONCE_BITMAP_ACCOUNT_SIZE: usize = 8 + 32 + 1;
-
-/// The config version this build of the forwarder initializes to and
-/// reinitializes to (the `n` of an OpenZeppelin `reinitializer(n)`).
-pub const CONFIG_VERSION: u64 = 7;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_constants_the_idl_declares_are_the_idls() {
-        let idl = crate::idl::idl();
-        let declared = |name: &str| {
-            idl["constants"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|constant| constant["name"] == name)
-                .unwrap_or_else(|| panic!("the IDL declares no {name}"))["value"]
-                .as_str()
-                .unwrap()
-                .to_string()
-        };
-        assert_eq!(declared("CONFIG_VERSION"), CONFIG_VERSION.to_string());
-        assert_eq!(declared("NONCES_PER_WORD"), NONCES_PER_WORD.to_string());
-    }
-}
+/// Size of a nonce-bitmap account: the Anchor discriminator and the
+/// `NonceBitmap` the IDL declares (the 256-bit word and the bump), as
+/// `build.rs` reads them from the IDL. A settlement's payer funds its rent
+/// when a wrap's word has no bitmap yet.
+pub const NONCE_BITMAP_ACCOUNT_SIZE: usize =
+    include!(concat!(env!("OUT_DIR"), "/nonce_bitmap_account_size.rs"));

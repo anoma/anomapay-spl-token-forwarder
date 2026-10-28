@@ -2,8 +2,13 @@
   "compilerOptions": {
     "types": ["node"],
     "typeRoots": ["./node_modules/@types"],
-    "lib": ["es2020"],
-    "module": "commonjs",
+    "lib": ["es2022"],
+    // The bindings package's sources (`ts/src`), which the scripts import,
+    // read their IDLs through JSON import attributes, which need a module
+    // mode that has them; node20 compiles the scripts as CommonJS still.
+    "module": "node20",
+    // The scripts and the package sources they import, under one root.
+    "rootDir": ".",
     "target": "es2020",
     "esModuleInterop": true,
     "resolveJsonModule": true,

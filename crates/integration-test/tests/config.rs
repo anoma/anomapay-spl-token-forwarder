@@ -3,15 +3,18 @@
 //! needs the adapter as the CPI caller, so those behaviours are tested
 //! through settlement (wrap.rs, unwrap.rs).
 
-use anoma_pa_solana_client::{anchor_instruction_disc, derive_event_authority_pda};
+use anchor_lang::{InstructionData, ToAccountMetas};
+use anoma_pa_solana_client::derive_event_authority_pda;
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
+use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::client::{accounts, args};
+use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::constants::CONFIG_VERSION;
 use anomapay_spl_token_forwarder_client::{
-    CONFIG_VERSION, derive_forwarder_config_pda, encode_unwrap_forwarder_input, reinitialize_ix,
+    derive_forwarder_config_pda, encode_unwrap_forwarder_input, reinitialize_ix,
 };
 use anomapay_spl_token_forwarder_integration_test::logic::{logic_ref, random_logic_ref};
-use anomapay_spl_token_forwarder_integration_test::setup::{self, OwnedForwarder, config};
-use solana_instruction::{AccountMeta, Instruction};
+use anomapay_spl_token_forwarder_integration_test::setup::{self, OwnedForwarder, config, same};
+use solana_instruction::Instruction;
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 
@@ -35,7 +38,7 @@ async fn refuses_reinitialize(
     )?;
     let after = config(env, &program).await?;
     anyhow::ensure!(
-        after == before,
+        same(&after, &before),
         "the config moved from {before:?} to {after:?}"
     );
     Ok(())
@@ -129,19 +132,20 @@ async fn refuses_a_forward_call_that_is_not_a_cpi_from_the_adapter() -> anyhow::
         1000,
         &Keypair::new().pubkey().to_bytes(),
     );
-    let mut data = anchor_instruction_disc("forward_call").to_vec();
-    data.extend_from_slice(&<[u8; 32]>::from(logic_ref()));
-    data.extend_from_slice(&(input.len() as u32).to_le_bytes());
-    data.extend_from_slice(&input);
     let forward_call = Instruction {
         program_id: program,
-        accounts: vec![
-            AccountMeta::new_readonly(derive_forwarder_config_pda(&program).0, false),
-            AccountMeta::new_readonly(solana_sdk_ids::sysvar::instructions::ID, false),
-            AccountMeta::new_readonly(derive_event_authority_pda(&program).0, false),
-            AccountMeta::new_readonly(program, false),
-        ],
-        data,
+        accounts: accounts::ForwardCall {
+            config: derive_forwarder_config_pda(&program).0,
+            ix_sysvar: solana_sdk_ids::sysvar::instructions::ID,
+            event_authority: derive_event_authority_pda(&program).0,
+            program,
+        }
+        .to_account_metas(None),
+        data: args::ForwardCall {
+            logic_ref: logic_ref().into(),
+            input,
+        }
+        .data(),
     };
     expect_integration_panic(Needle::Static("Error Code: ProtocolAdapterMismatch."))(
         env.send(&[forward_call], &[]).await,
