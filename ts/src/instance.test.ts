@@ -221,14 +221,18 @@ describe("the instances' builders", () => {
 
   // `@anchor-lang/core` 1.2.1's coder encodes an instruction's arguments into
   // a 1000-byte buffer: the emergency-migrating `reinitialize` fits 30
-  // vulnerable logic refs (4 + 32 + 30 * 32 bytes), and refuses more.
+  // vulnerable logic refs (32 + 4 + 30 * 32 = 996 bytes), and the builder
+  // refuses 31 (1028 bytes), naming why, before the coder fails inside it.
   it("encode a reinitialize of up to 30 vulnerable logic refs, and refuse more", () => {
     const f = EmergencyMigratingSplTokenForwarder.at(connection, program);
     const refs = (n: number) => Array.from({ length: n }, (_, i) => bytes(i + 1));
     const thirty = f.reinitializeIx(key(1), key(2), bytes(3), refs(30));
     expect(thirty.data.length).toBe(8 + 32 + 4 + 30 * 32);
     expect(Array.from(thirty.data.subarray(thirty.data.length - 32))).toEqual(Array.from(bytes(30)));
-    expect(() => f.reinitializeIx(key(1), key(2), bytes(3), refs(31))).toThrow(RangeError);
+    expect(() => f.reinitializeIx(key(1), key(2), bytes(3), refs(31))).toThrow(
+      "reinitialize: its arguments encode to 1028 bytes, more than the 1000-byte buffer " +
+        "@anchor-lang/core 1.2.1's instruction coder encodes them into",
+    );
   });
 });
 

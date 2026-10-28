@@ -23,6 +23,7 @@ import {
 } from "@solana/web3.js";
 
 import { decodeVulnerableLogicRefs } from "./accounts.js";
+import { borshLength } from "./borsh.js";
 import { coder, emergencyMigratingCoder } from "./coder.js";
 import { UPGRADE_COMPUTE_UNIT_LIMIT } from "./constants.js";
 import { chainIdOfGenesisHash, deployment, type Deployment, type DeploymentRecord, type Environment } from "./deployments.js";
@@ -121,6 +122,13 @@ export async function emergencyMigratingSplTokenForwarder(
   return EmergencyMigratingSplTokenForwarder.at(connection, await recordedProgram(connection, environment));
 }
 
+/**
+ * The bytes `@anchor-lang/core` 1.2.1's instruction coder encodes an
+ * instruction's arguments into: `BorshInstructionCoder.encode` allocates a
+ * fixed 1000-byte buffer, and arguments that do not fit fail inside it.
+ */
+export const ANCHOR_INSTRUCTION_ARGS_BUFFER_BYTES = 1000;
+
 /** A u64 argument in the form the coder encodes. */
 const u64 = (value: bigint): BN => new BN(value.toString());
 
@@ -196,7 +204,8 @@ abstract class ForwarderInstance {
   /**
    * The instruction `name` at the forwarder's address: `accounts` by their IDL
    * names, every one the IDL lists, in its order and with its flags, then
-   * `remaining`, and `args` encoded by the build's coder.
+   * `remaining`, and `args` encoded by the build's coder, which refuses
+   * arguments longer than its buffer.
    */
   protected instruction(
     name: string,
@@ -215,6 +224,16 @@ abstract class ForwarderInstance {
       if (pubkey === undefined) throw new Error(`${name} takes an account ${a.name} not given`);
       return { pubkey, isSigner: a.signer ?? false, isWritable: a.writable ?? false };
     });
+    const encoded = ix.args.reduce(
+      (n, arg) => n + borshLength(this.idl, (args as Record<string, unknown>)[arg.name], arg.type),
+      0,
+    );
+    if (encoded > ANCHOR_INSTRUCTION_ARGS_BUFFER_BYTES) {
+      throw new Error(
+        `${name}: its arguments encode to ${encoded} bytes, more than the ` +
+          `${ANCHOR_INSTRUCTION_ARGS_BUFFER_BYTES}-byte buffer @anchor-lang/core 1.2.1's instruction coder encodes them into`,
+      );
+    }
     return new TransactionInstruction({
       programId: this.programId,
       keys: [...keys, ...remaining],
