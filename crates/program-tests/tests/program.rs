@@ -62,14 +62,6 @@ fn unwrap_input_parses_the_client_encoding() {
     assert_eq!(input.recipient.to_bytes(), recipient);
 }
 
-/// The canonical nonce bitmap address of `user`'s word `word_index`, and its bump.
-fn canonical_bitmap(user: &Pubkey, word_index: u64) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[NONCE_BITMAP_SEED, user.as_ref(), &word_index.to_le_bytes()],
-        &spl_token_forwarder::ID,
-    )
-}
-
 /// The client derives a user's bitmap address from the program's own seed.
 /// The IDL cannot check it: its seeds name the args `user` and
 /// `word_index`, which it lists as the handler's `_user` and `_word_index`.
@@ -82,12 +74,12 @@ fn the_clients_nonce_bitmap_address_is_the_programs() {
             &user,
             word_index,
         );
-        println!("({user}, word {word_index}): {client:?}");
-        assert_eq!(
-            client,
-            canonical_bitmap(&user, word_index),
-            "({user}, word {word_index})"
+        let program = Pubkey::find_program_address(
+            &[NONCE_BITMAP_SEED, user.as_ref(), &word_index.to_le_bytes()],
+            &spl_token_forwarder::ID,
         );
+        println!("({user}, word {word_index}): {client:?}");
+        assert_eq!(client, program, "({user}, word {word_index})");
     }
 }
 

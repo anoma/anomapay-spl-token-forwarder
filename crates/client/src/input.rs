@@ -199,7 +199,6 @@ mod tests {
 
     #[test]
     fn op_wrap_is_the_idl_constant_and_the_encoded_op_byte() {
-        use crate::generated::spl_token_forwarder::constants::OP_WRAP;
         assert_eq!(OP_WRAP, 0, "the IDL's OP_WRAP is the wire value 0");
         assert_eq!(encode_wrap_forwarder_input(&wrap_input())[0], OP_WRAP);
     }
