@@ -439,13 +439,28 @@ pub async fn fund<P>(
     owner: &Keypair,
     amount: u64,
 ) -> anyhow::Result<Pubkey> {
-    let (escrow_authority, _) = derive_forwarder_escrow_authority(program);
     let account = token_account(env, &owner.pubkey(), mint).await?;
     mint_to(env, mint, &account, amount).await?;
+    approve(env, program, &account, owner, amount).await?;
+    Ok(account)
+}
+
+/// Has `owner` approve the forwarder `program`'s escrow authority to move
+/// `amount` from its token account `account`, replacing any earlier
+/// approval: the SPL Token program clears a delegate whose approved amount a
+/// wrap used up.
+pub async fn approve<P>(
+    env: &Environment<P>,
+    program: &Pubkey,
+    account: &Pubkey,
+    owner: &Keypair,
+    amount: u64,
+) -> anyhow::Result<()> {
+    let (escrow_authority, _) = derive_forwarder_escrow_authority(program);
     env.send(
         &[spl_token_interface::instruction::approve(
             &spl_token_interface::id(),
-            &account,
+            account,
             &escrow_authority,
             &owner.pubkey(),
             &[],
@@ -455,7 +470,7 @@ pub async fn fund<P>(
     )
     .await
     .with_context(|| format!("{} failed to approve the escrow authority", owner.pubkey()))?;
-    Ok(account)
+    Ok(())
 }
 
 /// Sets `to`'s balance to `lamports`: what a new signer that pays for an
@@ -714,7 +729,7 @@ impl Forwarder {
                 nonce,
                 ed25519_ix_index,
             },
-            anoma_pa_testkit::fixtures::kind_table(),
+            anoma_pa_testkit::fixtures::kind_tree(),
             seed,
         )
     }
