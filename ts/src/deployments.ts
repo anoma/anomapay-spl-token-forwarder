@@ -3,7 +3,7 @@
 // environment, the program on each cluster, under the cluster's CAIP-2 chain
 // id, as the adapter's package records the adapter.
 
-import { PublicKey } from "@solana/web3.js";
+import { address, type Address } from "@solana/kit";
 
 import recordJson from "./data/deployments.json" with { type: "json" };
 
@@ -15,7 +15,7 @@ export interface Deployment {
   /** The cluster's CAIP-2 chain id. */
   chainId: string;
   /** The forwarder program. */
-  programId: PublicKey;
+  programId: Address;
   /** The slot of the program's first deployment, where its history starts. */
   deploymentSlot: number;
 }
@@ -44,5 +44,5 @@ export function deployment(
 ): Deployment | undefined {
   const entry = record[environment].find((e) => e.chainId === chainId);
   if (entry === undefined || entry.deploymentSlot === null) return undefined;
-  return { chainId, programId: new PublicKey(entry.programId), deploymentSlot: entry.deploymentSlot };
+  return { chainId, programId: address(entry.programId), deploymentSlot: entry.deploymentSlot };
 }

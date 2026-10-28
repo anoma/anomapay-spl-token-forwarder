@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { BN } from "@anchor-lang/core";
 import { bytesToHex } from "@noble/hashes/utils";
-import { PublicKey } from "@solana/web3.js";
+import { address, getAddressEncoder } from "@solana/kit";
 
 import { decodeForwarderEventInstruction, EVENT_IX_TAG, EventDecodeError } from "./events.js";
 import { emergencyMigratingIdl, idl } from "./idl.js";
@@ -24,15 +23,17 @@ const eventIx = (name: string, body: Uint8Array[]): Uint8Array =>
     Buffer.concat([EVENT_IX_TAG, Uint8Array.from(emergencyMigratingIdl.events!.find((e) => e.name === name)!.discriminator), ...body]),
   );
 
-/** A decoded value with keys as hex and integers as bigints, to compare against the expected fields. */
+/**
+ * A decoded value with keys and byte arrays as hex, to compare against the
+ * expected fields: the coder decodes a key to its base58 address (the events'
+ * only text) and an integer to a bigint.
+ */
 const plain = (value: unknown): unknown =>
-  value instanceof PublicKey
-    ? bytesToHex(value.toBytes())
-    : BN.isBN(value)
-      ? BigInt(value.toString())
-      : value instanceof Uint8Array || Array.isArray(value)
-        ? bytesToHex(Uint8Array.from(value as number[]))
-        : value;
+  typeof value === "string"
+    ? bytesToHex(Uint8Array.from(getAddressEncoder().encode(address(value))))
+    : value instanceof Uint8Array || Array.isArray(value)
+      ? bytesToHex(Uint8Array.from(value as number[]))
+      : value;
 
 const hex = bytesToHex;
 
@@ -103,26 +104,35 @@ describe("decodeForwarderEventInstruction", () => {
     expect(() => decodeForwarderEventInstruction(data)).toThrow("no IDL event has the discriminator abababababababab");
   });
 
-  // The coder refuses a short last field that is a byte array; it reads a
-  // short integer or key, which the length check then refuses.
+  // The coder refuses every body one byte short: kit's codecs read past
+  // its end.
   it("rejects a body that ends short", () => {
-    const shortArray = (field: string) =>
-      `the event body does not decode: RangeError: Invalid array for "${field}": length 32 requires 32 bytes, only 31 remaining bytes`;
+    const short = (error: string) => `the event body does not decode: SolanaError: ${error}`;
+    const u64 = short("Codec [u64] expected 8 bytes, got 7.");
+    const key = short("Codec [fixCodecSize] expected 32 bytes, got 31.");
+    const bytes32 = short("Codec [u8] cannot decode empty byte arrays.");
     const expected: Record<string, string> = {
-      Wrapped: "the Wrapped body ends 1 byte(s) short",
-      Unwrapped: "the Unwrapped body ends 1 byte(s) short",
-      Initialized: "the Initialized body ends 1 byte(s) short",
-      OwnershipTransferred: "the OwnershipTransferred body ends 1 byte(s) short",
-      Upgraded: shortArray("implementation_hash"),
-      LogicRefReplaced: shortArray("new_logic_ref"),
-      Migrated: shortArray("nullifier"),
-      VulnerableLogicRefListed: shortArray("logic_ref"),
+      Wrapped: u64,
+      Unwrapped: u64,
+      Initialized: u64,
+      OwnershipTransferred: key,
+      Upgraded: bytes32,
+      LogicRefReplaced: bytes32,
+      Migrated: bytes32,
+      VulnerableLogicRefListed: bytes32,
     };
+    const refused: Record<string, string> = {};
     for (const [name, data] of cases) {
-      const short = data.slice(0, -1);
-      expect(() => decodeForwarderEventInstruction(short), name).toThrow(EventDecodeError);
-      expect(() => decodeForwarderEventInstruction(short), name).toThrow(expected[name]!);
+      try {
+        decodeForwarderEventInstruction(data.slice(0, -1));
+        refused[name] = "decoded";
+      } catch (error) {
+        expect(error, name).toBeInstanceOf(EventDecodeError);
+        refused[name] = (error as Error).message;
+      }
     }
+    console.log(refused);
+    expect(refused).toEqual(expected);
   });
 
   it("rejects trailing bytes", () => {

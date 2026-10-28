@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { Idl } from "@anchor-lang/core";
-import { ComputeBudgetProgram, Connection, Keypair, PublicKey, type TransactionInstruction } from "@solana/web3.js";
+import { getSetComputeUnitLimitInstruction } from "@solana-program/compute-budget";
+import {
+  AccountRole,
+  address,
+  createSolanaRpc,
+  generateKeyPairSigner,
+  getAddressDecoder,
+  getAddressEncoder,
+  getProgramDerivedAddress,
+  getU64Encoder,
+  type Address,
+  type Instruction,
+} from "@solana/kit";
 
 import { UPGRADE_COMPUTE_UNIT_LIMIT } from "./constants.js";
 import type { DeploymentRecord } from "./deployments.js";
@@ -67,22 +79,22 @@ describe("recordedDeployment", () => {
     console.log(found);
     expect(found).toEqual({
       chainId: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
-      programId: new PublicKey(idl.address),
+      programId: address(idl.address),
       deploymentSlot: 4242,
     });
     expect(() => recordedDeployment("production", DEVNET_GENESIS, record)).toThrow(InstanceError);
   });
 });
 
-const connection = new Connection("http://127.0.0.1:1");
-const key = (n: number) => new PublicKey(new Uint8Array(32).fill(n));
+// The builders read nothing: an RPC no server answers.
+const rpc = createSolanaRpc("http://127.0.0.1:1");
 const bytes = (n: number) => new Uint8Array(32).fill(n);
-const u64Le = (v: bigint) => {
-  const b = new Uint8Array(8);
-  new DataView(b.buffer).setBigUint64(0, v, true);
-  return b;
-};
+const key = (n: number): Address => getAddressDecoder().decode(bytes(n));
+const keyBytes = (n: number) => Uint8Array.from(getAddressEncoder().encode(key(n)));
+const u64Le = (v: bigint) => Uint8Array.from(getU64Encoder().encode(v));
 const concat = (...parts: Uint8Array[]) => Uint8Array.from(Buffer.concat(parts));
+const isWritable = (role: AccountRole) => role === AccountRole.WRITABLE || role === AccountRole.WRITABLE_SIGNER;
+const isSigner = (role: AccountRole) => role === AccountRole.READONLY_SIGNER || role === AccountRole.WRITABLE_SIGNER;
 
 /**
  * Checks `ix` against the instruction `name` of `of`: its data is the IDL's
@@ -90,28 +102,29 @@ const concat = (...parts: Uint8Array[]) => Uint8Array.from(Buffer.concat(parts))
  * address, or its PDA from the IDL's seeds when they are all constants, for
  * the program the IDL is built for.
  */
-function expectMatchesTheIdl(of: Idl, ix: TransactionInstruction, name: string, args: Uint8Array) {
+async function expectMatchesTheIdl(of: Idl, ix: Instruction, name: string, args: Uint8Array) {
   const spec = of.instructions.find((i) => i.name === name)!;
-  expect(Array.from(ix.data), `${name}: the discriminator, then the arguments`).toEqual([
+  expect(Array.from(ix.data!), `${name}: the discriminator, then the arguments`).toEqual([
     ...spec.discriminator,
     ...args,
   ]);
-  expect(ix.keys.length, `${name}: accounts`).toBeGreaterThanOrEqual(spec.accounts.length);
-  spec.accounts.forEach((account, i) => {
+  const accounts = ix.accounts!;
+  expect(accounts.length, `${name}: accounts`).toBeGreaterThanOrEqual(spec.accounts.length);
+  for (const [i, account] of spec.accounts.entries()) {
     if ("accounts" in account) throw new Error(`${name}: the account group ${account.name}`);
-    const meta = ix.keys[i]!;
-    expect(meta.isWritable, `${name}.${account.name} writable`).toBe(account.writable ?? false);
-    expect(meta.isSigner, `${name}.${account.name} signer`).toBe(account.signer ?? false);
+    const meta = accounts[i]!;
+    expect(isWritable(meta.role), `${name}.${account.name} writable`).toBe(account.writable ?? false);
+    expect(isSigner(meta.role), `${name}.${account.name} signer`).toBe(account.signer ?? false);
     if (account.address !== undefined) {
-      expect(meta.pubkey.toBase58(), `${name}.${account.name} address`).toBe(account.address);
+      expect(meta.address, `${name}.${account.name} address`).toBe(account.address);
     }
     if (account.pda !== undefined && account.pda.seeds.every((s) => s.kind === "const")) {
       const seeds = account.pda.seeds.map((s) => Uint8Array.from((s as { value: number[] }).value));
-      expect(meta.pubkey.toBase58(), `${name}.${account.name} PDA`).toBe(
-        PublicKey.findProgramAddressSync(seeds, ix.programId)[0].toBase58(),
+      expect(meta.address, `${name}.${account.name} PDA`).toBe(
+        (await getProgramDerivedAddress({ programAddress: ix.programAddress, seeds }))[0],
       );
     }
-  });
+  }
 }
 
 /**
@@ -126,52 +139,56 @@ const sentInstructions = (of: Idl) =>
     .sort();
 
 /** The builders both builds' instances share, each with its arguments' expected bytes. */
-function sharedBuilders(f: SplTokenForwarder | EmergencyMigratingSplTokenForwarder): [string, TransactionInstruction, Uint8Array][] {
+async function sharedBuilders(
+  f: SplTokenForwarder | EmergencyMigratingSplTokenForwarder,
+): Promise<[string, Instruction, Uint8Array][]> {
   return [
-    ["initialize", f.initializeIx(key(1), key(2), bytes(3), key(4)), concat(key(2).toBytes(), bytes(3), key(4).toBytes())],
-    ["init_nonce_bitmap", f.initNonceBitmapIx(key(1), key(2), 7n), concat(key(2).toBytes(), u64Le(7n))],
-    ["transfer_ownership", f.transferOwnershipIx(key(1), key(2)), key(2).toBytes()],
-    ["renounce_ownership", f.renounceOwnershipIx(key(1)), new Uint8Array()],
-    ["upgrade", f.upgradeIxs(key(1), key(2), key(3))[1], new Uint8Array()],
+    ["initialize", await f.initializeIx(key(1), key(2), bytes(3), key(4)), concat(keyBytes(2), bytes(3), keyBytes(4))],
+    ["init_nonce_bitmap", await f.initNonceBitmapIx(key(1), key(2), 7n), concat(keyBytes(2), u64Le(7n))],
+    ["transfer_ownership", await f.transferOwnershipIx(key(1), key(2)), keyBytes(2)],
+    ["renounce_ownership", await f.renounceOwnershipIx(key(1)), new Uint8Array()],
+    ["upgrade", (await f.upgradeIxs(key(1), key(2), key(3)))[1], new Uint8Array()],
     ["version", f.versionIx(), new Uint8Array()],
-    ["close_escrow", f.closeEscrowIx(key(1), key(2), key(3), key(4)), new Uint8Array()],
-    ["close_nonce_bitmaps_batch", f.closeNonceBitmapsBatchIx(key(1), key(2), [key(5), key(6)]), new Uint8Array()],
-    ["close_config", f.closeConfigIx(key(1), key(2)), new Uint8Array()],
+    ["close_escrow", await f.closeEscrowIx(key(1), key(2), key(3), key(4)), new Uint8Array()],
+    ["close_nonce_bitmaps_batch", await f.closeNonceBitmapsBatchIx(key(1), key(2), [key(5), key(6)]), new Uint8Array()],
+    ["close_config", await f.closeConfigIx(key(1), key(2)), new Uint8Array()],
   ];
 }
 
-const productionBuilders = (f: SplTokenForwarder): [string, TransactionInstruction, Uint8Array][] => [
-  ...sharedBuilders(f),
-  ["reinitialize", f.reinitializeIx(key(1), bytes(3)), bytes(3)],
+const productionBuilders = async (f: SplTokenForwarder): Promise<[string, Instruction, Uint8Array][]> => [
+  ...(await sharedBuilders(f)),
+  ["reinitialize", await f.reinitializeIx(key(1), bytes(3)), bytes(3)],
 ];
 
-const emergencyMigratingBuilders = (f: EmergencyMigratingSplTokenForwarder): [string, TransactionInstruction, Uint8Array][] => [
-  ...sharedBuilders(f),
+const emergencyMigratingBuilders = async (
+  f: EmergencyMigratingSplTokenForwarder,
+): Promise<[string, Instruction, Uint8Array][]> => [
+  ...(await sharedBuilders(f)),
   [
     "reinitialize",
-    f.reinitializeIx(key(1), key(2), bytes(3), [bytes(5), bytes(6)]),
+    await f.reinitializeIx(key(1), key(2), bytes(3), [bytes(5), bytes(6)]),
     concat(bytes(3), Uint8Array.of(2, 0, 0, 0), bytes(5), bytes(6)),
   ],
-  ["init_migration_record", f.initMigrationRecordIx(key(1), bytes(5)), bytes(5)],
+  ["init_migration_record", await f.initMigrationRecordIx(key(1), bytes(5)), bytes(5)],
 ];
 
 describe("the instances' builders", () => {
-  const program = new PublicKey(idl.address);
+  const program = address(idl.address);
 
   for (const [build, of, built] of [
-    ["production", idl, () => productionBuilders(SplTokenForwarder.at(connection, program))],
+    ["production", idl, () => productionBuilders(SplTokenForwarder.at(rpc, program))],
     [
       "emergency-migrating",
       emergencyMigratingIdl,
-      () => emergencyMigratingBuilders(EmergencyMigratingSplTokenForwarder.at(connection, program)),
+      () => emergencyMigratingBuilders(EmergencyMigratingSplTokenForwarder.at(rpc, program)),
     ],
   ] as const) {
-    it(`build every instruction a client sends the ${build} build, as its IDL declares it`, () => {
+    it(`build every instruction a client sends the ${build} build, as its IDL declares it`, async () => {
       const names: string[] = [];
-      for (const [name, ix, args] of built()) {
-        console.log(`${build} ${name}: ${ix.keys.length} accounts, ${ix.data.length} bytes`);
-        expect(ix.programId.equals(program), name).toBe(true);
-        expectMatchesTheIdl(of, ix, name, args);
+      for (const [name, ix, args] of await built()) {
+        console.log(`${build} ${name}: ${ix.accounts!.length} accounts, ${ix.data!.length} bytes`);
+        expect(ix.programAddress, name).toBe(program);
+        await expectMatchesTheIdl(of, ix, name, args);
         names.push(name);
       }
       expect(names.sort()).toEqual(sentInstructions(of));
@@ -181,58 +198,56 @@ describe("the instances' builders", () => {
   // At another address, every account the program determines is that
   // program's: none is an address the IDL fixes for the program it is built
   // for.
-  it("derive every account at the instance's own address", () => {
-    const other = Keypair.generate().publicKey;
-    const idlProgram = new PublicKey(idl.address);
-    const ofTheIdlProgram = new Set(
-      [
-        idlProgram,
-        deriveForwarderConfigPda(idlProgram)[0],
-        deriveForwarderEscrowAuthority(idlProgram)[0],
-        deriveProgramDataAddress(idlProgram),
-        deriveVulnerableLogicRefsPda(idlProgram)[0],
-      ].map((k) => k.toBase58()),
-    );
+  it("derive every account at the instance's own address", async () => {
+    const other = (await generateKeyPairSigner()).address;
+    const idlProgram = address(idl.address);
+    const ofTheIdlProgram = new Set<Address>([
+      idlProgram,
+      (await deriveForwarderConfigPda(idlProgram))[0],
+      (await deriveForwarderEscrowAuthority(idlProgram))[0],
+      await deriveProgramDataAddress(idlProgram),
+      (await deriveVulnerableLogicRefsPda(idlProgram))[0],
+    ]);
+    const otherConfig = (await deriveForwarderConfigPda(other))[0];
     const all = [
-      ...productionBuilders(SplTokenForwarder.at(connection, other)),
-      ...emergencyMigratingBuilders(EmergencyMigratingSplTokenForwarder.at(connection, other)),
+      ...(await productionBuilders(SplTokenForwarder.at(rpc, other))),
+      ...(await emergencyMigratingBuilders(EmergencyMigratingSplTokenForwarder.at(rpc, other))),
     ];
     for (const [name, ix] of all) {
-      expect(ix.programId.equals(other), name).toBe(true);
-      const leaked = ix.keys.map((k) => k.pubkey.toBase58()).filter((k) => ofTheIdlProgram.has(k));
+      expect(ix.programAddress, name).toBe(other);
+      const accounts = ix.accounts!.map((a) => a.address);
+      const leaked = accounts.filter((a) => ofTheIdlProgram.has(a));
       expect(leaked, `${name} names the IDL program's accounts`).toEqual([]);
-      if (ix.keys.some((k) => k.pubkey.equals(deriveForwarderConfigPda(other)[0]))) continue;
+      if (accounts.includes(otherConfig)) continue;
       expect(["init_nonce_bitmap", "init_migration_record", "version"], `${name} has no config`).toContain(name);
     }
   });
 
-  it("put the upgrade's compute budget first", () => {
-    const [budget] = SplTokenForwarder.at(connection, program).upgradeIxs(key(1), key(2), key(3));
-    expect(budget).toEqual(ComputeBudgetProgram.setComputeUnitLimit({ units: UPGRADE_COMPUTE_UNIT_LIMIT }));
+  it("put the upgrade's compute budget first", async () => {
+    const [budget] = await SplTokenForwarder.at(rpc, program).upgradeIxs(key(1), key(2), key(3));
+    expect(budget).toEqual(getSetComputeUnitLimitInstruction({ units: UPGRADE_COMPUTE_UNIT_LIMIT }));
   });
 
-  it("put the bitmaps to close after the named accounts, writable", () => {
-    const ix = SplTokenForwarder.at(connection, program).closeNonceBitmapsBatchIx(key(1), key(2), [key(5), key(6)]);
-    expect(ix.keys.slice(3)).toEqual([
-      { pubkey: key(5), isSigner: false, isWritable: true },
-      { pubkey: key(6), isSigner: false, isWritable: true },
+  it("put the bitmaps to close after the named accounts, writable", async () => {
+    const ix = await SplTokenForwarder.at(rpc, program).closeNonceBitmapsBatchIx(key(1), key(2), [key(5), key(6)]);
+    expect(ix.accounts!.slice(3)).toEqual([
+      { address: key(5), role: AccountRole.WRITABLE },
+      { address: key(6), role: AccountRole.WRITABLE },
     ]);
   });
 
-  // `@anchor-lang/core` 1.2.1's coder encodes an instruction's arguments into
-  // a 1000-byte buffer: the emergency-migrating `reinitialize` fits 30
-  // vulnerable logic refs (32 + 4 + 30 * 32 = 996 bytes), and the builder
-  // refuses 31 (1028 bytes), naming why, before the coder fails inside it.
-  it("encode a reinitialize of up to 30 vulnerable logic refs, and refuse more", () => {
-    const f = EmergencyMigratingSplTokenForwarder.at(connection, program);
-    const refs = (n: number) => Array.from({ length: n }, (_, i) => bytes(i + 1));
-    const thirty = f.reinitializeIx(key(1), key(2), bytes(3), refs(30));
-    expect(thirty.data.length).toBe(8 + 32 + 4 + 30 * 32);
-    expect(Array.from(thirty.data.subarray(thirty.data.length - 32))).toEqual(Array.from(bytes(30)));
-    expect(() => f.reinitializeIx(key(1), key(2), bytes(3), refs(31))).toThrow(
-      "reinitialize: its arguments encode to 1028 bytes, more than the 1000-byte buffer " +
-        "@anchor-lang/core 1.2.1's instruction coder encodes them into",
-    );
+  // `@anchor-lang/core` 1.x encoded an instruction's arguments into a fixed
+  // 1000-byte buffer, which held at most 30 vulnerable logic refs; Anchor 2's
+  // coder sizes each encoding by its value.
+  it("encode a reinitialize of 40 vulnerable logic refs, more than 1000 bytes", async () => {
+    const f = EmergencyMigratingSplTokenForwarder.at(rpc, program);
+    const refs = Array.from({ length: 40 }, (_, i) => bytes(i + 1));
+    const ix = await f.reinitializeIx(key(1), key(2), bytes(3), refs);
+    const data = ix.data!;
+    console.log(`reinitialize of 40 refs: ${data.length} bytes`);
+    expect(data.length).toBe(8 + 32 + 4 + 40 * 32);
+    expect(data.length).toBeGreaterThan(1000);
+    expect(Array.from(data.subarray(8))).toEqual(Array.from(concat(bytes(3), Uint8Array.of(40, 0, 0, 0), ...refs)));
   });
 });
 
@@ -240,14 +255,14 @@ describe("the emergency-migrating instance", () => {
   it("names the IDL's legacy forwarder", () => {
     const declared = idlConstant(emergencyMigratingIdl, "LEGACY_FORWARDER");
     console.log(`LEGACY_FORWARDER: ${declared}`);
-    expect(EmergencyMigratingSplTokenForwarder.at(connection, key(9)).legacyForwarder().toBase58()).toBe(declared);
+    expect(EmergencyMigratingSplTokenForwarder.at(rpc, key(9)).legacyForwarder()).toBe(declared);
   });
 });
 
 describe("returnedString", () => {
   const program = key(9);
-  const returnData = (from: PublicKey, data: Uint8Array) => ({
-    programId: from.toBase58(),
+  const returnData = (from: Address, data: Uint8Array) => ({
+    programId: from,
     data: [Buffer.from(data).toString("base64"), "base64"] as [string, "base64"],
   });
   // A Borsh String: its length as a little-endian u32, then the UTF-8.
