@@ -384,7 +384,7 @@ async fn init_nonce_bitmap_of_an_existing_bitmap_leaves_its_nonces_used() -> any
         .wrap(&mut env, &owner, AMOUNT, NONCE, "wrap/existing-bitmap")
         .await?;
     let user = forwarder.user.pubkey();
-    let payer = env.protocol_adapter.payer.pubkey();
+    let payer = env.protocol_adapter.payer_pubkey();
     let word = nonce_word_index(NONCE);
     env.send(
         &[init_nonce_bitmap_ix(
@@ -429,7 +429,7 @@ async fn refuses_a_replay_that_supplies_the_users_bitmap_of_another_word() -> an
     let (mut env, local, tx) = replay().await?;
     let forwarder = &local.forwarder;
     let (program, user) = (forwarder.program, forwarder.user.pubkey());
-    let payer = env.protocol_adapter.payer.pubkey();
+    let payer = env.protocol_adapter.payer_pubkey();
     let word = nonce_word_index(NONCE) + 1;
     let unmoved = [forwarder.user_account(), forwarder.escrow_account()];
     refuses(
@@ -456,7 +456,7 @@ async fn refuses_a_replay_that_supplies_another_users_bitmap_of_the_nonces_word(
     let forwarder = &local.forwarder;
     let program = forwarder.program;
     let other = Keypair::new().pubkey();
-    let payer = env.protocol_adapter.payer.pubkey();
+    let payer = env.protocol_adapter.payer_pubkey();
     let word = nonce_word_index(NONCE);
     let unmoved = [forwarder.user_account(), forwarder.escrow_account()];
     refuses(

@@ -15,6 +15,8 @@ use anoma_rm_risc0::resource::Resource;
 use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::accounts::{
     Config, NonceBitmap,
 };
+#[cfg(feature = "e2e")]
+use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::client::args::InitNonceBitmap;
 use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::constants::{
     CONFIG_VERSION, NONCES_PER_WORD,
 };
@@ -112,14 +114,14 @@ fn deploy<P>(env: &Environment<P>, build: Build) -> anyhow::Result<Pubkey> {
         Build::Production => FORWARDER_SO,
         Build::Development => FORWARDER_DEV_SO,
     };
-    env.deploy_program(program, so, env.protocol_adapter.payer.pubkey())?;
+    env.deploy_program(program, so, env.protocol_adapter.payer_pubkey())?;
     Ok(program)
 }
 
 /// Initializes the forwarder `program` on `env` for the adapter and the
 /// transfer resource's logic ref, with a new owner, which it returns.
 async fn initialize<P>(env: &Environment<P>, program: Pubkey) -> anyhow::Result<Keypair> {
-    let payer = env.protocol_adapter.payer.pubkey();
+    let payer = env.protocol_adapter.payer_pubkey();
     let owner = Keypair::new();
     env.send(
         &[initialize_ix(
@@ -257,6 +259,11 @@ pub async fn e2e() -> anyhow::Result<(
                 anoma_rm_risc0::Digest::from_bytes(config.logic_ref),
                 crate::logic::logic_ref()
             );
+            // The settlement of a wrap whose word has no bitmap carries the
+            // forwarder's `init_nonce_bitmap`, which a live cluster refuses
+            // unless allowed.
+            env.protocol_adapter
+                .allow_on_live_cluster(program, InitNonceBitmap::DISCRIMINATOR)?;
             serve(&mut env, program).await?
         }
     };
@@ -302,7 +309,7 @@ async fn serve_mint<P>(
     program: Pubkey,
     mint: Pubkey,
 ) -> anyhow::Result<Forwarder> {
-    let payer = env.protocol_adapter.payer.pubkey();
+    let payer = env.protocol_adapter.payer_pubkey();
     let user = Keypair::new();
     fund(env, &program, &mint, &user, USER_TOKENS).await?;
 
@@ -325,7 +332,7 @@ async fn serve_mint<P>(
 
 /// A new mint of 6 decimals whose authority is the adapter's payer.
 pub async fn new_mint<P>(env: &Environment<P>) -> anyhow::Result<Pubkey> {
-    let payer = env.protocol_adapter.payer.pubkey();
+    let payer = env.protocol_adapter.payer_pubkey();
     let mint = Keypair::new();
     let space = spl_token_interface::state::Mint::LEN;
     let rent = env
@@ -381,7 +388,7 @@ pub async fn token_account<P>(
     owner: &Pubkey,
     mint: &Pubkey,
 ) -> anyhow::Result<Pubkey> {
-    let payer = env.protocol_adapter.payer.pubkey();
+    let payer = env.protocol_adapter.payer_pubkey();
     env.send(
         &[create_associated_token_account_idempotent(
             &payer,
@@ -404,7 +411,7 @@ pub async fn mint_to<P>(
     account: &Pubkey,
     amount: u64,
 ) -> anyhow::Result<()> {
-    let payer = env.protocol_adapter.payer.pubkey();
+    let payer = env.protocol_adapter.payer_pubkey();
     env.send(
         &[spl_token_interface::instruction::mint_to(
             &spl_token_interface::id(),

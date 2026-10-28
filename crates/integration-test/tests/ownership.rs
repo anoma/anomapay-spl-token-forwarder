@@ -203,7 +203,7 @@ async fn upgrade_refuses_an_account_that_is_not_a_loader_buffer() -> anyhow::Res
 async fn upgrade_refuses_a_buffer_someone_other_than_the_owner_wrote() -> anyhow::Result<()> {
     let (env, local) = setup::local().await?;
     let buffer = env
-        .write_buffer(FORWARDER_SO, env.protocol_adapter.payer.pubkey())
+        .write_buffer(FORWARDER_SO, env.protocol_adapter.payer_pubkey())
         .await?;
     let owner = &local.owner;
     expect_integration_panic(Needle::Static("Incorrect authority provided"))(

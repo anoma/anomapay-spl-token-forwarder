@@ -35,7 +35,7 @@ async fn init_initializes_a_deployed_forwarder_as_requested() -> anyhow::Result<
     vars.push(("STF_TOKEN_MINT", mint.to_string()));
     let ran = run_script(
         &env,
-        &env.protocol_adapter.payer,
+        env.protocol_adapter.payer()?,
         "forwarder.ts",
         &["init"],
         &vars,
@@ -74,7 +74,7 @@ async fn init_accepts_an_existing_config_that_holds_the_requested_values() -> an
     let vars = init_vars(logic_ref().into(), &local.owner.pubkey());
     let ran = run_script(
         &env,
-        &env.protocol_adapter.payer,
+        env.protocol_adapter.payer()?,
         "forwarder.ts",
         &["init"],
         &vars,
@@ -95,7 +95,7 @@ async fn init_refuses_an_existing_config_that_differs_from_the_request() -> anyh
     let vars = init_vars(Keypair::new().pubkey().to_bytes(), &local.owner.pubkey());
     let ran = run_script(
         &env,
-        &env.protocol_adapter.payer,
+        env.protocol_adapter.payer()?,
         "forwarder.ts",
         &["init"],
         &vars,
@@ -145,7 +145,7 @@ async fn publish_idl_writes_the_canonical_idl_account() -> anyhow::Result<()> {
     let (env, _) = setup::deployed(Build::Production).await?;
     let ran = run_script(
         &env,
-        &env.protocol_adapter.payer,
+        env.protocol_adapter.payer()?,
         "publish-idl.ts",
         &["target/idl/spl_token_forwarder.json"],
         &[],
@@ -167,7 +167,7 @@ async fn publish_idl_writes_the_canonical_idl_account() -> anyhow::Result<()> {
 async fn upgrade_takes_the_path_the_upgrade_authority_leaves_and_installs_the_owners_buffer()
 -> anyhow::Result<()> {
     let (env, _) = setup::deployed(Build::Production).await?;
-    let payer = &env.protocol_adapter.payer;
+    let payer = env.protocol_adapter.payer()?;
     let ran = run_script(&env, payer, "upgrade-program.ts", &["path"], &[])?;
     anyhow::ensure!(ran.success && ran.stdout.trim() == "loader", "{ran}");
 

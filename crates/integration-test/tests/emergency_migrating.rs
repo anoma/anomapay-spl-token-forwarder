@@ -871,7 +871,7 @@ async fn a_migration_refuses_trailing_bytes() -> anyhow::Result<()> {
     let accounts = anomapay_spl_token_forwarder_client::settlement::settlement_calls(
         &program,
         &incident.env.protocol_adapter.program,
-        &incident.env.protocol_adapter.payer.pubkey(),
+        &incident.env.protocol_adapter.payer_pubkey(),
         &[migrate_call(
             &program,
             encode_migrate_forwarder_input(&migration),

@@ -148,7 +148,7 @@ async fn refuses_close_nonce_bitmaps_batch_while_the_adapter_is_running() -> any
     env.send(
         &[init_nonce_bitmap_ix(
             &program,
-            &env.protocol_adapter.payer.pubkey(),
+            &env.protocol_adapter.payer_pubkey(),
             &user,
             0,
         )],
@@ -257,7 +257,7 @@ async fn close_nonce_bitmaps_batch_refuses_a_program_account_that_is_not_a_bitma
 async fn closes_every_nonce_bitmap_and_refunds_their_rent() -> anyhow::Result<()> {
     let (mut env, local) = setup::local().await?;
     let program = local.forwarder.program;
-    let payer = env.protocol_adapter.payer.pubkey();
+    let payer = env.protocol_adapter.payer_pubkey();
     let users = [Keypair::new().pubkey(), Keypair::new().pubkey()];
     env.send(
         &users.map(|user| init_nonce_bitmap_ix(&program, &payer, &user, 0)),

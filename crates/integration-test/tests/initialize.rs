@@ -25,7 +25,7 @@ use surfpool_sdk::Pubkey;
 fn initialize(env: &LocalEnv, program: &Pubkey, owner: &Pubkey) -> Instruction {
     initialize_ix(
         program,
-        &env.protocol_adapter.payer.pubkey(),
+        &env.protocol_adapter.payer_pubkey(),
         &env.protocol_adapter.program,
         logic_ref().into(),
         owner,
@@ -121,7 +121,7 @@ async fn refuses_a_zero_protocol_adapter() -> anyhow::Result<()> {
     let (env, program) = setup::deployed(Build::Production).await?;
     let ix = initialize_ix(
         &program,
-        &env.protocol_adapter.payer.pubkey(),
+        &env.protocol_adapter.payer_pubkey(),
         &Pubkey::default(),
         logic_ref().into(),
         &Keypair::new().pubkey(),
@@ -141,7 +141,7 @@ async fn refuses_a_zero_logic_ref() -> anyhow::Result<()> {
     let (env, program) = setup::deployed(Build::Production).await?;
     let ix = initialize_ix(
         &program,
-        &env.protocol_adapter.payer.pubkey(),
+        &env.protocol_adapter.payer_pubkey(),
         &env.protocol_adapter.program,
         [0; 32],
         &Keypair::new().pubkey(),

@@ -13,7 +13,7 @@ use solana_transaction::Transaction;
 async fn the_forwarder_answers_with_the_release_its_idl_records() -> anyhow::Result<()> {
     let (env, local) = setup::local().await?;
     let rpc = &env.protocol_adapter.rpc;
-    let payer = &env.protocol_adapter.payer;
+    let payer = env.protocol_adapter.payer()?;
     let transaction = Transaction::new_signed_with_payer(
         &[version_ix(&local.forwarder.program)],
         Some(&payer.pubkey()),
