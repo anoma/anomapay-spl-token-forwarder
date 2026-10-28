@@ -38,7 +38,7 @@ use transfer_library::TransferLogic;
 use crate::fixtures::{self, ShieldedOwner, WrapTerms};
 use crate::logic::Logic;
 use crate::submitter::Rewritten;
-use anomapay_spl_token_forwarder_client::submitter::SplTokenForwarder;
+use anomapay_spl_token_forwarder_client::submitter::SplTokenForwarderCalls;
 
 /// The forwarder builds the local tests load: the deterministic builds at
 /// the local addresses (`dev.sh test-program`), production and development.
@@ -75,7 +75,7 @@ fn forwarder_address(env_file: &str) -> anyhow::Result<Pubkey> {
 /// adapter, a mint it serves, and a user holding the mint's tokens who has
 /// approved the forwarder's escrow authority as delegate.
 pub struct Forwarder {
-    pub submitter: Arc<SplTokenForwarder>,
+    pub submitter: Arc<SplTokenForwarderCalls>,
     pub program: Pubkey,
     pub mint: Pubkey,
     pub user: Keypair,
@@ -313,7 +313,7 @@ async fn serve_mint<P>(
     let user = Keypair::new();
     fund(env, &program, &mint, &user, USER_TOKENS).await?;
 
-    let submitter = Arc::new(SplTokenForwarder::new(
+    let submitter = Arc::new(SplTokenForwarderCalls::new(
         program,
         env.protocol_adapter.program,
         payer,

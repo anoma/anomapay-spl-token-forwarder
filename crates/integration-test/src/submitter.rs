@@ -5,14 +5,14 @@ use std::sync::Arc;
 use anoma_pa_solana_client::external_call::SolanaExternalCall;
 use anoma_pa_solana_client::forwarders::{CallAccountsFuture, Forwarder};
 use anoma_pa_solana_client::settlement::CallAccounts;
-use anomapay_spl_token_forwarder_client::submitter::SplTokenForwarder;
+use anomapay_spl_token_forwarder_client::submitter::SplTokenForwarderCalls;
 use solana_rpc_client::nonblocking::rpc_client::RpcClient;
 
 /// A submitter passing the forwarder what `rewrite` makes of the accounts and
-/// instructions `SplTokenForwarder` supplies: another account in a segment,
-/// an instruction dropped, reordered or added.
+/// instructions `SplTokenForwarderCalls` supplies: another account in a
+/// segment, an instruction dropped, reordered or added.
 pub struct Rewritten<F> {
-    pub submitter: Arc<SplTokenForwarder>,
+    pub submitter: Arc<SplTokenForwarderCalls>,
     pub rewrite: F,
 }
 

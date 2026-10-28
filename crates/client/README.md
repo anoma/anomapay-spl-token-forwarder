@@ -42,7 +42,7 @@ Run
 The crate has two features:
 
 - `solana` (on by default) adds everything that needs the Solana SDK: the instruction builders (including those of the emergency-migrating build), the accounts and the preceding instructions of a settlement, the addresses that are derived from the program id, and the deployment record.
-- `rpc` adds `submitter::SplTokenForwarder`, which implements the adapter client's `Forwarder` trait (the adapter client calls it to get the accounts for each call to this forwarder during a settlement), and the instances in `instance`. `rpc` also turns on `solana`.
+- `rpc` adds `submitter::SplTokenForwarderCalls`, which implements the adapter client's `Forwarder` trait (the adapter client calls it to get the accounts for each call to this forwarder during a settlement), and the instances in `instance`. `rpc` also turns on `solana`.
 
 With `--no-default-features`, the crate keeps the encoders and decoders for the data that the program receives, the `VulnerableLogicRefs` decoder, and the generated bindings, which need only `anchor-lang`.
 

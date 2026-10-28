@@ -12,13 +12,13 @@ use crate::settlement::settlement_calls;
 /// the adapter `protocol_adapter` call: `payer` pays for the accounts a call
 /// needs created. Everything else comes from the call, a wrap's signature
 /// included.
-pub struct SplTokenForwarder {
+pub struct SplTokenForwarderCalls {
     pub program: Pubkey,
     protocol_adapter: Pubkey,
     payer: Pubkey,
 }
 
-impl SplTokenForwarder {
+impl SplTokenForwarderCalls {
     pub fn new(program: Pubkey, protocol_adapter: Pubkey, payer: Pubkey) -> Self {
         Self {
             program,
@@ -28,7 +28,7 @@ impl SplTokenForwarder {
     }
 }
 
-impl Forwarder for SplTokenForwarder {
+impl Forwarder for SplTokenForwarderCalls {
     fn call_accounts<'a>(
         &'a self,
         _rpc: &'a RpcClient,
