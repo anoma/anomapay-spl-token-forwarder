@@ -16,8 +16,8 @@ anchor-lang = { git = "https://github.com/otter-sec/anchor", rev = "2c9747a2d31b
 # layout, the upgrade helpers, the event discriminators), and its client at
 # the commit the integration tests' harness pins, so the tests link one copy
 # of the client.
-protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "contracts/v2.0.0-rc.7", default-features = false, features = ["no-entrypoint"] }
-anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "7ed4f3ee29ec4f8840fd20599e28f2e50a79fb37", default-features = false }
+protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "contracts/v2.0.0-rc.8", default-features = false, features = ["no-entrypoint"] }
+anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "59527d4671bc7c930310f66467964da9db8269a1", default-features = false }
 
 [profile.release]
 overflow-checks = true

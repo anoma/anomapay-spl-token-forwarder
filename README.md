@@ -9,7 +9,7 @@ The adapter calls the forwarder through the external calls a settled transaction
 | Path | Contents |
 |---|---|
 | `programs/spl-token-forwarder/` | The Anchor program and its Rust unit tests |
-| `crates/client/` | `anomapay-spl-token-forwarder-client`: the instructions it takes, the CPI segments a settlement passes it, its wire formats (the wrap authorization message, the wrap and unwrap inputs), its events, its IDL |
+| `crates/client/` | `anomapay-spl-token-forwarder-client`: the bindings generated from both builds' IDLs (its id, accounts, events, constants, instruction accounts and arguments), builders for the instructions it takes, the CPI segments a settlement passes it, its wire formats (the wrap authorization message, the wrap, unwrap and migrate inputs), and the IDLs |
 | `ts/` | `@anomaorg/anomapay-spl-token-forwarder`: the client crate's counterpart in TypeScript (the `init_nonce_bitmap` instruction, the CPI segments, the wrap authorization message, the event decoder) |
 | `crates/integration-test/` | The forwarder's integration tests on the adapter's harness, and the test programs they load |
 | `env/` | The forwarder's address per cluster, and the adapter's it is built against ([env/README.md](env/README.md)) |

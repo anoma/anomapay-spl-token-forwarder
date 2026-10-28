@@ -1,68 +1,29 @@
-//! Decoders for the forwarder's accounts: its configuration and its users'
-//! nonce bitmaps. Cursor-based like the adapter's state decoder: the Borsh
-//! fields in order, no hardcoded offsets, each account refused unless it
-//! carries its type's Anchor discriminator.
+//! The decoder of the one forwarder account the IDLs do not declare: the
+//! emergency-migrating build's `VulnerableLogicRefs`, which `reinitialize`
+//! grows in place and reads as a raw account, so no instruction takes it as
+//! a typed account and Anchor leaves it out of the IDL. Every other account
+//! is a generated type (`generated::*::accounts`).
 
-use anoma_pa_solana_client::cursor::{Cursor, Truncated};
-use anoma_pa_solana_client::{anchor_account_disc, ANCHOR_DISCRIMINATOR_LEN};
+use anchor_lang::AnchorDeserialize;
+use sha2::{Digest, Sha256};
 
-use crate::constants::NONCES_PER_WORD;
-
-/// The forwarder's configuration (`Config`).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ConfigAccount {
-    /// The adapter whose calls the forwarder accepts.
-    pub protocol_adapter: [u8; 32],
-    /// The logic ref of the resource whose calls the forwarder accepts.
-    pub logic_ref: [u8; 32],
-    /// The version `initialize` or `reinitialize` last recorded.
-    pub version: u64,
-    /// All zeros once renounced.
-    pub owner: [u8; 32],
-}
-
-/// A user's nonce bitmap for one word of 256 wrap nonces (`NonceBitmap`).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct NonceBitmapAccount {
-    pub bits: [u8; 32],
-    /// The canonical bump of the bitmap's address.
-    pub bump: u8,
-}
-
-impl NonceBitmapAccount {
-    /// Whether a wrap has used `nonce`, which must fall in this bitmap's word.
-    pub fn is_used(&self, nonce: u64) -> bool {
-        let bit = nonce % NONCES_PER_WORD;
-        self.bits[(bit / 8) as usize] & (1 << (bit % 8)) != 0
-    }
-}
-
-/// The emergency-migrating build's record of one resource's migration
-/// (`MigrationRecord`), as the EVM draft's `isNullifierMigrated` answers.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MigrationRecordAccount {
-    pub migrated: bool,
-    /// The canonical bump of the record's address.
-    pub bump: u8,
-}
-
-/// Errors produced by the account decoders.
+/// Errors produced by [`decode_vulnerable_logic_refs`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AccountDecodeError {
-    /// The data does not start with the account type's discriminator.
-    WrongDiscriminator { expected: &'static str },
-    /// The data ran out while reading the named field.
-    Truncated { field: &'static str },
+    /// The data does not start with the `VulnerableLogicRefs` discriminator.
+    WrongDiscriminator,
+    /// The data ends inside the list of logic refs.
+    Truncated,
 }
 
 impl core::fmt::Display for AccountDecodeError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            AccountDecodeError::WrongDiscriminator { expected } => {
-                write!(f, "the account is not a {expected}")
+            AccountDecodeError::WrongDiscriminator => {
+                write!(f, "the account is not a VulnerableLogicRefs")
             }
-            AccountDecodeError::Truncated { field } => {
-                write!(f, "account truncated while reading {field}")
+            AccountDecodeError::Truncated => {
+                write!(f, "the account ends inside its list of logic refs")
             }
         }
     }
@@ -70,157 +31,61 @@ impl core::fmt::Display for AccountDecodeError {
 
 impl std::error::Error for AccountDecodeError {}
 
-impl From<Truncated> for AccountDecodeError {
-    fn from(t: Truncated) -> Self {
-        AccountDecodeError::Truncated { field: t.field }
-    }
-}
-
-/// The cursor over `data`'s fields, once its discriminator is `name`'s.
-fn fields<'a>(data: &'a [u8], name: &'static str) -> Result<Cursor<'a>, AccountDecodeError> {
-    if data.get(..ANCHOR_DISCRIMINATOR_LEN) != Some(&anchor_account_disc(name)[..]) {
-        return Err(AccountDecodeError::WrongDiscriminator { expected: name });
-    }
-    Ok(Cursor::new(data, ANCHOR_DISCRIMINATOR_LEN))
-}
-
-/// Decode the forwarder's `Config` account.
-pub fn decode_config(data: &[u8]) -> Result<ConfigAccount, AccountDecodeError> {
-    let mut c = fields(data, "Config")?;
-    Ok(ConfigAccount {
-        protocol_adapter: c.array_32("protocol_adapter")?,
-        logic_ref: c.array_32("logic_ref")?,
-        version: c.u64_le("version")?,
-        owner: c.array_32("owner")?,
-    })
+/// Anchor's discriminator of the `#[account]` `VulnerableLogicRefs`:
+/// `sha256("account:VulnerableLogicRefs")[..8]`.
+fn vulnerable_logic_refs_discriminator() -> [u8; 8] {
+    Sha256::digest(b"account:VulnerableLogicRefs")[..8]
+        .try_into()
+        .expect("a SHA-256 digest is longer than 8 bytes")
 }
 
 /// Decode the emergency-migrating build's `VulnerableLogicRefs` account:
 /// the logic refs whose resources can emergency-migrate, as the EVM draft's
-/// `isLogicRefVulnerable` answers for each.
+/// `isLogicRefVulnerable` answers for each. As the program's own read
+/// (`try_deserialize`), bytes after the list are not read.
 pub fn decode_vulnerable_logic_refs(data: &[u8]) -> Result<Vec<[u8; 32]>, AccountDecodeError> {
-    let mut c = fields(data, "VulnerableLogicRefs")?;
-    let count = c.u32_le("logic_refs")?;
-    (0..count).map(|_| Ok(c.array_32("logic_refs")?)).collect()
-}
-
-/// Decode the emergency-migrating build's `MigrationRecord` account.
-pub fn decode_migration_record(data: &[u8]) -> Result<MigrationRecordAccount, AccountDecodeError> {
-    let mut c = fields(data, "MigrationRecord")?;
-    Ok(MigrationRecordAccount {
-        migrated: c.u8("migrated")? != 0,
-        bump: c.u8("bump")?,
-    })
-}
-
-/// Decode a `NonceBitmap` account.
-pub fn decode_nonce_bitmap(data: &[u8]) -> Result<NonceBitmapAccount, AccountDecodeError> {
-    let mut c = fields(data, "NonceBitmap")?;
-    Ok(NonceBitmapAccount {
-        bits: c.array_32("bits")?,
-        bump: c.u8("bump")?,
-    })
+    let mut body = data
+        .strip_prefix(&vulnerable_logic_refs_discriminator())
+        .ok_or(AccountDecodeError::WrongDiscriminator)?;
+    // A length then fixed-size arrays: running out of bytes is the only way
+    // the Borsh read can fail.
+    Vec::<[u8; 32]>::deserialize(&mut body).map_err(|_| AccountDecodeError::Truncated)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn the_idl_declares_the_accounts_the_decoders_read() {
-        let idl = crate::idl::idl();
-        let fields_of = |name: &str| -> Vec<&str> {
-            crate::idl::fields(&idl, name)
-                .iter()
-                .map(|f| f["name"].as_str().unwrap())
-                .collect()
-        };
-        assert_eq!(
-            fields_of("Config"),
-            ["protocol_adapter", "logic_ref", "version", "owner"]
-        );
-        assert_eq!(fields_of("NonceBitmap"), ["bits", "bump"]);
-        for name in ["Config", "NonceBitmap"] {
-            let account = idl["accounts"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|a| a["name"] == name)
-                .unwrap();
-            let expected: Vec<u8> =
-                serde_json::from_value(account["discriminator"].clone()).unwrap();
-            assert_eq!(anchor_account_disc(name).to_vec(), expected, "{name}");
-        }
+    /// The account bytes the program's `VulnerableLogicRefs { logic_refs:
+    /// [[7; 32], [8; 32]] }` serializes to: its discriminator, the list's
+    /// length and the refs.
+    const EXPECTED_VULNERABLE_LOGIC_REFS: &str = "8a4e8457e793330702000000\
+        0707070707070707070707070707070707070707070707070707070707070707\
+        0808080808080808080808080808080808080808080808080808080808080808";
+
+    fn bytes(hex: &str) -> Vec<u8> {
+        (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect()
     }
 
     #[test]
-    fn the_emergency_migrating_accounts_decode_to_their_fields() {
-        let mut listed = anchor_account_disc("VulnerableLogicRefs").to_vec();
-        listed.extend(2u32.to_le_bytes());
-        listed.extend([[7; 32], [8; 32]].concat());
-        assert_eq!(
-            decode_vulnerable_logic_refs(&listed),
-            Ok(vec![[7; 32], [8; 32]])
-        );
+    fn the_vulnerable_logic_refs_decode_to_their_list() {
+        let listed = bytes(EXPECTED_VULNERABLE_LOGIC_REFS);
+        let decoded = decode_vulnerable_logic_refs(&listed);
+        println!("{listed:02x?} decodes to {decoded:?}");
+        assert_eq!(decoded, Ok(vec![[7; 32], [8; 32]]));
         assert_eq!(
             decode_vulnerable_logic_refs(&listed[..listed.len() - 1]),
-            Err(AccountDecodeError::Truncated {
-                field: "logic_refs"
-            })
+            Err(AccountDecodeError::Truncated),
+            "one byte short of the second ref"
         );
-
-        let record = [anchor_account_disc("MigrationRecord").as_slice(), &[1, 253]].concat();
+        let mut other = listed.clone();
+        other[0] ^= 1;
         assert_eq!(
-            decode_migration_record(&record),
-            Ok(MigrationRecordAccount {
-                migrated: true,
-                bump: 253
-            })
-        );
-        assert_eq!(
-            decode_migration_record(&listed),
-            Err(AccountDecodeError::WrongDiscriminator {
-                expected: "MigrationRecord"
-            })
-        );
-    }
-
-    #[test]
-    fn each_account_decodes_to_its_fields() {
-        let mut config = anchor_account_disc("Config").to_vec();
-        for field in [[1; 32], [2; 32]] {
-            config.extend(field);
-        }
-        config.extend(3u64.to_le_bytes());
-        config.extend([5; 32]);
-        assert_eq!(
-            decode_config(&config),
-            Ok(ConfigAccount {
-                protocol_adapter: [1; 32],
-                logic_ref: [2; 32],
-                version: 3,
-                owner: [5; 32],
-            })
-        );
-        assert_eq!(
-            decode_config(&config[..config.len() - 1]),
-            Err(AccountDecodeError::Truncated { field: "owner" })
-        );
-
-        let mut bitmap = anchor_account_disc("NonceBitmap").to_vec();
-        let mut bits = [0u8; 32];
-        bits[1] = 0b0000_0100; // nonce 10 of the word
-        bitmap.extend(bits);
-        bitmap.push(254);
-        let decoded = decode_nonce_bitmap(&bitmap).unwrap();
-        assert_eq!(decoded.bump, 254);
-        assert!(decoded.is_used(10) && decoded.is_used(256 + 10));
-        assert!(!decoded.is_used(9) && !decoded.is_used(11));
-        assert_eq!(
-            decode_nonce_bitmap(&config),
-            Err(AccountDecodeError::WrongDiscriminator {
-                expected: "NonceBitmap"
-            })
+            decode_vulnerable_logic_refs(&other),
+            Err(AccountDecodeError::WrongDiscriminator)
         );
     }
 }

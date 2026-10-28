@@ -1,8 +1,12 @@
-//! Builders for the forwarder's CPI account segments inside a settle
-//! transaction's `remaining_accounts`, and for the forwarder's own
-//! `init_nonce_bitmap` instruction. Ordering is owned by the forwarder program;
-//! integrators must use these builders rather than hand-rolling the slice.
+//! Builders for the forwarder's instructions, over the generated
+//! `client::accounts` and `client::args` of `generated::spl_token_forwarder`,
+//! and for the forwarder's CPI account segments inside a settle
+//! transaction's `remaining_accounts`, which no IDL lists. Each builder
+//! takes the address the forwarder is deployed at. Ordering is owned by the
+//! forwarder program; integrators must use these builders rather than
+//! hand-rolling the slice.
 
+use anchor_lang::{InstructionData, ToAccountMetas};
 use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
@@ -10,14 +14,32 @@ use solana_sdk_ids::{bpf_loader_upgradeable, system_program, sysvar};
 use spl_associated_token_account_interface::address::get_associated_token_address;
 
 use anoma_pa_solana_client::{
-    anchor_instruction_disc, derive_event_authority_pda, derive_program_data_address,
-    derive_upgrade_authority_pda,
+    derive_event_authority_pda, derive_program_data_address, derive_upgrade_authority_pda,
 };
 
-use crate::constants::{FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS, NONCES_PER_WORD};
+use crate::constants::FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS;
+use crate::generated::spl_token_forwarder::client::{accounts, args};
+use crate::generated::spl_token_forwarder::constants::NONCES_PER_WORD;
 use crate::pda::{
     derive_forwarder_config_pda, derive_forwarder_escrow_authority, derive_nonce_bitmap_pda,
 };
+
+/// The instruction of the forwarder at `forwarder_program` with `accounts`,
+/// then `remaining_accounts`, and `args`.
+pub(crate) fn instruction(
+    forwarder_program: &Pubkey,
+    accounts: impl ToAccountMetas,
+    remaining_accounts: Vec<AccountMeta>,
+    args: impl InstructionData,
+) -> Instruction {
+    let mut metas = accounts.to_account_metas(None);
+    metas.extend(remaining_accounts);
+    Instruction {
+        program_id: *forwarder_program,
+        accounts: metas,
+        data: args.data(),
+    }
+}
 
 /// The nonce-bitmap word a wrap nonce falls in.
 pub fn nonce_word_index(nonce: u64) -> u64 {
@@ -34,24 +56,25 @@ pub fn initialize_ix(
     logic_ref: [u8; 32],
     initial_owner: &Pubkey,
 ) -> Instruction {
-    let mut data = anchor_instruction_disc("initialize").to_vec();
-    data.extend_from_slice(protocol_adapter.as_ref());
-    data.extend_from_slice(&logic_ref);
-    data.extend_from_slice(initial_owner.as_ref());
-    Instruction {
-        program_id: *forwarder_program,
-        accounts: vec![
-            AccountMeta::new(*authority, true),
-            AccountMeta::new(derive_forwarder_config_pda(forwarder_program).0, false),
-            AccountMeta::new_readonly(*forwarder_program, false),
-            AccountMeta::new(derive_program_data_address(forwarder_program), false),
-            AccountMeta::new_readonly(system_program::id(), false),
-            AccountMeta::new_readonly(derive_event_authority_pda(forwarder_program).0, false),
-            AccountMeta::new_readonly(derive_upgrade_authority_pda(forwarder_program).0, false),
-            AccountMeta::new_readonly(bpf_loader_upgradeable::id(), false),
-        ],
-        data,
-    }
+    instruction(
+        forwarder_program,
+        accounts::Initialize {
+            authority: *authority,
+            config: derive_forwarder_config_pda(forwarder_program).0,
+            program: *forwarder_program,
+            program_data: derive_program_data_address(forwarder_program),
+            system_program: system_program::id(),
+            event_authority: derive_event_authority_pda(forwarder_program).0,
+            upgrade_authority: derive_upgrade_authority_pda(forwarder_program).0,
+            bpf_loader_upgradeable: bpf_loader_upgradeable::id(),
+        },
+        vec![],
+        args::Initialize {
+            protocol_adapter: *protocol_adapter,
+            logic_ref,
+            initial_owner: *initial_owner,
+        },
+    )
 }
 
 /// Build the forwarder's permissionless `init_nonce_bitmap` instruction, which
@@ -68,31 +91,19 @@ pub fn init_nonce_bitmap_ix(
     user: &Pubkey,
     word_index: u64,
 ) -> Instruction {
-    let (nonce_bitmap_pda, _) = derive_nonce_bitmap_pda(forwarder_program, user, word_index);
-    let mut data = Vec::with_capacity(8 + 32 + 8);
-    data.extend_from_slice(&anchor_instruction_disc("init_nonce_bitmap"));
-    data.extend_from_slice(user.as_ref());
-    data.extend_from_slice(&word_index.to_le_bytes());
-    Instruction {
-        program_id: *forwarder_program,
-        accounts: vec![
-            AccountMeta::new(*payer, true),
-            AccountMeta::new(nonce_bitmap_pda, false),
-            AccountMeta::new_readonly(system_program::id(), false),
-        ],
-        data,
-    }
-}
-
-/// The accounts of an owner-only instruction (`onlyOwner`): the owner, the
-/// config, then the event authority and the forwarder, which its events need.
-fn owner_only_accounts(forwarder_program: &Pubkey, owner: &Pubkey) -> Vec<AccountMeta> {
-    vec![
-        AccountMeta::new_readonly(*owner, true),
-        AccountMeta::new(derive_forwarder_config_pda(forwarder_program).0, false),
-        AccountMeta::new_readonly(derive_event_authority_pda(forwarder_program).0, false),
-        AccountMeta::new_readonly(*forwarder_program, false),
-    ]
+    instruction(
+        forwarder_program,
+        accounts::InitNonceBitmap {
+            payer: *payer,
+            nonce_bitmap: derive_nonce_bitmap_pda(forwarder_program, user, word_index).0,
+            system_program: system_program::id(),
+        },
+        vec![],
+        args::InitNonceBitmap {
+            _user: *user,
+            _word_index: word_index,
+        },
+    )
 }
 
 /// Build the forwarder's `reinitialize`: the owner moves the forwarder to the
@@ -102,13 +113,17 @@ pub fn reinitialize_ix(
     owner: &Pubkey,
     logic_ref: [u8; 32],
 ) -> Instruction {
-    let mut data = anchor_instruction_disc("reinitialize").to_vec();
-    data.extend_from_slice(&logic_ref);
-    Instruction {
-        program_id: *forwarder_program,
-        accounts: owner_only_accounts(forwarder_program, owner),
-        data,
-    }
+    instruction(
+        forwarder_program,
+        accounts::Reinitialize {
+            authority: *owner,
+            config: derive_forwarder_config_pda(forwarder_program).0,
+            event_authority: derive_event_authority_pda(forwarder_program).0,
+            program: *forwarder_program,
+        },
+        vec![],
+        args::Reinitialize { logic_ref },
+    )
 }
 
 /// Build the forwarder's `transfer_ownership` to `new_owner`.
@@ -117,22 +132,34 @@ pub fn transfer_ownership_ix(
     owner: &Pubkey,
     new_owner: &Pubkey,
 ) -> Instruction {
-    let mut data = anchor_instruction_disc("transfer_ownership").to_vec();
-    data.extend_from_slice(new_owner.as_ref());
-    Instruction {
-        program_id: *forwarder_program,
-        accounts: owner_only_accounts(forwarder_program, owner),
-        data,
-    }
+    instruction(
+        forwarder_program,
+        accounts::TransferOwnership {
+            authority: *owner,
+            config: derive_forwarder_config_pda(forwarder_program).0,
+            event_authority: derive_event_authority_pda(forwarder_program).0,
+            program: *forwarder_program,
+        },
+        vec![],
+        args::TransferOwnership {
+            new_owner: *new_owner,
+        },
+    )
 }
 
 /// Build the forwarder's `renounce_ownership`: it is left with no owner.
 pub fn renounce_ownership_ix(forwarder_program: &Pubkey, owner: &Pubkey) -> Instruction {
-    Instruction {
-        program_id: *forwarder_program,
-        accounts: owner_only_accounts(forwarder_program, owner),
-        data: anchor_instruction_disc("renounce_ownership").to_vec(),
-    }
+    instruction(
+        forwarder_program,
+        accounts::RenounceOwnership {
+            authority: *owner,
+            config: derive_forwarder_config_pda(forwarder_program).0,
+            event_authority: derive_event_authority_pda(forwarder_program).0,
+            program: *forwarder_program,
+        },
+        vec![],
+        args::RenounceOwnership {},
+    )
 }
 
 /// The compute-unit limit an upgrade asks for: the most a transaction may
@@ -151,35 +178,37 @@ pub fn upgrade_ixs(
 ) -> [Instruction; 2] {
     [
         ComputeBudgetInstruction::set_compute_unit_limit(UPGRADE_COMPUTE_UNIT_LIMIT),
-        Instruction {
-            program_id: *forwarder_program,
-            accounts: vec![
-                AccountMeta::new_readonly(*owner, true),
-                AccountMeta::new_readonly(derive_forwarder_config_pda(forwarder_program).0, false),
-                AccountMeta::new(derive_program_data_address(forwarder_program), false),
-                AccountMeta::new(*forwarder_program, false),
-                AccountMeta::new(*buffer, false),
-                AccountMeta::new(*spill, false),
-                AccountMeta::new_readonly(derive_upgrade_authority_pda(forwarder_program).0, false),
-                AccountMeta::new_readonly(sysvar::rent::id(), false),
-                AccountMeta::new_readonly(sysvar::clock::id(), false),
-                AccountMeta::new_readonly(bpf_loader_upgradeable::id(), false),
-                AccountMeta::new_readonly(derive_event_authority_pda(forwarder_program).0, false),
-                AccountMeta::new_readonly(*forwarder_program, false),
-            ],
-            data: anchor_instruction_disc("upgrade").to_vec(),
-        },
+        instruction(
+            forwarder_program,
+            accounts::Upgrade {
+                authority: *owner,
+                config: derive_forwarder_config_pda(forwarder_program).0,
+                program_data: derive_program_data_address(forwarder_program),
+                upgraded_program: *forwarder_program,
+                buffer: *buffer,
+                spill: *spill,
+                upgrade_authority: derive_upgrade_authority_pda(forwarder_program).0,
+                rent: sysvar::rent::id(),
+                clock: sysvar::clock::id(),
+                bpf_loader_upgradeable: bpf_loader_upgradeable::id(),
+                event_authority: derive_event_authority_pda(forwarder_program).0,
+                program: *forwarder_program,
+            },
+            vec![],
+            args::Upgrade {},
+        ),
     ]
 }
 
 /// Build the forwarder's `version`, whose return data is the program's
 /// version string.
 pub fn version_ix(forwarder_program: &Pubkey) -> Instruction {
-    Instruction {
-        program_id: *forwarder_program,
-        accounts: vec![],
-        data: anchor_instruction_disc("version").to_vec(),
-    }
+    instruction(
+        forwarder_program,
+        accounts::Version {},
+        vec![],
+        args::Version {},
+    )
 }
 
 /// Build the forwarder's `close_escrow`: while the adapter whose state is
@@ -193,20 +222,21 @@ pub fn close_escrow_ix(
     recipient_ata: &Pubkey,
 ) -> Instruction {
     let (escrow_authority, _) = derive_forwarder_escrow_authority(forwarder_program);
-    Instruction {
-        program_id: *forwarder_program,
-        accounts: vec![
-            AccountMeta::new(*owner, true),
-            AccountMeta::new_readonly(derive_forwarder_config_pda(forwarder_program).0, false),
-            AccountMeta::new(get_associated_token_address(&escrow_authority, mint), false),
-            AccountMeta::new_readonly(escrow_authority, false),
-            AccountMeta::new(*recipient_ata, false),
-            AccountMeta::new_readonly(*mint, false),
-            AccountMeta::new_readonly(spl_token_interface::id(), false),
-            AccountMeta::new_readonly(*pa_state, false),
-        ],
-        data: anchor_instruction_disc("close_escrow").to_vec(),
-    }
+    instruction(
+        forwarder_program,
+        accounts::CloseEscrow {
+            authority: *owner,
+            config: derive_forwarder_config_pda(forwarder_program).0,
+            escrow_ata: get_associated_token_address(&escrow_authority, mint),
+            escrow_authority,
+            recipient_ata: *recipient_ata,
+            token_mint: *mint,
+            token_program: spl_token_interface::id(),
+            pa_state: *pa_state,
+        },
+        vec![],
+        args::CloseEscrow {},
+    )
 }
 
 /// Build the forwarder's `close_nonce_bitmaps_batch`: while the adapter
@@ -218,21 +248,19 @@ pub fn close_nonce_bitmaps_batch_ix(
     pa_state: &Pubkey,
     bitmaps: &[Pubkey],
 ) -> Instruction {
-    let mut accounts = vec![
-        AccountMeta::new(*owner, true),
-        AccountMeta::new_readonly(derive_forwarder_config_pda(forwarder_program).0, false),
-        AccountMeta::new_readonly(*pa_state, false),
-    ];
-    accounts.extend(
+    instruction(
+        forwarder_program,
+        accounts::CloseNonceBitmapsBatch {
+            authority: *owner,
+            config: derive_forwarder_config_pda(forwarder_program).0,
+            pa_state: *pa_state,
+        },
         bitmaps
             .iter()
-            .map(|bitmap| AccountMeta::new(*bitmap, false)),
-    );
-    Instruction {
-        program_id: *forwarder_program,
-        accounts,
-        data: anchor_instruction_disc("close_nonce_bitmaps_batch").to_vec(),
-    }
+            .map(|bitmap| AccountMeta::new(*bitmap, false))
+            .collect(),
+        args::CloseNonceBitmapsBatch {},
+    )
 }
 
 /// Build the forwarder's `close_config`: while the adapter whose state is
@@ -243,15 +271,16 @@ pub fn close_config_ix(
     owner: &Pubkey,
     pa_state: &Pubkey,
 ) -> Instruction {
-    Instruction {
-        program_id: *forwarder_program,
-        accounts: vec![
-            AccountMeta::new(*owner, true),
-            AccountMeta::new(derive_forwarder_config_pda(forwarder_program).0, false),
-            AccountMeta::new_readonly(*pa_state, false),
-        ],
-        data: anchor_instruction_disc("close_config").to_vec(),
-    }
+    instruction(
+        forwarder_program,
+        accounts::CloseConfig {
+            authority: *owner,
+            config: derive_forwarder_config_pda(forwarder_program).0,
+            pa_state: *pa_state,
+        },
+        vec![],
+        args::CloseConfig {},
+    )
 }
 
 /// The head of every forwarder CPI segment: the forwarder (segment marker),
@@ -330,6 +359,161 @@ pub(crate) mod tests {
 
     fn keys(accounts: &[AccountMeta]) -> Vec<Pubkey> {
         accounts.iter().map(|a| a.pubkey).collect()
+    }
+
+    /// Each instruction `the_builders_write_the_expected_instructions` builds,
+    /// for its inputs (the program `key(9)`, other accounts `key(n)`): its
+    /// program id, its data in hex, and its accounts (address, signer,
+    /// writable), in order.
+    const EXPECTED: &str = "\
+== initialize
+program cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN
+data afaf6d1f0d989bed020202020202020202020202020202020202020202020202020202020202020203030303030303030303030303030303030303030303030303030303030303030404040404040404040404040404040404040404040404040404040404040404
+acct 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi true true
+acct 8uZ1Xjv8Jsyfi98uTWryPLi1GrLijtpsgA45EqGhJMEb false true
+acct cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN false false
+acct Hibe1esmNpASGJBynhevaMybmY2gcGcPDrfz8zMZyw1J false true
+acct 11111111111111111111111111111111 false false
+acct BaNhKDjFJTKQhS1To1XK8eApMSYBoMUNky6wKrf4RX5N false false
+acct CFLMyAiswuYuTmzEmBT9b9C1T1V6xqvWEfy7DT1T8MEP false false
+acct BPFLoaderUpgradeab1e11111111111111111111111 false false
+== init_nonce_bitmap
+program cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN
+data d60d7d7948dcf12a02020202020202020202020202020202020202020202020202020202020202020700000000000000
+acct 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi true true
+acct D5xBzsdS97MZ5wgZzqUadJ49QAJEScogLqPBfoMPAnH7 false true
+acct 11111111111111111111111111111111 false false
+== reinitialize
+program cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN
+data 87ffcda1dfa25e890303030303030303030303030303030303030303030303030303030303030303
+acct 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi true false
+acct 8uZ1Xjv8Jsyfi98uTWryPLi1GrLijtpsgA45EqGhJMEb false true
+acct BaNhKDjFJTKQhS1To1XK8eApMSYBoMUNky6wKrf4RX5N false false
+acct cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN false false
+== transfer_ownership
+program cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN
+data 41b1d749352d632f0202020202020202020202020202020202020202020202020202020202020202
+acct 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi true false
+acct 8uZ1Xjv8Jsyfi98uTWryPLi1GrLijtpsgA45EqGhJMEb false true
+acct BaNhKDjFJTKQhS1To1XK8eApMSYBoMUNky6wKrf4RX5N false false
+acct cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN false false
+== renounce_ownership
+program cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN
+data 138f5b4f22a8ae7d
+acct 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi true false
+acct 8uZ1Xjv8Jsyfi98uTWryPLi1GrLijtpsgA45EqGhJMEb false true
+acct BaNhKDjFJTKQhS1To1XK8eApMSYBoMUNky6wKrf4RX5N false false
+acct cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN false false
+== upgrade
+program cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN
+data efee394acd57a51a
+acct 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi true false
+acct 8uZ1Xjv8Jsyfi98uTWryPLi1GrLijtpsgA45EqGhJMEb false false
+acct Hibe1esmNpASGJBynhevaMybmY2gcGcPDrfz8zMZyw1J false true
+acct cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN false true
+acct 8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR false true
+acct CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8 false true
+acct CFLMyAiswuYuTmzEmBT9b9C1T1V6xqvWEfy7DT1T8MEP false false
+acct SysvarRent111111111111111111111111111111111 false false
+acct SysvarC1ock11111111111111111111111111111111 false false
+acct BPFLoaderUpgradeab1e11111111111111111111111 false false
+acct BaNhKDjFJTKQhS1To1XK8eApMSYBoMUNky6wKrf4RX5N false false
+acct cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN false false
+== version
+program cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN
+data 7641c3c681d8fcc0
+== close_escrow
+program cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN
+data 8bab5e92bf5b9032
+acct 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi true true
+acct 8uZ1Xjv8Jsyfi98uTWryPLi1GrLijtpsgA45EqGhJMEb false false
+acct CiDJk7HUU3KHSErtNP7ktQwpjScr5te9eHhpXwEUcdJC false true
+acct 7VW1B28SQgEXDytdUCBxi6NWS7kCigKCKZe7qeQ4Jm1y false false
+acct GgBaCs3NCBuZN12kCJgAW63ydqohFkHEdfdEXBPzLHq false true
+acct CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8 false false
+acct TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA false false
+acct 8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR false false
+== close_nonce_bitmaps_batch
+program cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN
+data d4430fbee28d8e65
+acct 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi true true
+acct 8uZ1Xjv8Jsyfi98uTWryPLi1GrLijtpsgA45EqGhJMEb false false
+acct 8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR false false
+acct LbUiWL3xVV8hTFYBVdbTNrpDo41NKS6o3LHHuDzjfcY false true
+acct QWmroo4YnnMqYW3cnxWkFdaTxGD3P7vMSzwMHGbUzwF false true
+== close_config
+program cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN
+data 9109489d5f7d3d55
+acct 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi true true
+acct 8uZ1Xjv8Jsyfi98uTWryPLi1GrLijtpsgA45EqGhJMEb false true
+acct 8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR false false
+";
+
+    pub(crate) fn key(n: u8) -> Pubkey {
+        Pubkey::new_from_array([n; 32])
+    }
+
+    /// `ix` in `EXPECTED`'s form.
+    fn written(name: &str, ix: &Instruction) -> String {
+        let data: String = ix.data.iter().map(|b| format!("{b:02x}")).collect();
+        let mut out = format!("== {name}\nprogram {}\ndata {data}\n", ix.program_id);
+        for meta in &ix.accounts {
+            out += &format!(
+                "acct {} {} {}\n",
+                meta.pubkey, meta.is_signer, meta.is_writable
+            );
+        }
+        out
+    }
+
+    /// `ix` is the entry `name` of `expected`, a list in `EXPECTED`'s form.
+    pub(crate) fn assert_is_expected(expected: &str, name: &str, ix: &Instruction) {
+        let start = expected
+            .find(&format!("== {name}\n"))
+            .unwrap_or_else(|| panic!("no expected instruction {name}"));
+        let end = expected[start + 3..]
+            .find("== ")
+            .map_or(expected.len(), |i| start + 3 + i);
+        let built = written(name, ix);
+        println!("{built}");
+        assert_eq!(built, expected[start..end], "{name}");
+    }
+
+    #[test]
+    fn the_builders_write_the_expected_instructions() {
+        let p = key(9);
+        for (name, ix) in [
+            (
+                "initialize",
+                initialize_ix(&p, &key(1), &key(2), [3; 32], &key(4)),
+            ),
+            (
+                "init_nonce_bitmap",
+                init_nonce_bitmap_ix(&p, &key(1), &key(2), 7),
+            ),
+            ("reinitialize", reinitialize_ix(&p, &key(1), [3; 32])),
+            (
+                "transfer_ownership",
+                transfer_ownership_ix(&p, &key(1), &key(2)),
+            ),
+            ("renounce_ownership", renounce_ownership_ix(&p, &key(1))),
+            (
+                "upgrade",
+                upgrade_ixs(&p, &key(1), &key(2), &key(3))[1].clone(),
+            ),
+            ("version", version_ix(&p)),
+            (
+                "close_escrow",
+                close_escrow_ix(&p, &key(1), &key(2), &key(3), &key(4)),
+            ),
+            (
+                "close_nonce_bitmaps_batch",
+                close_nonce_bitmaps_batch_ix(&p, &key(1), &key(2), &[key(5), key(6)]),
+            ),
+            ("close_config", close_config_ix(&p, &key(1), &key(2))),
+        ] {
+            assert_is_expected(EXPECTED, name, &ix);
+        }
     }
 
     #[test]
@@ -515,7 +699,7 @@ pub(crate) mod tests {
 
     #[test]
     fn initialize_matches_the_forwarders_idl() {
-        let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
+        let forwarder = crate::generated::spl_token_forwarder::ID;
         let (authority, adapter, owner) = (
             Pubkey::new_unique(),
             Pubkey::new_unique(),
@@ -530,7 +714,7 @@ pub(crate) mod tests {
 
     #[test]
     fn the_owner_only_instructions_match_the_forwarders_idl() {
-        let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
+        let forwarder = crate::generated::spl_token_forwarder::ID;
         let (owner, new_owner) = (Pubkey::new_unique(), Pubkey::new_unique());
         for (ix, name, args) in [
             (
@@ -558,7 +742,7 @@ pub(crate) mod tests {
 
     #[test]
     fn upgrade_sets_its_compute_budget_and_matches_the_forwarders_idl() {
-        let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
+        let forwarder = crate::generated::spl_token_forwarder::ID;
         let (owner, buffer, spill) = (
             Pubkey::new_unique(),
             Pubkey::new_unique(),
@@ -579,7 +763,7 @@ pub(crate) mod tests {
 
     #[test]
     fn version_matches_the_forwarders_idl() {
-        let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
+        let forwarder = crate::generated::spl_token_forwarder::ID;
         let ix = version_ix(&forwarder);
         let _ = assert_matches_the_idl(&crate::idl::idl(), &ix, "version", &[]);
         assert!(ix.accounts.is_empty());
@@ -587,7 +771,7 @@ pub(crate) mod tests {
 
     #[test]
     fn the_closing_instructions_match_the_forwarders_idl() {
-        let forwarder = crate::program_ids::FORWARDER_PROGRAM_ID;
+        let forwarder = crate::generated::spl_token_forwarder::ID;
         let (owner, pa_state, mint, recipient_ata) = (
             Pubkey::new_unique(),
             Pubkey::new_unique(),

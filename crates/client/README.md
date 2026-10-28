@@ -4,12 +4,14 @@
 
 This crate provides [Rust](https://www.rust-lang.org/) bindings to the AnomaPay SPL token forwarder, which is the Solana program in this repository. The crate contains:
 
-- builders for the instructions that the program accepts;
+- the bindings that Anchor's `declare_program!` generates from the program's IDLs in `idls/` (module `generated`, one module per build): the program's id, its accounts, events, constants and errors, and the accounts and arguments of each instruction;
+- builders for the instructions that the program accepts, over the generated accounts and arguments, which derive the program's addresses from the seeds the IDLs declare;
 - the accounts that the submitter of a settlement supplies for each call to the forwarder;
 - the instructions that a settlement transaction must carry before the settlement itself;
 - encoders and decoders for the data that the program receives: the message that authorizes a wrap, and the inputs of a wrap, an unwrap and a migration;
-- decoders for the program's accounts and events, the events being the types that Anchor's `declare_program!` generates from the program's IDLs in `idls/` (module `generated`);
-- the program's id.
+- the decoder of the emergency-migrating build's `VulnerableLogicRefs` account, which the IDL does not declare.
+
+The program's events decode with the adapter client's `decode_cpi_event` as the generated event types.
 
 The bindings for the adapter itself are in [anoma-pa-solana-client](https://github.com/anoma/anoma-pa-solana-client).
 
@@ -37,10 +39,10 @@ Run
 
 The crate has two features:
 
-- `solana` (on by default) adds everything that needs the Solana SDK: the instruction builders (including those of the emergency-migrating build), the accounts and the preceding instructions of a settlement, the addresses that are derived from the program id, and the program id itself.
+- `solana` (on by default) adds everything that needs the Solana SDK: the instruction builders (including those of the emergency-migrating build), the accounts and the preceding instructions of a settlement, and the addresses that are derived from the program id.
 - `rpc` adds `SplTokenForwarder`, which implements the adapter client's `Forwarder` trait. The adapter client calls it to get the accounts for each call to this forwarder during a settlement. `rpc` also turns on `solana`.
 
-With `--no-default-features`, the crate keeps the encoders and decoders for the data that the program receives, the decoders for its accounts, and the generated bindings with the event decoder, which need only `anchor-lang`.
+With `--no-default-features`, the crate keeps the encoders and decoders for the data that the program receives, the `VulnerableLogicRefs` decoder, and the generated bindings, which need only `anchor-lang`.
 
 ### Test
 
@@ -50,4 +52,4 @@ To test the crate, run
 ./scripts/dev.sh run cargo test -p anomapay-spl-token-forwarder-client --all-features
 ```
 
-The unit tests check the instruction builders, the account and event decoders, the constants and the program id against the program's IDLs in `idls/`. They also check the byte layout of each input and of the accounts that each call receives. The test in `tests/cross_package_fixture.rs` checks that the crate encodes the message that authorizes a wrap to the bytes recorded in the repository's `fixtures/wrap_message_fixture.json`. The TypeScript package checks the same file, so the two packages encode the message alike.
+The unit tests check that each instruction builder writes the expected bytes and accounts and matches the program's IDLs in `idls/`, and that the derived addresses are the ones the IDLs declare. They also check the byte layout of each input, of the `VulnerableLogicRefs` account and of the accounts that each call receives. The test in `tests/cross_package_fixture.rs` checks that the crate encodes the message that authorizes a wrap to the bytes recorded in the repository's `fixtures/wrap_message_fixture.json`. The TypeScript package checks the same file, so the two packages encode the message alike.

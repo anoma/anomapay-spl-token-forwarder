@@ -8,14 +8,14 @@ use anoma_pa_testkit::fixtures::passthrough;
 use anoma_pa_testkit::prove_actions;
 use anoma_rm_risc0::resource::Resource;
 use anoma_rm_risc0::utils::bytes_to_words;
+use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::events::Unwrapped;
 use anomapay_spl_token_forwarder_client::{
-    FORWARDER_UNWRAP_NUM_ACCOUNTS, ForwarderEvent, derive_forwarder_escrow_authority,
-    encode_unwrap_forwarder_input,
+    FORWARDER_UNWRAP_NUM_ACCOUNTS, derive_forwarder_escrow_authority, encode_unwrap_forwarder_input,
 };
 use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
 use anomapay_spl_token_forwarder_integration_test::refusal::{balances, refuses};
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, OwnedForwarder, balance, create_mint, events, fund, mint_to, token_account,
+    self, OwnedForwarder, balance, create_mint, fund, mint_to, sole_event, token_account,
 };
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -64,10 +64,7 @@ async fn settles_an_unwrap_the_recipient_receives_the_tokens_from_escrow() -> an
     );
 
     // Mirrors ERC20Forwarder's `Unwrapped` event, a CPI event like `Wrapped`.
-    let events = events(&executed, &forwarder.program)?;
-    let [ForwarderEvent::Unwrapped(event)] = &events[..] else {
-        anyhow::bail!("the settlement emits {events:?}, not one Unwrapped event");
-    };
+    let event = sole_event::<Unwrapped>(&executed, &forwarder.program)?;
     anyhow::ensure!(
         event.token == forwarder.mint && event.to == recipient && event.amount == AMOUNT,
         "the Unwrapped event {event:?} is not the release of {AMOUNT} to {recipient}"

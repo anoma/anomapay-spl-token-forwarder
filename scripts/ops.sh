@@ -571,7 +571,7 @@ case "$COMMAND" in
     cargo clippy -p spl-token-forwarder --features "$DEV_FEATURES $EMERGENCY_MIGRATING_FEATURES" --all-targets -- -D warnings
     # `cpi` is how another program depends on this one to call it.
     cargo clippy -p spl-token-forwarder --features cpi --all-targets -- -D warnings
-    # The client's wire formats and event decoders without the Solana SDK.
+    # The client's wire formats and generated bindings without the Solana SDK.
     cargo clippy -p anomapay-spl-token-forwarder-client --no-default-features --all-targets -- -D warnings
     (cd crates/integration-test && cargo clippy --all-targets --features e2e,scripts -- -D warnings)
     ;;

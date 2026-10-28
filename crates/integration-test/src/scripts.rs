@@ -46,6 +46,7 @@ pub fn run_script<P>(
     args: &[&str],
     vars: &[(&str, String)],
 ) -> anyhow::Result<Ran> {
+    let surfnet = env.surfnet()?;
     let wallet_file = std::env::temp_dir().join(format!(
         "operator-script-wallet-{}-{}.json",
         std::process::id(),
@@ -58,8 +59,8 @@ pub fn run_script<P>(
         .arg(format!("scripts/{script}"))
         .args(args)
         .current_dir(repository())
-        .env("ANCHOR_PROVIDER_URL", env.surfnet.rpc_url())
-        .env("ANCHOR_WS_URL", env.surfnet.ws_url())
+        .env("ANCHOR_PROVIDER_URL", surfnet.rpc_url())
+        .env("ANCHOR_WS_URL", surfnet.ws_url())
         .env("ANCHOR_WALLET", &wallet_file)
         .env(
             "PROTOCOL_ADAPTER_PROGRAM_ID",

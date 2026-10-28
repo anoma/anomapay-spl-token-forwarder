@@ -2,11 +2,13 @@
 //! accounts: the owner's, refused while the adapter runs, and then closing
 //! the nonce bitmaps, the escrows and, last, the config.
 
-use anoma_pa_solana_client::{anchor_account_disc, derive_pa_state_pda};
+use anchor_lang::Discriminator;
+use anoma_pa_solana_client::derive_pa_state_pda;
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
 use anoma_pa_testkit::environment::{ProtocolAdapter as _, Refusal};
 use anoma_pa_testkit::execute_tx;
+use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::accounts::NonceBitmap;
 use anomapay_spl_token_forwarder_client::{
     close_config_ix, close_escrow_ix, close_nonce_bitmaps_batch_ix, derive_forwarder_config_pda,
     derive_forwarder_escrow_authority, derive_nonce_bitmap_pda, init_nonce_bitmap_ix,
@@ -51,7 +53,7 @@ async fn nonce_bitmaps(env: &LocalEnv, program: &Pubkey) -> anyhow::Result<Vec<P
             RpcProgramAccountsConfig {
                 filters: Some(vec![RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
                     0,
-                    anchor_account_disc("NonceBitmap").to_vec(),
+                    NonceBitmap::DISCRIMINATOR.to_vec(),
                 ))]),
                 ..RpcProgramAccountsConfig::default()
             },

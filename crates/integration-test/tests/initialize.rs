@@ -5,12 +5,15 @@ use anoma_pa_solana_client::{derive_program_data_address, derive_upgrade_authori
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
 use anoma_pa_solana_integration_test::executed::Executed;
 use anoma_pa_testkit::assert::{Needle, expect_integration_panic};
-use anomapay_spl_token_forwarder_client::{
-    CONFIG_VERSION, ForwarderEvent, derive_forwarder_config_pda, initialize_ix,
+use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::constants::CONFIG_VERSION;
+use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::events::{
+    Initialized, OwnershipTransferred,
 };
+use anomapay_spl_token_forwarder_client::{derive_forwarder_config_pda, initialize_ix};
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, Build, config, events, expected_config, give_sol, upgrade_authority,
+    self, Build, config, discriminator, event_order, expected_config, give_sol, same,
+    upgrade_authority,
 };
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
@@ -169,7 +172,7 @@ async fn stores_its_configuration_announces_it_and_hands_the_upgrade_authority_t
     let config = config(&env, &program).await?;
     let expected = expected_config(&env, &owner);
     anyhow::ensure!(
-        config == expected,
+        same(&config, &expected),
         "the config is {config:?}, not {expected:?}"
     );
 
@@ -180,17 +183,18 @@ async fn stores_its_configuration_announces_it_and_hands_the_upgrade_authority_t
         "the program's upgrade authority is {authority:?}, not its PDA {upgrade_pda}"
     );
 
-    let events = events(
-        &Executed::read(&env.protocol_adapter.rpc, &signature).await?,
-        &program,
-    )?;
-    let [
-        ForwarderEvent::OwnershipTransferred(transferred),
-        ForwarderEvent::Initialized(initialized),
-    ] = &events[..]
-    else {
-        anyhow::bail!("initialize emits {events:?}, not OwnershipTransferred then Initialized");
-    };
+    let executed = Executed::read(&env.protocol_adapter.rpc, &signature).await?;
+    let order = event_order(&executed, &program)?;
+    anyhow::ensure!(
+        order
+            == [
+                discriminator::<OwnershipTransferred>(),
+                discriminator::<Initialized>()
+            ],
+        "initialize emits the events {order:02x?}, not OwnershipTransferred then Initialized"
+    );
+    let transferred = executed.events::<OwnershipTransferred>(&program)?.remove(0);
+    let initialized = executed.events::<Initialized>(&program)?.remove(0);
     anyhow::ensure!(
         transferred.previous_owner == Pubkey::default() && transferred.new_owner == owner,
         "OwnershipTransferred {transferred:?} is not from the zero key to {owner}"

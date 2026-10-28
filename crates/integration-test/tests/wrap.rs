@@ -2,21 +2,25 @@
 //! events and the nonce it uses up, and every account, signature and replay
 //! the forwarder refuses, with no tokens moved.
 
+use anchor_lang::Discriminator;
+use anoma_pa_solana_client::generated::protocol_adapter::client::args::Settle;
+use anoma_pa_solana_client::generated::protocol_adapter::events::ActionExecuted;
 use anoma_pa_solana_client::settlement::CallAccounts;
-use anoma_pa_solana_client::{anchor_instruction_disc, transaction_size};
+use anoma_pa_solana_client::transaction_size;
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
-use anoma_pa_solana_integration_test::executed::PaEvent;
 use anoma_pa_solana_integration_test::test_forwarder;
 use anoma_pa_testkit::transaction::Transaction;
+use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::events::Wrapped;
 use anomapay_spl_token_forwarder_client::{
-    ForwarderEvent, decode_nonce_bitmap, derive_forwarder_escrow_authority,
-    derive_nonce_bitmap_pda, init_nonce_bitmap_ix, nonce_word_index,
+    derive_forwarder_escrow_authority, derive_nonce_bitmap_pda, init_nonce_bitmap_ix,
+    nonce_word_index,
 };
 use anomapay_spl_token_forwarder_integration_test::fixtures::ShieldedOwner;
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::refusal::{balances, refuses};
 use anomapay_spl_token_forwarder_integration_test::setup::{
-    self, Forwarder, OwnedForwarder, ProvenWrap, create_mint, events, fund, token_account,
+    self, Forwarder, OwnedForwarder, ProvenWrap, create_mint, fund, nonce_bitmap, nonce_is_used,
+    sole_event, token_account,
 };
 use anyhow::Context;
 use solana_keypair::Keypair;
@@ -114,10 +118,7 @@ async fn settles_a_wrap_the_escrow_receives_the_tokens_and_the_nonce_is_used() -
         "the settlement's log is not truncated: {:?}",
         executed.logs
     );
-    let wrapped = events(&executed, &forwarder.program)?;
-    let [ForwarderEvent::Wrapped(event)] = &wrapped[..] else {
-        anyhow::bail!("the settlement emits {wrapped:?}, not one Wrapped event");
-    };
+    let event = sole_event::<Wrapped>(&executed, &forwarder.program)?;
     anyhow::ensure!(
         event.token == forwarder.mint
             && event.from == forwarder.user.pubkey()
@@ -127,14 +128,7 @@ async fn settles_a_wrap_the_escrow_receives_the_tokens_and_the_nonce_is_used() -
 
     // Both resources carry the AnomaPay transfer logic the forwarder config
     // pins: the wrap settled under the real verifying key.
-    let actions: Vec<_> = executed
-        .adapter_events(&env.protocol_adapter.program)?
-        .into_iter()
-        .filter_map(|event| match event {
-            PaEvent::ActionExecuted(action) => Some(action),
-            _ => None,
-        })
-        .collect();
+    let actions = executed.events::<ActionExecuted>(&env.protocol_adapter.program)?;
     let [action] = &actions[..] else {
         anyhow::bail!("the settlement executes {} actions, not one", actions.len());
     };
@@ -152,8 +146,11 @@ async fn settles_a_wrap_the_escrow_receives_the_tokens_and_the_nonce_is_used() -
         &forwarder.user.pubkey(),
         nonce_word_index(NONCE),
     );
-    let bitmap = decode_nonce_bitmap(&env.protocol_adapter.rpc.get_account_data(&bitmap).await?)?;
-    anyhow::ensure!(bitmap.is_used(NONCE), "the wrap's nonce is not marked used");
+    let bitmap = nonce_bitmap(&env, &bitmap).await?;
+    anyhow::ensure!(
+        nonce_is_used(&bitmap, NONCE),
+        "the wrap's nonce is not marked used"
+    );
     anyhow::ensure!(
         bitmap.bump == bump,
         "init_nonce_bitmap stores the bump {}, not the canonical {bump}",
@@ -190,7 +187,7 @@ async fn the_first_wrap_settles_in_one_v1_transaction() -> anyhow::Result<()> {
         .instruction_data(&env.protocol_adapter.program)
         .context("the settlement transaction has no adapter instruction")?;
     anyhow::ensure!(
-        settle[..8] == anchor_instruction_disc("settle"),
+        settle[..8] == *Settle::DISCRIMINATOR,
         "the first wrap is not settled inline in one transaction"
     );
     anyhow::ensure!(
@@ -402,9 +399,9 @@ async fn init_nonce_bitmap_of_an_existing_bitmap_leaves_its_nonces_used() -> any
     .context("init_nonce_bitmap of an existing bitmap must succeed")?;
 
     let (bitmap, _) = derive_nonce_bitmap_pda(&forwarder.program, &user, word);
-    let bitmap = decode_nonce_bitmap(&env.protocol_adapter.rpc.get_account_data(&bitmap).await?)?;
+    let bitmap = nonce_bitmap(&env, &bitmap).await?;
     anyhow::ensure!(
-        bitmap.is_used(NONCE),
+        nonce_is_used(&bitmap, NONCE),
         "the second init_nonce_bitmap cleared the used nonce {NONCE}"
     );
     Ok(())
