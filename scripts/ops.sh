@@ -592,8 +592,8 @@ case "$COMMAND" in
     # The client against the emergency-migrating build; the workspace pass
     # runs it against the production build.
     cargo test -p anomapay-spl-token-forwarder-program-tests --features emergency-migrating
-    # The committed IDLs' event discriminators and arg seeds, and the
-    # adapter's arg seeds, which need the IDL types.
+    # The committed IDLs' event discriminators and arg seeds, which need the
+    # IDL types.
     cargo test -p spl-token-forwarder --features idl-build --test event_signature --test idl_seeds
     ;;
   build-dev)
