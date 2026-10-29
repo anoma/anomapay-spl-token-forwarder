@@ -8,6 +8,7 @@ import {
   address,
   getAddressEncoder,
   getProgramDerivedAddress,
+  getU64Encoder,
   type Address,
   type ProgramDerivedAddress,
 } from "@solana/kit";
@@ -15,12 +16,6 @@ import {
 import { emergencyMigratingIdl, idl, idlPda, idlSeed } from "./idl.js";
 
 const addressBytes = (a: Address) => getAddressEncoder().encode(a);
-
-const u64Le = (value: bigint): Uint8Array => {
-  const buf = new Uint8Array(8);
-  new DataView(buf.buffer).setBigUint64(0, value, true);
-  return buf;
-};
 
 /** Derive the forwarder's global config PDA. Seed: `[CONFIG_SEED]`. */
 export function deriveForwarderConfigPda(forwarderProgram: Address): Promise<ProgramDerivedAddress> {
@@ -47,7 +42,7 @@ export function deriveNonceBitmapPda(
 ): Promise<ProgramDerivedAddress> {
   return getProgramDerivedAddress({
     programAddress: forwarderProgram,
-    seeds: [idlSeed(idl, "NONCE_BITMAP_SEED"), addressBytes(user), u64Le(wordIndex)],
+    seeds: [idlSeed(idl, "NONCE_BITMAP_SEED"), addressBytes(user), getU64Encoder().encode(wordIndex)],
   });
 }
 
@@ -86,6 +81,15 @@ export function deriveUpgradeAuthorityPda(forwarderProgram: Address): Promise<Ad
 
 /** The upgradeable loader, which owns every upgradeable program's ProgramData account. */
 export const BPF_LOADER_UPGRADEABLE = address("BPFLoaderUpgradeab1e11111111111111111111111");
+
+/** The instructions sysvar, from which a wrap reads the user's ed25519 instruction. */
+export const SYSVAR_INSTRUCTIONS_ADDRESS = address("Sysvar1nstructions1111111111111111111111111");
+
+/** The clock sysvar, which the loader's upgrade takes. */
+export const SYSVAR_CLOCK_ADDRESS = address("SysvarC1ock11111111111111111111111111111111");
+
+/** The rent sysvar, which the loader's upgrade takes. */
+export const SYSVAR_RENT_ADDRESS = address("SysvarRent111111111111111111111111111111111");
 
 /** Derive the upgradeable loader's ProgramData account of `program`, which `initialize` and `upgrade` take. */
 export async function deriveProgramDataAddress(program: Address): Promise<Address> {

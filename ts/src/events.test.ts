@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { bytesToHex } from "@noble/hashes/utils";
-import { address, getAddressEncoder } from "@solana/kit";
+import { address, getAddressEncoder, getU64Encoder } from "@solana/kit";
 
 import { decodeForwarderEventInstruction, EVENT_IX_TAG, EventDecodeError } from "./events.js";
 import { emergencyMigratingIdl, idl } from "./idl.js";
@@ -11,11 +11,7 @@ const USER = new Uint8Array(32).fill(2);
 const OTHER = new Uint8Array(32).fill(3);
 const ROOT = new Uint8Array(32).fill(4);
 
-const u64Le = (v: bigint): Uint8Array => {
-  const b = new Uint8Array(8);
-  new DataView(b.buffer).setBigUint64(0, v, true);
-  return b;
-};
+const u64Le = (v: bigint) => Uint8Array.from(getU64Encoder().encode(v));
 
 /** Event tag, the IDL's discriminator of `name`, then the body. */
 const eventIx = (name: string, body: Uint8Array[]): Uint8Array =>

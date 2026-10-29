@@ -1,6 +1,5 @@
-import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
-import { AccountRole, generateKeyPairSigner, type AccountMeta, type Address } from "@solana/kit";
-import { SYSVAR_INSTRUCTIONS_ADDRESS } from "@solana/sysvars";
+import { TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import { generateKeyPairSigner, isSignerRole, isWritableRole, type AccountMeta } from "@solana/kit";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -23,23 +22,17 @@ import {
   deriveMigrationRecordPda,
   deriveNonceBitmapPda,
   derivePaStatePda,
+  deriveTokenAccount,
   deriveVulnerableLogicRefsPda,
+  SYSVAR_INSTRUCTIONS_ADDRESS,
 } from "./pda.js";
-
-/**
- * `owner`'s token account for `mint` as the SPL Associated Token Account
- * program derives it: `[owner, token program, mint]`. The owner may be a PDA.
- */
-const tokenAccount = async (owner: Address, mint: Address) =>
-  (await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_PROGRAM_ADDRESS }))[0];
 
 const newAddress = async () => (await generateKeyPairSigner()).address;
 const forwarder = await newAddress();
 const mint = await newAddress();
 
-const writable = (accounts: AccountMeta[]) => accounts.map((a) => a.role === AccountRole.WRITABLE);
-const signs = (accounts: AccountMeta[]) =>
-  accounts.some((a) => a.role === AccountRole.READONLY_SIGNER || a.role === AccountRole.WRITABLE_SIGNER);
+const writable = (accounts: AccountMeta[]) => accounts.map((a) => isWritableRole(a.role));
+const signs = (accounts: AccountMeta[]) => accounts.some((a) => isSignerRole(a.role));
 
 describe("forwarder segment builders", () => {
   it("wrap segment is the forwarder layout", async () => {
@@ -54,8 +47,8 @@ describe("forwarder segment builders", () => {
       SYSVAR_INSTRUCTIONS_ADDRESS,
       await deriveEventAuthorityPda(forwarder),
       forwarder,
-      await tokenAccount(user, mint),
-      await tokenAccount(escrowAuthority, mint),
+      await deriveTokenAccount(user, mint),
+      await deriveTokenAccount(escrowAuthority, mint),
       escrowAuthority,
       (await deriveNonceBitmapPda(forwarder, user, 1n))[0], // nonce 300 is in word 1
       TOKEN_PROGRAM_ADDRESS,
@@ -76,8 +69,8 @@ describe("forwarder segment builders", () => {
       SYSVAR_INSTRUCTIONS_ADDRESS,
       await deriveEventAuthorityPda(forwarder),
       forwarder,
-      await tokenAccount(escrowAuthority, mint),
-      await tokenAccount(recipient, mint),
+      await deriveTokenAccount(escrowAuthority, mint),
+      await deriveTokenAccount(recipient, mint),
       escrowAuthority,
       TOKEN_PROGRAM_ADDRESS,
     ]);

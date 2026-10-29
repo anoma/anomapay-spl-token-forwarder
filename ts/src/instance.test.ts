@@ -7,9 +7,10 @@ import {
   createSolanaRpc,
   generateKeyPairSigner,
   getAddressDecoder,
-  getAddressEncoder,
   getProgramDerivedAddress,
   getU64Encoder,
+  isSignerRole,
+  isWritableRole,
   type Address,
   type Instruction,
 } from "@solana/kit";
@@ -90,11 +91,8 @@ describe("recordedDeployment", () => {
 const rpc = createSolanaRpc("http://127.0.0.1:1");
 const bytes = (n: number) => new Uint8Array(32).fill(n);
 const key = (n: number): Address => getAddressDecoder().decode(bytes(n));
-const keyBytes = (n: number) => Uint8Array.from(getAddressEncoder().encode(key(n)));
 const u64Le = (v: bigint) => Uint8Array.from(getU64Encoder().encode(v));
 const concat = (...parts: Uint8Array[]) => Uint8Array.from(Buffer.concat(parts));
-const isWritable = (role: AccountRole) => role === AccountRole.WRITABLE || role === AccountRole.WRITABLE_SIGNER;
-const isSigner = (role: AccountRole) => role === AccountRole.READONLY_SIGNER || role === AccountRole.WRITABLE_SIGNER;
 
 /**
  * Checks `ix` against the instruction `name` of `of`: its data is the IDL's
@@ -113,8 +111,8 @@ async function expectMatchesTheIdl(of: Idl, ix: Instruction, name: string, args:
   for (const [i, account] of spec.accounts.entries()) {
     if ("accounts" in account) throw new Error(`${name}: the account group ${account.name}`);
     const meta = accounts[i]!;
-    expect(isWritable(meta.role), `${name}.${account.name} writable`).toBe(account.writable ?? false);
-    expect(isSigner(meta.role), `${name}.${account.name} signer`).toBe(account.signer ?? false);
+    expect(isWritableRole(meta.role), `${name}.${account.name} writable`).toBe(account.writable ?? false);
+    expect(isSignerRole(meta.role), `${name}.${account.name} signer`).toBe(account.signer ?? false);
     if (account.address !== undefined) {
       expect(meta.address, `${name}.${account.name} address`).toBe(account.address);
     }
@@ -143,9 +141,9 @@ async function sharedBuilders(
   f: SplTokenForwarder | EmergencyMigratingSplTokenForwarder,
 ): Promise<[string, Instruction, Uint8Array][]> {
   return [
-    ["initialize", await f.initializeIx(key(1), key(2), bytes(3), key(4)), concat(keyBytes(2), bytes(3), keyBytes(4))],
-    ["init_nonce_bitmap", await f.initNonceBitmapIx(key(1), key(2), 7n), concat(keyBytes(2), u64Le(7n))],
-    ["transfer_ownership", await f.transferOwnershipIx(key(1), key(2)), keyBytes(2)],
+    ["initialize", await f.initializeIx(key(1), key(2), bytes(3), key(4)), concat(bytes(2), bytes(3), bytes(4))],
+    ["init_nonce_bitmap", await f.initNonceBitmapIx(key(1), key(2), 7n), concat(bytes(2), u64Le(7n))],
+    ["transfer_ownership", await f.transferOwnershipIx(key(1), key(2)), bytes(2)],
     ["renounce_ownership", await f.renounceOwnershipIx(key(1)), new Uint8Array()],
     ["upgrade", (await f.upgradeIxs(key(1), key(2), key(3)))[1], new Uint8Array()],
     ["version", f.versionIx(), new Uint8Array()],

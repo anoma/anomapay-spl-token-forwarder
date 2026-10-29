@@ -6,7 +6,6 @@
 
 import { TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { AccountRole, type AccountMeta, type Address } from "@solana/kit";
-import { SYSVAR_INSTRUCTIONS_ADDRESS } from "@solana/sysvars";
 
 import { idl, idlConstant } from "./idl.js";
 import {
@@ -20,6 +19,7 @@ import {
   derivePaStatePda,
   deriveTokenAccount,
   deriveVulnerableLogicRefsPda,
+  SYSVAR_INSTRUCTIONS_ADDRESS,
 } from "./pda.js";
 
 /**

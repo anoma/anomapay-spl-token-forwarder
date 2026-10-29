@@ -15,6 +15,7 @@ import {
   blockhash,
   compileTransaction,
   createTransactionMessage,
+  fetchEncodedAccount,
   getBase64EncodedWireTransaction,
   getBase64Encoder,
   pipe,
@@ -23,19 +24,16 @@ import {
   type AccountMeta,
   type Address,
   type Instruction,
-  type PendingRpcRequest,
   type Rpc,
   type SolanaRpcApiMainnet,
   type TransactionError,
 } from "@solana/kit";
-import { SYSVAR_CLOCK_ADDRESS, SYSVAR_RENT_ADDRESS } from "@solana/sysvars";
 
 import { decodeVulnerableLogicRefs } from "./accounts.js";
 import { coder, emergencyMigratingCoder } from "./coder.js";
 import { UPGRADE_COMPUTE_UNIT_LIMIT } from "./constants.js";
 import { chainIdOfGenesisHash, deployment, type Deployment, type DeploymentRecord, type Environment } from "./deployments.js";
 import { emergencyMigratingIdl, idl, idlConstant } from "./idl.js";
-import { toJson } from "./json.js";
 import {
   BPF_LOADER_UPGRADEABLE,
   deriveEventAuthorityPda,
@@ -48,6 +46,8 @@ import {
   deriveTokenAccount,
   deriveUpgradeAuthorityPda,
   deriveVulnerableLogicRefsPda,
+  SYSVAR_CLOCK_ADDRESS,
+  SYSVAR_RENT_ADDRESS,
 } from "./pda.js";
 
 /** The system program, which creates the accounts the forwarder's instructions initialize. */
@@ -65,6 +65,10 @@ export type InstanceErrorDetail =
   | { kind: "Decode"; what: string; error: string }
   /** A simulated instruction failed. */
   | { kind: "Simulation"; error: TransactionError; logs: readonly string[] };
+
+/** JSON text of a value kit's RPC returns, each bigint (which `JSON.stringify` refuses) as its decimal digits. */
+const toJson = (value: unknown): string =>
+  JSON.stringify(value, (_, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
 
 function describe(detail: InstanceErrorDetail): string {
   switch (detail.kind) {
@@ -91,10 +95,10 @@ export class InstanceError extends Error {
   }
 }
 
-/** `request` sent, an RPC failure thrown as `Rpc`. */
-async function send<T>(what: string, request: PendingRpcRequest<T>): Promise<T> {
+/** The RPC's answer `response`, a failed request thrown as `Rpc`. */
+async function answered<T>(what: string, response: Promise<T>): Promise<T> {
   try {
-    return await request.send();
+    return await response;
   } catch (error) {
     throw new InstanceError({ kind: "Rpc", what, error: String(error) }, { cause: error });
   }
@@ -118,7 +122,7 @@ export function recordedDeployment(
 }
 
 async function recordedProgram(rpc: Rpc<SolanaRpcApiMainnet>, environment: Environment): Promise<Address> {
-  const genesisHash = await send("the genesis hash", rpc.getGenesisHash());
+  const genesisHash = await answered("the genesis hash", rpc.getGenesisHash().send());
   return recordedDeployment(environment, genesisHash).programId;
 }
 
@@ -151,12 +155,30 @@ abstract class ForwarderInstance {
     private readonly coder: BorshCoder,
   ) {}
 
+  /** The PDAs of the forwarder's address alone, derived on first use. */
+  private derived?: Promise<{ config: Address; eventAuthority: Address; programData: Address; upgradeAuthority: Address }>;
+
+  private pdas() {
+    this.derived ??= Promise.all([
+      deriveForwarderConfigPda(this.programId),
+      deriveEventAuthorityPda(this.programId),
+      deriveProgramDataAddress(this.programId),
+      deriveUpgradeAuthorityPda(this.programId),
+    ]).then(([[config], eventAuthority, programData, upgradeAuthority]) => ({
+      config,
+      eventAuthority,
+      programData,
+      upgradeAuthority,
+    }));
+    return this.derived;
+  }
+
   /** The forwarder's config, as the coder decodes `Config`: its IDL field names and the coder's values. */
   private async config(): Promise<any> {
-    const [address] = await deriveForwarderConfigPda(this.programId);
+    const { config: address } = await this.pdas();
     const what = `the forwarder's config ${address}`;
-    const account = await this.account(address, what);
-    if (account === null) throw new InstanceError({ kind: "AccountMissing", address });
+    const account = await answered(what, fetchEncodedAccount(this.rpc, address));
+    if (!account.exists) throw new InstanceError({ kind: "AccountMissing", address });
     try {
       return this.coder.accounts.decode("Config", account.data);
     } catch (error) {
@@ -164,17 +186,10 @@ abstract class ForwarderInstance {
     }
   }
 
-  /** The data and owner of the account at `address`, or `null` when it does not exist. */
-  private async account(address: Address, what: string): Promise<{ data: Uint8Array; owner: Address } | null> {
-    const { value } = await send(what, this.rpc.getAccountInfo(address, { encoding: "base64" }));
-    if (value === null) return null;
-    return { data: Uint8Array.from(getBase64Encoder().encode(value.data[0])), owner: value.owner };
-  }
-
   /** The data of the account at `address` when it exists and the forwarder owns it: an account the forwarder created. */
   protected async ownedData(address: Address, what: string): Promise<Uint8Array | null> {
-    const account = await this.account(address, `${what} ${address}`);
-    return account !== null && account.owner === this.programId ? account.data : null;
+    const account = await answered(`${what} ${address}`, fetchEncodedAccount(this.rpc, address));
+    return account.exists && account.programAddress === this.programId ? account.data : null;
   }
 
   /** `getLogicRef()`. */
@@ -211,13 +226,15 @@ abstract class ForwarderInstance {
         (m) => appendTransactionMessageInstruction(this.versionIx(), m),
       ),
     );
-    const { value } = await send(
+    const { value } = await answered(
       "the simulation of version",
-      this.rpc.simulateTransaction(getBase64EncodedWireTransaction(transaction), {
-        encoding: "base64",
-        sigVerify: false,
-        replaceRecentBlockhash: true,
-      }),
+      this.rpc
+        .simulateTransaction(getBase64EncodedWireTransaction(transaction), {
+          encoding: "base64",
+          sigVerify: false,
+          replaceRecentBlockhash: true,
+        })
+        .send(),
     );
     if (value.err !== null) {
       throw new InstanceError({ kind: "Simulation", error: value.err, logs: value.logs ?? [] });
@@ -254,13 +271,10 @@ abstract class ForwarderInstance {
     };
   }
 
-  /** The accounts Anchor's `#[event_cpi]` adds to an instruction that emits events. */
-  protected async events(): Promise<Record<string, Address>> {
-    return { event_authority: await deriveEventAuthorityPda(this.programId), program: this.programId };
-  }
-
-  protected async configPda(): Promise<Address> {
-    return (await deriveForwarderConfigPda(this.programId))[0];
+  /** The forwarder's config, and the accounts Anchor's `#[event_cpi]` adds to an instruction that emits events. */
+  protected async configAndEvents(): Promise<Record<string, Address>> {
+    const { config, eventAuthority } = await this.pdas();
+    return { config, event_authority: eventAuthority, program: this.programId };
   }
 
   /** `initialize`, by `authority`, the program's upgrade authority. */
@@ -270,16 +284,15 @@ abstract class ForwarderInstance {
     logicRef: Uint8Array,
     initialOwner: Address,
   ): Promise<Instruction> {
+    const { programData, upgradeAuthority } = await this.pdas();
     return this.instruction(
       "initialize",
       {
         authority,
-        config: await this.configPda(),
-        program: this.programId,
-        program_data: await deriveProgramDataAddress(this.programId),
+        ...(await this.configAndEvents()),
+        program_data: programData,
         system_program: SYSTEM_PROGRAM,
-        event_authority: await deriveEventAuthorityPda(this.programId),
-        upgrade_authority: await deriveUpgradeAuthorityPda(this.programId),
+        upgrade_authority: upgradeAuthority,
         bpf_loader_upgradeable: BPF_LOADER_UPGRADEABLE,
       },
       { protocol_adapter: protocolAdapter, logic_ref: Array.from(logicRef), initial_owner: initialOwner },
@@ -303,7 +316,7 @@ abstract class ForwarderInstance {
   async transferOwnershipIx(owner: Address, newOwner: Address): Promise<Instruction> {
     return this.instruction(
       "transfer_ownership",
-      { authority: owner, config: await this.configPda(), ...(await this.events()) },
+      { authority: owner, ...(await this.configAndEvents()) },
       { new_owner: newOwner },
     );
   }
@@ -312,7 +325,7 @@ abstract class ForwarderInstance {
   async renounceOwnershipIx(owner: Address): Promise<Instruction> {
     return this.instruction(
       "renounce_ownership",
-      { authority: owner, config: await this.configPda(), ...(await this.events()) },
+      { authority: owner, ...(await this.configAndEvents()) },
       {},
     );
   }
@@ -323,22 +336,22 @@ abstract class ForwarderInstance {
    * program: compile with `compileLegacyTransaction`.
    */
   async upgradeIxs(owner: Address, buffer: Address, spill: Address): Promise<[Instruction, Instruction]> {
+    const { programData, upgradeAuthority } = await this.pdas();
     return [
       getSetComputeUnitLimitInstruction({ units: UPGRADE_COMPUTE_UNIT_LIMIT }),
       this.instruction(
         "upgrade",
         {
           authority: owner,
-          config: await this.configPda(),
-          program_data: await deriveProgramDataAddress(this.programId),
+          program_data: programData,
           upgraded_program: this.programId,
           buffer,
           spill,
-          upgrade_authority: await deriveUpgradeAuthorityPda(this.programId),
+          upgrade_authority: upgradeAuthority,
           rent: SYSVAR_RENT_ADDRESS,
           clock: SYSVAR_CLOCK_ADDRESS,
           bpf_loader_upgradeable: BPF_LOADER_UPGRADEABLE,
-          ...(await this.events()),
+          ...(await this.configAndEvents()),
         },
         {},
       ),
@@ -357,7 +370,7 @@ abstract class ForwarderInstance {
       "close_escrow",
       {
         authority: owner,
-        config: await this.configPda(),
+        config: (await this.pdas()).config,
         escrow_ata: await deriveTokenAccount(escrowAuthority, mint),
         escrow_authority: escrowAuthority,
         recipient_ata: recipientAta,
@@ -373,7 +386,7 @@ abstract class ForwarderInstance {
   async closeNonceBitmapsBatchIx(owner: Address, paState: Address, bitmaps: Address[]): Promise<Instruction> {
     return this.instruction(
       "close_nonce_bitmaps_batch",
-      { authority: owner, config: await this.configPda(), pa_state: paState },
+      { authority: owner, config: (await this.pdas()).config, pa_state: paState },
       {},
       bitmaps.map((bitmap) => ({ address: bitmap, role: AccountRole.WRITABLE })),
     );
@@ -381,7 +394,7 @@ abstract class ForwarderInstance {
 
   /** `close_config`, by the owner, while the adapter whose state is `paState` is paused. */
   async closeConfigIx(owner: Address, paState: Address): Promise<Instruction> {
-    return this.instruction("close_config", { authority: owner, config: await this.configPda(), pa_state: paState }, {});
+    return this.instruction("close_config", { authority: owner, config: (await this.pdas()).config, pa_state: paState }, {});
   }
 }
 
@@ -400,7 +413,7 @@ export class SplTokenForwarder extends ForwarderInstance {
   async reinitializeIx(owner: Address, logicRef: Uint8Array): Promise<Instruction> {
     return this.instruction(
       "reinitialize",
-      { authority: owner, config: await this.configPda(), ...(await this.events()) },
+      { authority: owner, ...(await this.configAndEvents()) },
       { logic_ref: Array.from(logicRef) },
     );
   }
@@ -472,11 +485,10 @@ export class EmergencyMigratingSplTokenForwarder extends ForwarderInstance {
       "reinitialize",
       {
         authority: owner,
-        config: await this.configPda(),
         vulnerable_logic_refs: (await deriveVulnerableLogicRefsPda(this.programId))[0],
         pa_state: (await derivePaStatePda(protocolAdapter))[0],
         system_program: SYSTEM_PROGRAM,
-        ...(await this.events()),
+        ...(await this.configAndEvents()),
       },
       { new_logic_ref: Array.from(newLogicRef), vulnerable_logic_refs: vulnerableLogicRefs.map((r) => Array.from(r)) },
     );
