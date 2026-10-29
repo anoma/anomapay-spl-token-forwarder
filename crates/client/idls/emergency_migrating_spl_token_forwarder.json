@@ -2,7 +2,7 @@
   "address": "34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4",
   "metadata": {
     "name": "spl_token_forwarder",
-    "version": "2.0.0-rc.9",
+    "version": "2.0.0-rc.10",
     "spec": "0.1.0",
     "description": "SPL Token forwarder for wrap/unwrap operations with Ed25519 signature verification"
   },
@@ -257,7 +257,7 @@
       ],
       "args": [
         {
-          "name": "_nullifier",
+          "name": "nullifier",
           "type": {
             "array": [
               "u8",
@@ -336,11 +336,11 @@
       ],
       "args": [
         {
-          "name": "_user",
+          "name": "user",
           "type": "pubkey"
         },
         {
-          "name": "_word_index",
+          "name": "word_index",
           "type": "u64"
         }
       ]
@@ -1055,106 +1055,101 @@
     },
     {
       "code": 6023,
-      "name": "TokenTransferFailed",
-      "msg": "Token transfer failed - check the SPL Token error in the logs"
-    },
-    {
-      "code": 6024,
       "name": "UnwrapToEscrow",
       "msg": "Unwrap recipient is the escrow authority - the tokens would never leave escrow"
     },
     {
-      "code": 6025,
+      "code": 6024,
       "name": "InvalidInitialization",
       "msg": "The config is already at this build's CONFIG_VERSION - rotating the logic ref takes a build that raises it"
     },
     {
-      "code": 6026,
+      "code": 6025,
       "name": "OwnableUnauthorizedAccount",
       "msg": "The signer is not the forwarder's owner"
     },
     {
-      "code": 6027,
+      "code": 6026,
       "name": "OwnableInvalidOwner",
       "msg": "The zero key cannot be the owner"
     },
     {
-      "code": 6028,
+      "code": 6027,
       "name": "InvalidUpgradeBuffer",
       "msg": "Buffer is not a loader buffer holding a program"
     },
     {
-      "code": 6029,
+      "code": 6028,
       "name": "Unauthorized",
       "msg": "Unauthorized: the signer does not hold the authority this instruction requires"
     },
     {
-      "code": 6030,
+      "code": 6029,
       "name": "LogicRefNotDenied",
       "msg": "A denylist of the adapter lacks a vulnerable logic ref"
     },
     {
-      "code": 6031,
+      "code": 6030,
       "name": "LogicRefAlreadyDenied",
       "msg": "A denylist of the adapter holds the new logic ref"
     },
     {
-      "code": 6032,
+      "code": 6031,
       "name": "EmptyVulnerableLogicRefList",
       "msg": "reinitialize lists no vulnerable logic ref"
     },
     {
-      "code": 6033,
+      "code": 6032,
       "name": "LogicRefAlreadyVulnerable",
       "msg": "The logic ref is listed as vulnerable already"
     },
     {
-      "code": 6034,
+      "code": 6033,
       "name": "LogicRefNotVulnerable",
       "msg": "The logic ref is not listed as vulnerable"
     },
     {
-      "code": 6035,
+      "code": 6034,
       "name": "NonExistingRoot",
       "msg": "The root is not a historical root of the adapter"
     },
     {
-      "code": 6036,
+      "code": 6035,
       "name": "UnknownForwarder",
       "msg": "The resource's label names neither this forwarder nor the legacy forwarder"
     },
     {
-      "code": 6037,
+      "code": 6036,
       "name": "EmptyMigrationBatch",
       "msg": "The migration names no resource"
     },
     {
-      "code": 6038,
+      "code": 6037,
       "name": "ResourceAlreadyConsumed",
       "msg": "The adapter consumed the resource already"
     },
     {
-      "code": 6039,
+      "code": 6038,
       "name": "ResourceAlreadyMigrated",
       "msg": "The forwarder migrated the resource already"
     },
     {
-      "code": 6040,
+      "code": 6039,
       "name": "MigrationRecordMissing",
       "msg": "Migration record does not exist - create it with init_migration_record before the migration"
     },
     {
-      "code": 6041,
+      "code": 6040,
       "name": "InvalidMigrationRecordPda",
       "msg": "Invalid migration record PDA - doesn't match the nullifier's derived address"
     },
     {
-      "code": 6042,
+      "code": 6041,
       "name": "InvalidVulnerableLogicRefsPda",
       "msg": "Invalid vulnerable logic refs PDA - doesn't match the derived address"
     },
     {
-      "code": 6043,
+      "code": 6042,
       "name": "NullifierPdaMismatch",
       "msg": "Nullifier PDA mismatch - not the adapter's marker of the nullifier"
     }

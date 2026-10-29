@@ -29,7 +29,7 @@ const base64 = (bytes: Uint8Array): string => btoa(Array.from(bytes, (b) => Stri
  * The event in `data`, the instruction data of one forwarder event
  * self-invocation: its IDL name and its fields under their IDL names, as the
  * coder decodes them. Refuses data without the event tag, a discriminator no
- * IDL event has, a body that does not decode, a body that ends short, and
+ * IDL event has, a body that does not decode (one that ends short), and
  * bytes after the body.
  */
 export function decodeForwarderEventInstruction(data: Uint8Array): { name: string; data: any } {
@@ -52,7 +52,7 @@ export function decodeForwarderEventInstruction(data: Uint8Array): { name: strin
   const discriminator = emergencyMigratingIdl.events!.find((e) => e.name === name)!.discriminator;
   const body = rest.length - discriminator.length;
   const read = borshLength(emergencyMigratingIdl, event.data, { defined: { name } });
+  // The coder refuses a body that ends short, but reads none of the bytes after one.
   if (read < body) throw new EventDecodeError(`${body - read} trailing byte(s) after the ${name} body`);
-  if (read > body) throw new EventDecodeError(`the ${name} body ends ${read - body} byte(s) short`);
   return event;
 }

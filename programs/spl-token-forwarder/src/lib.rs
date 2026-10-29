@@ -143,7 +143,7 @@ pub mod spl_token_forwarder {
     /// the owner upgrades the program in place (`upgrade`) and then calls
     /// this; it runs only while the config's version is below this build's.
     /// Resources under the previous ref leave through the new one once the
-    /// kind table lists the previous version as its alias: a transaction
+    /// kind tree lists the previous version as its alias: a transaction
     /// converts them, and the new resource unwraps.
     #[cfg(not(feature = "emergency-migrating"))]
     pub fn reinitialize(ctx: Context<OwnerOnly>, logic_ref: [u8; 32]) -> Result<()> {
@@ -185,8 +185,12 @@ pub mod spl_token_forwarder {
     #[cfg(feature = "emergency-migrating")]
     pub fn init_migration_record(
         ctx: Context<InitMigrationRecord>,
-        _nullifier: [u8; 32],
+        nullifier: [u8; 32],
     ) -> Result<()> {
+        // Only the record's seeds read it, through `#[instruction]`. The IDL
+        // names the arg after this binding, and Anchor's TS resolver fills
+        // the seed by that name.
+        let _ = nullifier;
         ctx.accounts.migration_record.bump = ctx.bumps.migration_record;
         Ok(())
     }
@@ -281,9 +285,12 @@ pub mod spl_token_forwarder {
     /// written.
     pub fn init_nonce_bitmap(
         ctx: Context<InitNonceBitmap>,
-        _user: Pubkey,
-        _word_index: u64,
+        user: Pubkey,
+        word_index: u64,
     ) -> Result<()> {
+        // Only the bitmap's seeds read them, through `#[instruction]`, as in
+        // `init_migration_record`.
+        let _ = (user, word_index);
         ctx.accounts.nonce_bitmap.bump = ctx.bumps.nonce_bitmap;
         Ok(())
     }
@@ -498,7 +505,8 @@ fn spl_close_account_ix(
 /// authority as the signer: as the user's delegate on a wrap, as the escrow
 /// account's owner on an unwrap or a closing drain. The SPL Token program
 /// enforces the delegate approval, the balance and that both accounts hold
-/// the same mint; the transferred amount is exact, so no before/after
+/// the same mint, and its refusal halts the forwarder with the token
+/// program's error; the transferred amount is exact, so no before/after
 /// balance check is needed.
 fn transfer_signed_by_escrow<'info>(
     source: &AccountInfo<'info>,
@@ -526,11 +534,7 @@ fn transfer_signed_by_escrow<'info>(
             token_program.clone(),
         ],
         &[ESCROW_SIGNER_SEEDS],
-    )
-    .map_err(|e| {
-        msg!("Token transfer failed: {:?}", e);
-        ErrorCode::TokenTransferFailed
-    })?;
+    )?;
     Ok(())
 }
 

@@ -4,8 +4,8 @@
 // hand-rolling the slice. The forwarder's own instructions are built by its
 // instances (`instance.ts`).
 
-import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { type AccountMeta, SYSVAR_INSTRUCTIONS_PUBKEY, type PublicKey } from "@solana/web3.js";
+import { TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import { AccountRole, type AccountMeta, type Address } from "@solana/kit";
 
 import { idl, idlConstant } from "./idl.js";
 import {
@@ -17,7 +17,9 @@ import {
   deriveMigrationRecordPda,
   deriveNonceBitmapPda,
   derivePaStatePda,
+  deriveTokenAccount,
   deriveVulnerableLogicRefsPda,
+  SYSVAR_INSTRUCTIONS_ADDRESS,
 } from "./pda.js";
 
 /**
@@ -31,18 +33,21 @@ export function nonceWordIndex(nonce: bigint): bigint {
   return nonce / NONCES_PER_WORD;
 }
 
+const readonly = (address: Address): AccountMeta => ({ address, role: AccountRole.READONLY });
+const writable = (address: Address): AccountMeta => ({ address, role: AccountRole.WRITABLE });
+
 /**
  * The accounts every forwarder CPI segment starts with: the forwarder (the
  * call's target), its config, the instructions sysvar, then the event
  * authority and the forwarder again, which its CPI events need.
  */
-function forwarderSegmentHead(forwarderProgram: PublicKey): AccountMeta[] {
+async function forwarderSegmentHead(forwarderProgram: Address): Promise<AccountMeta[]> {
   return [
-    { pubkey: forwarderProgram, isSigner: false, isWritable: false },
-    { pubkey: deriveForwarderConfigPda(forwarderProgram)[0], isSigner: false, isWritable: false },
-    { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
-    { pubkey: deriveEventAuthorityPda(forwarderProgram), isSigner: false, isWritable: false },
-    { pubkey: forwarderProgram, isSigner: false, isWritable: false },
+    readonly(forwarderProgram),
+    readonly((await deriveForwarderConfigPda(forwarderProgram))[0]),
+    readonly(SYSVAR_INSTRUCTIONS_ADDRESS),
+    readonly(await deriveEventAuthorityPda(forwarderProgram)),
+    readonly(forwarderProgram),
   ];
 }
 
@@ -52,21 +57,21 @@ function forwarderSegmentHead(forwarderProgram: PublicKey): AccountMeta[] {
  * escrow_authority, nonce_bitmap_pda, token_program]`. The nonce bitmap must
  * already exist (the instance's `initNonceBitmapIx`).
  */
-export function buildWrapForwarderAccounts(
-  forwarderProgram: PublicKey,
-  user: PublicKey,
-  tokenMint: PublicKey,
+export async function buildWrapForwarderAccounts(
+  forwarderProgram: Address,
+  user: Address,
+  tokenMint: Address,
   nonce: bigint,
-): AccountMeta[] {
-  const [escrowAuthority] = deriveForwarderEscrowAuthority(forwarderProgram);
-  const [nonceBitmapPda] = deriveNonceBitmapPda(forwarderProgram, user, nonceWordIndex(nonce));
+): Promise<AccountMeta[]> {
+  const [escrowAuthority] = await deriveForwarderEscrowAuthority(forwarderProgram);
+  const [nonceBitmapPda] = await deriveNonceBitmapPda(forwarderProgram, user, nonceWordIndex(nonce));
   return [
-    ...forwarderSegmentHead(forwarderProgram),
-    { pubkey: getAssociatedTokenAddressSync(tokenMint, user, true), isSigner: false, isWritable: true },
-    { pubkey: getAssociatedTokenAddressSync(tokenMint, escrowAuthority, true), isSigner: false, isWritable: true },
-    { pubkey: escrowAuthority, isSigner: false, isWritable: false },
-    { pubkey: nonceBitmapPda, isSigner: false, isWritable: true },
-    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ...(await forwarderSegmentHead(forwarderProgram)),
+    writable(await deriveTokenAccount(user, tokenMint)),
+    writable(await deriveTokenAccount(escrowAuthority, tokenMint)),
+    readonly(escrowAuthority),
+    writable(nonceBitmapPda),
+    readonly(TOKEN_PROGRAM_ADDRESS),
   ];
 }
 
@@ -83,29 +88,24 @@ export interface MigrateEntryAccounts {
  * the adapter's marker of its nullifier and its migration record, which must
  * already exist (the instance's `initMigrationRecordIx`).
  */
-export function buildMigrateForwarderAccounts(
-  forwarderProgram: PublicKey,
-  protocolAdapter: PublicKey,
+export async function buildMigrateForwarderAccounts(
+  forwarderProgram: Address,
+  protocolAdapter: Address,
   entries: MigrateEntryAccounts[],
-): AccountMeta[] {
-  const [paState] = derivePaStatePda(protocolAdapter);
-  return [
-    ...forwarderSegmentHead(forwarderProgram),
-    { pubkey: paState, isSigner: false, isWritable: false },
-    { pubkey: deriveVulnerableLogicRefsPda(forwarderProgram)[0], isSigner: false, isWritable: false },
-    ...entries.flatMap((entry) => [
-      {
-        pubkey: deriveAdapterRootMarkerPda(protocolAdapter, paState, entry.commitmentTreeRoot)[0],
-        isSigner: false,
-        isWritable: false,
-      },
-      {
-        pubkey: deriveAdapterNullifierPda(protocolAdapter, paState, entry.nullifier)[0],
-        isSigner: false,
-        isWritable: false,
-      },
-      { pubkey: deriveMigrationRecordPda(forwarderProgram, entry.nullifier)[0], isSigner: false, isWritable: true },
+): Promise<AccountMeta[]> {
+  const [paState] = await derivePaStatePda(protocolAdapter);
+  const entryAccounts = await Promise.all(
+    entries.map(async (entry) => [
+      readonly((await deriveAdapterRootMarkerPda(protocolAdapter, paState, entry.commitmentTreeRoot))[0]),
+      readonly((await deriveAdapterNullifierPda(protocolAdapter, paState, entry.nullifier))[0]),
+      writable((await deriveMigrationRecordPda(forwarderProgram, entry.nullifier))[0]),
     ]),
+  );
+  return [
+    ...(await forwarderSegmentHead(forwarderProgram)),
+    readonly(paState),
+    readonly((await deriveVulnerableLogicRefsPda(forwarderProgram))[0]),
+    ...entryAccounts.flat(),
   ];
 }
 
@@ -114,18 +114,17 @@ export function buildMigrateForwarderAccounts(
  * ix_sysvar, event_authority, forwarder_program, escrow_ata, recipient_ata,
  * escrow_authority, token_program]`.
  */
-export function buildUnwrapForwarderAccounts(
-  forwarderProgram: PublicKey,
-  recipient: PublicKey,
-  tokenMint: PublicKey,
-): AccountMeta[] {
-  const [escrowAuthority] = deriveForwarderEscrowAuthority(forwarderProgram);
+export async function buildUnwrapForwarderAccounts(
+  forwarderProgram: Address,
+  recipient: Address,
+  tokenMint: Address,
+): Promise<AccountMeta[]> {
+  const [escrowAuthority] = await deriveForwarderEscrowAuthority(forwarderProgram);
   return [
-    ...forwarderSegmentHead(forwarderProgram),
-    { pubkey: getAssociatedTokenAddressSync(tokenMint, escrowAuthority, true), isSigner: false, isWritable: true },
-    { pubkey: getAssociatedTokenAddressSync(tokenMint, recipient, true), isSigner: false, isWritable: true },
-    { pubkey: escrowAuthority, isSigner: false, isWritable: false },
-    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ...(await forwarderSegmentHead(forwarderProgram)),
+    writable(await deriveTokenAccount(escrowAuthority, tokenMint)),
+    writable(await deriveTokenAccount(recipient, tokenMint)),
+    readonly(escrowAuthority),
+    readonly(TOKEN_PROGRAM_ADDRESS),
   ];
 }
-

@@ -90,9 +90,6 @@ pub enum ErrorCode {
     )]
     NonceBitmapMissing,
 
-    #[msg("Token transfer failed - check the SPL Token error in the logs")]
-    TokenTransferFailed,
-
     #[msg("Unwrap recipient is the escrow authority - the tokens would never leave escrow")]
     UnwrapToEscrow,
 

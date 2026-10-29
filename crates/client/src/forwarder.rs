@@ -95,8 +95,8 @@ pub fn init_nonce_bitmap_ix(
             system_program: system_program::id(),
         },
         args::InitNonceBitmap {
-            _user: *user,
-            _word_index: word_index,
+            user: *user,
+            word_index,
         },
     )
 }
@@ -583,7 +583,8 @@ acct 8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR false false
         let args = [user.as_ref(), &7u64.to_le_bytes()].concat();
         let by_name = assert_matches_the_idl(&crate::idl::idl(), &ix, "init_nonce_bitmap", &args);
         assert_eq!(by_name("payer"), payer);
-        // The IDL's seeds of the bitmap name args it cannot resolve.
+        // The bitmap's seeds include the args `user` and `word_index`, which
+        // `assert_matches_the_idl` does not resolve, so the derivation checks it.
         assert_eq!(
             by_name("nonce_bitmap"),
             derive_nonce_bitmap_pda(&forwarder, &user, 7).0
@@ -591,16 +592,10 @@ acct 8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR false false
         assert_eq!(ix.accounts.len(), 3);
     }
 
-    /// Checks `ix` against the instruction `name` of `idl`, either build's:
-    /// the data is its discriminator then `args`, and each account has the
-    /// IDL's flags, its fixed address, or its PDA from the IDL's seeds when
-    /// they are all constants. Returns the address `ix` passes for each IDL
-    /// account name.
     /// The address the IDL gives the instruction account `account` of
     /// `program`: its fixed address, or its PDA when every seed is a
-    /// constant. None for a PDA with an `arg` seed: the IDLs name those
-    /// seeds' args with the handlers' underscored names, so no arg resolves
-    /// them.
+    /// constant. None for a PDA with an `arg` seed, whose value the account
+    /// alone does not give.
     pub(crate) fn idl_address(account: &serde_json::Value, program: &Pubkey) -> Option<Pubkey> {
         if let Some(address) = account["address"].as_str() {
             return Some(address.parse().unwrap());
@@ -617,6 +612,11 @@ acct 8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR false false
         Some(Pubkey::find_program_address(&seeds, program).0)
     }
 
+    /// Checks `ix` against the instruction `name` of `idl`, either build's:
+    /// the data is its discriminator then `args`, and each account has the
+    /// IDL's flags, its fixed address, or its PDA from the IDL's seeds when
+    /// they are all constants. Returns the address `ix` passes for each IDL
+    /// account name.
     pub(crate) fn assert_matches_the_idl(
         idl: &serde_json::Value,
         ix: &Instruction,

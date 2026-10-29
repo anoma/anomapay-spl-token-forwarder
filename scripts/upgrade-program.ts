@@ -16,46 +16,63 @@
  */
 import * as anchor from "@anchor-lang/core";
 import { confirmedProvider } from "../client/provider";
-import { Program } from "@anchor-lang/core";
-import { SplTokenForwarder } from "../target/types/spl_token_forwarder";
-import { upgradeForwarder } from "../client/instructions";
-import { deriveUpgradeAuthorityPda } from "../client/pda";
+import {
+  address,
+  assertIsTransactionWithBlockhashLifetime,
+  fetchEncodedAccount,
+  getSignatureFromTransaction,
+  sendAndConfirmTransactionFactory,
+  signTransactionWithSigners,
+} from "@solana/kit";
+import { SplTokenForwarder } from "../ts/src/instance";
+import { deriveUpgradeAuthorityPda } from "../ts/src/pda";
+import { compileLegacyTransaction } from "../ts/src/transaction";
 import { bufferExecutableHash, deployedExecutableHash, upgradeAuthority } from "../client/upgrade";
 import { forwarderEventsOfSignature } from "../client/events";
-import { fail, parsePubkey } from "./cli-utils";
+import { fail, parsePubkey, requireEnv } from "./cli-utils";
 
 async function main() {
   const [command, bufferArg] = process.argv.slice(2);
-  const provider = confirmedProvider();
+  const provider = confirmedProvider(requireEnv("ANCHOR_PROVIDER_URL", "the RPC endpoint"), process.env.ANCHOR_WS_URL);
   anchor.setProvider(provider);
-  const program = anchor.workspace.SplTokenForwarder as Program<SplTokenForwarder>;
-  const wallet = provider.wallet.publicKey;
+  // The address of this cluster's build (target/idl).
+  const forwarder = SplTokenForwarder.at(provider.rpc, address(anchor.workspace.SplTokenForwarder.address));
+  const wallet = provider.wallet.address;
 
   if (command === "path") {
-    const authority = await upgradeAuthority(provider.connection, program.programId);
-    if (authority?.equals(deriveUpgradeAuthorityPda(program.programId))) console.log("program");
-    else if (authority?.equals(wallet)) console.log("loader");
-    else
-      fail(
-        `the forwarder's upgrade authority is ${authority?.toBase58() ?? "none (final)"}, neither its PDA nor ${wallet.toBase58()}`,
-      );
+    const authority = await upgradeAuthority(provider.rpc, forwarder.programId);
+    if (authority === (await deriveUpgradeAuthorityPda(forwarder.programId))) console.log("program");
+    else if (authority === wallet) console.log("loader");
+    else fail(`the forwarder's upgrade authority is ${authority ?? "none (final)"}, neither its PDA nor ${wallet}`);
     return;
   }
   if (command !== "upgrade") fail(`usage: upgrade-program.ts <path|upgrade> [buffer], got ${command}`);
 
   const buffer = parsePubkey("buffer", bufferArg);
-  const bufferAccount = await provider.connection.getAccountInfo(buffer, "confirmed");
-  if (!bufferAccount) fail(`buffer ${buffer.toBase58()} does not exist`);
+  const bufferAccount = await fetchEncodedAccount(provider.rpc, buffer, { commitment: "confirmed" });
+  if (!bufferAccount.exists) fail(`buffer ${buffer} does not exist`);
   const expected = bufferExecutableHash(bufferAccount.data);
 
-  console.log(`Upgrading the forwarder (${program.programId.toBase58()}) from buffer ${buffer.toBase58()}`);
-  const signature = await upgradeForwarder(program, wallet, buffer, wallet).rpc({ commitment: "confirmed" });
+  console.log(`Upgrading the forwarder (${forwarder.programId}) from buffer ${buffer}`);
+  // Anchor's sender compiles with kit, which refuses the upgrade's writable
+  // invoked program (ts/src/transaction.ts).
+  const upgrade = await forwarder.upgradeIxs(wallet, buffer, wallet);
+  const { value: lifetime } = await provider.rpc.getLatestBlockhash({ commitment: "confirmed" }).send();
+  const signed = await signTransactionWithSigners(
+    [provider.wallet],
+    compileLegacyTransaction(wallet, upgrade, lifetime),
+  );
+  assertIsTransactionWithBlockhashLifetime(signed);
+  await sendAndConfirmTransactionFactory({ rpc: provider.rpc, rpcSubscriptions: provider.rpcSubscriptions })(signed, {
+    commitment: "confirmed",
+  });
+  const signature = getSignatureFromTransaction(signed);
 
-  const events = await forwarderEventsOfSignature(provider.connection, program.programId, signature);
+  const events = await forwarderEventsOfSignature(provider.rpc, forwarder.programId, signature);
   const upgraded = events.find((e) => e.name === "Upgraded");
   if (!upgraded) throw new Error(`transaction ${signature} landed without Upgraded`);
   const announced = Buffer.from(upgraded.data.implementation_hash);
-  const deployed = await deployedExecutableHash(provider.connection, program.programId);
+  const deployed = await deployedExecutableHash(provider.rpc, forwarder.programId);
   if (!announced.equals(expected) || !deployed.equals(expected)) {
     throw new Error(
       `transaction ${signature}: the buffer's code hashes to ${expected.toString("hex")}, ` +

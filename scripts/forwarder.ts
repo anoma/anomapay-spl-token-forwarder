@@ -31,28 +31,43 @@
  *   STF_TOKEN_MINT          base58 mint (init, optional)
  */
 import * as anchor from "@anchor-lang/core";
-import { confirmedProvider } from "../client/provider";
 import { Program } from "@anchor-lang/core";
-import { getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
-import { SplTokenForwarder } from "../target/types/spl_token_forwarder";
-import { initializeForwarder, reinitializeForwarder } from "../client/instructions";
-import { deriveForwarderConfigPda, deriveForwarderEscrowAuthority } from "../ts/src/pda";
-import { fail, requireHexBytes, requirePubkey } from "./cli-utils";
+import { getCreateAssociatedTokenIdempotentInstructionAsync } from "@solana-program/token";
+import { appendTransactionMessageInstruction, createTransactionMessage, pipe, type Instruction } from "@solana/kit";
+import { confirmedProvider } from "../client/provider";
+import type { SplTokenForwarder as SplTokenForwarderIdl } from "../target/types/spl_token_forwarder";
+import { SplTokenForwarder } from "../ts/src/instance";
+import { deriveForwarderConfigPda, deriveForwarderEscrowAuthority, deriveTokenAccount } from "../ts/src/pda";
+import { fail, requireEnv, requireHexBytes, requirePubkey } from "./cli-utils";
 
-const provider = confirmedProvider();
+const provider = confirmedProvider(requireEnv("ANCHOR_PROVIDER_URL", "the RPC endpoint"), process.env.ANCHOR_WS_URL);
 anchor.setProvider(provider);
-const wallet = provider.wallet as anchor.Wallet;
-const connection = provider.connection;
-const forwarder = anchor.workspace.SplTokenForwarder as Program<SplTokenForwarder>;
+const wallet = provider.wallet;
+// This cluster's build (target/idl): its config read through the IDL's types,
+// its instructions built by the bindings' instance.
+const forwarder = anchor.workspace.SplTokenForwarder as Program<SplTokenForwarderIdl>;
+const instance = SplTokenForwarder.at(provider.rpc, forwarder.address);
 // The adapter this build of the forwarder pairs with (env/<cluster>.env).
 const adapterProgramId = requirePubkey("PROTOCOL_ADAPTER_PROGRAM_ID", "the protocol adapter the forwarder serves");
-const [configPda] = deriveForwarderConfigPda(forwarder.programId);
 
 const requireMint = () => requirePubkey("STF_TOKEN_MINT", "the mint whose escrow to operate on");
 
+/** Sends `ix`, which the wallet signs and pays for. */
+async function send(ix: Instruction) {
+  await provider.sendAndConfirm(
+    pipe(createTransactionMessage({ version: 0 }), (m) => appendTransactionMessageInstruction(ix, m)),
+  );
+}
+
+async function configPda() {
+  return (await deriveForwarderConfigPda(forwarder.address))[0];
+}
+
 async function requireConfig() {
-  const config = await forwarder.account.config.fetchNullable(configPda);
-  return config ?? fail(`forwarder config ${configPda.toBase58()} does not exist — run 'forwarder init' first`);
+  const config = await forwarder.account.config.fetchNullable(await configPda());
+  return config.exists
+    ? config.data
+    : fail(`forwarder config ${config.address} does not exist — run 'forwarder init' first`);
 }
 
 async function init() {
@@ -66,38 +81,44 @@ async function init() {
     "the forwarder's initial owner, who alone upgrades it and rotates its logic ref",
   );
 
-  const existing = await forwarder.account.config.fetchNullable(configPda);
-  if (existing) {
+  const config = await configPda();
+  const fetched = await forwarder.account.config.fetchNullable(config);
+  if (fetched.exists) {
+    const existing = fetched.data;
     // (field, stored, requested)
     const fields: [string, string, string][] = [
-      ["adapter", existing.protocolAdapter.toBase58(), adapterProgramId.toBase58()],
+      ["adapter", existing.protocolAdapter, adapterProgramId],
       ["logic ref", Buffer.from(existing.logicRef).toString("hex"), Buffer.from(logicRef).toString("hex")],
-      ["owner", existing.owner.toBase58(), owner.toBase58()],
+      ["owner", existing.owner, owner],
     ];
     const mismatches = fields.filter(([, stored, requested]) => stored !== requested);
     if (mismatches.length > 0) {
       fail(
-        `config ${configPda.toBase58()} already exists with a different ${mismatches.map(([k]) => k).join(", ")}: ` +
+        `config ${config} already exists with a different ${mismatches.map(([k]) => k).join(", ")}: ` +
           mismatches.map(([k, stored, requested]) => `${k} ${stored} (requested ${requested})`).join("; "),
       );
     }
-    console.log(`Config ${configPda.toBase58()} already initialized with the requested values`);
+    console.log(`Config ${config} already initialized with the requested values`);
   } else {
-    console.log(`Initializing config ${configPda.toBase58()}`);
-    console.log(`  adapter:   ${adapterProgramId.toBase58()}`);
+    console.log(`Initializing config ${config}`);
+    console.log(`  adapter:   ${adapterProgramId}`);
     console.log(`  logic ref: ${Buffer.from(logicRef).toString("hex")}`);
-    console.log(`  owner:     ${owner.toBase58()}`);
-    await initializeForwarder(forwarder, adapterProgramId, logicRef, owner, wallet.publicKey).rpc();
+    console.log(`  owner:     ${owner}`);
+    await send(await instance.initializeIx(wallet.address, adapterProgramId, logicRef, owner));
     console.log("✅ Config initialized");
   }
 
   if (process.env.STF_TOKEN_MINT) {
     const mint = requireMint();
-    const [escrowAuthority] = deriveForwarderEscrowAuthority(forwarder.programId);
-    const escrowAta = await getOrCreateAssociatedTokenAccount(connection, wallet.payer, mint, escrowAuthority, true);
-    console.log(
-      `✅ Escrow for ${mint.toBase58()}: authority ${escrowAuthority.toBase58()}, ATA ${escrowAta.address.toBase58()}`,
-    );
+    const [escrowAuthority] = await deriveForwarderEscrowAuthority(forwarder.address);
+    const create = await getCreateAssociatedTokenIdempotentInstructionAsync({
+      payer: wallet,
+      owner: escrowAuthority,
+      mint,
+    });
+    await send(create);
+    const escrowAta = await deriveTokenAccount(escrowAuthority, mint);
+    console.log(`✅ Escrow for ${mint}: authority ${escrowAuthority}, ATA ${escrowAta}`);
   }
 }
 
@@ -109,7 +130,7 @@ async function reinitializeCommand() {
   );
   const existing = await requireConfig();
   const previous = Buffer.from(existing.logicRef).toString("hex");
-  await reinitializeForwarder(forwarder, wallet.publicKey, logicRef).rpc();
+  await send(await instance.reinitializeIx(wallet.address, logicRef));
   const config = await requireConfig();
   console.log(
     `✅ Logic ref rotated: ${previous} -> ${Buffer.from(config.logicRef).toString("hex")} (config version ${config.version})`,
@@ -127,5 +148,5 @@ if (!run) {
   fail(`unknown forwarder command "${command ?? ""}"; expected one of: ${Object.keys(COMMANDS).join(", ")}`);
 }
 
-console.log(`Forwarder: ${forwarder.programId.toBase58()}  Wallet: ${wallet.publicKey.toBase58()}`);
+console.log(`Forwarder: ${forwarder.address}  Wallet: ${wallet.address}`);
 run().catch((err) => fail(`forwarder ${command} failed: ${err.message ?? err}`));

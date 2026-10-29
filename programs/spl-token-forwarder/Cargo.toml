@@ -1,6 +1,6 @@
 [package]
 name = "spl-token-forwarder"
-version = "2.0.0-rc.9"
+version = "2.0.0-rc.10"
 description = "SPL Token forwarder for wrap/unwrap operations with Ed25519 signature verification"
 edition = "2021"
 
@@ -38,15 +38,19 @@ base64 = "0.21.7"
 protocol-adapter = { workspace = true }
 # The digest type of the adapter's historical-root check, which an emergency
 # migration runs on each resource's root; the adapter's version.
-arm-core = { package = "anoma-rm-core", version = "2.0.0-rc.7", optional = true }
+arm-core = { package = "anoma-rm-core", version = "2.0.0-rc.8.1", optional = true }
 
 [dev-dependencies]
 hex-literal = "1.1"
-# Parsing the committed IDLs in the event signature test
+# Parsing the committed IDLs in the event signature and arg seed tests
 serde_json = "1.0"
 
 [[test]]
 name = "event_signature"
+required-features = ["idl-build"]
+
+[[test]]
+name = "idl_seeds"
 required-features = ["idl-build"]
 
 [lints.rust]

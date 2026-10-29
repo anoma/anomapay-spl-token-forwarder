@@ -1,7 +1,6 @@
 // The length of a value's Borsh encoding, from the IDL type it has, which
-// Anchor's coder does not report: the event decoder refuses a body that ends
-// short or has bytes after it, and the instances refuse arguments the
-// coder's buffer cannot hold.
+// Anchor's coder does not report: the event decoder refuses bytes after a
+// body, which the coder accepts.
 
 import type { Idl, IdlType } from "@anchor-lang/core";
 
@@ -27,9 +26,8 @@ const FIXED_LENGTHS: Record<string, number> = {
 
 /**
  * The length of the Borsh encoding of `value`, of the type `type` of `idl`, in
- * the form the coder reads and writes it: the bytes the coder read when it
- * decoded `value`, or the bytes it writes when it encodes it. The coder
- * reports neither.
+ * the form the coder decodes it: the bytes the coder read, which it does not
+ * report.
  */
 export function borshLength(idl: Idl, value: any, type: IdlType): number {
   if (typeof type === "string") {

@@ -16,10 +16,10 @@ The adapter calls the forwarder through the external calls a settled transaction
 | `env/` | The forwarder's address per cluster, and the adapter's it is built against ([env/README.md](env/README.md)) |
 | `fixtures/` | The wrap authorization message every client must serialize alike |
 | `scripts/` | `dev.sh` (enters the Nix shell), `ops.sh` (the commands) and the operator scripts (TypeScript) |
-| `client/` | The operator scripts' TypeScript instruction builders, PDAs and cluster helpers |
+| `client/` | The operator scripts' cluster helpers: the provider, the loader's records of a program, the events of a transaction, the IDL's metadata account (they build instructions with the TypeScript bindings' instance) |
 | `docs/` | [OPERATIONS.md](docs/OPERATIONS.md) (deploying and operating the forwarder), [INTEGRATION.md](docs/INTEGRATION.md) (its events and call segments), [EMERGENCY_MIGRATION.md](docs/EMERGENCY_MIGRATION.md) (the emergency-migrating build, for a flaw in a circuit version) and [DEVNET_DEPLOYMENT.md](docs/DEVNET_DEPLOYMENT.md) (the devnet record) |
 
-The program builds against the adapter's program crate, pinned by revision in `Cargo.toml`: it reads the adapter's state account to check that the adapter is paused before the owner closes the forwarder's accounts, and uses the upgrade helpers the adapter shares with its forwarders.
+The program builds against the adapter's program crate, pinned by release tag in `Cargo.toml`: it reads the adapter's state account to check that the adapter is paused before the owner closes the forwarder's accounts, and uses the upgrade helpers the adapter shares with its forwarders.
 
 ## Development
 

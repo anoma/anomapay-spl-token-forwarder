@@ -1,7 +1,7 @@
 // The staging forwarder on devnet, read over a Helius endpoint: run with
 // `npm run test:deployed` at each deployment and upgrade.
 
-import { Connection, PublicKey } from "@solana/web3.js";
+import { address, createSolanaRpc } from "@solana/kit";
 import { describe, expect, it } from "vitest";
 
 import { emergencyMigratingIdl, idl } from "./idl.js";
@@ -20,31 +20,32 @@ function devnetUrl(): string {
 
 describe("the staging forwarder on devnet", () => {
   it("answers every read", async () => {
-    const connection = new Connection(devnetUrl(), "confirmed");
-    const forwarder = await splTokenForwarder(connection, "staging");
+    const rpc = createSolanaRpc(devnetUrl());
+    const forwarder = await splTokenForwarder(rpc, "staging");
     const owner = await forwarder.owner();
     const logicRef = await forwarder.getLogicRef();
     const adapter = await forwarder.getProtocolAdapter();
     // The owner, an operator wallet, pays the simulation's fee.
     const version = await forwarder.version(owner);
     console.log({
-      programId: forwarder.programId.toBase58(),
-      owner: owner.toBase58(),
+      programId: forwarder.programId,
+      owner,
       logicRef,
-      adapter: adapter.toBase58(),
+      adapter,
       version,
     });
 
-    expect(owner.equals(PublicKey.default)).toBe(false);
+    const zero = address("11111111111111111111111111111111");
+    expect(owner).not.toBe(zero);
     expect(logicRef.length).toBe(32);
-    expect(adapter.equals(PublicKey.default)).toBe(false);
+    expect(adapter).not.toBe(zero);
     // The release devnet runs is one of the two builds this package carries.
     expect([idl.metadata.version, emergencyMigratingIdl.metadata.version]).toContain(version);
 
     // Its emergency-migrating reads answer false wherever nothing is listed or
     // recorded, whichever build runs.
-    const emergency = await emergencyMigratingSplTokenForwarder(connection, "staging");
-    expect(emergency.programId.equals(forwarder.programId)).toBe(true);
+    const emergency = await emergencyMigratingSplTokenForwarder(rpc, "staging");
+    expect(emergency.programId).toBe(forwarder.programId);
     expect(await emergency.isNullifierMigrated(new Uint8Array(32))).toBe(false);
     expect(await emergency.isLogicRefVulnerable(new Uint8Array(32))).toBe(false);
   });

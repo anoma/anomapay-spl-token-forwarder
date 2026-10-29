@@ -63,8 +63,6 @@ fn unwrap_input_parses_the_client_encoding() {
 }
 
 /// The client derives a user's bitmap address from the program's own seed.
-/// The IDL cannot check it: its seeds name the args `user` and
-/// `word_index`, which it lists as the handler's `_user` and `_word_index`.
 #[test]
 fn the_clients_nonce_bitmap_address_is_the_programs() {
     for (user, word_index) in [([7u8; 32], 0), ([8u8; 32], 3), ([9u8; 32], u64::MAX)] {

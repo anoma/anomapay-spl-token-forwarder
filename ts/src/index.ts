@@ -20,3 +20,4 @@ export {
 } from "./instance.js";
 export * from "./amount.js";
 export * from "./wrapMessage.js";
+export * from "./transaction.js";

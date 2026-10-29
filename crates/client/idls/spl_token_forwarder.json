@@ -2,7 +2,7 @@
   "address": "34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4",
   "metadata": {
     "name": "spl_token_forwarder",
-    "version": "2.0.0-rc.9",
+    "version": "2.0.0-rc.10",
     "spec": "0.1.0",
     "description": "SPL Token forwarder for wrap/unwrap operations with Ed25519 signature verification"
   },
@@ -261,11 +261,11 @@
       ],
       "args": [
         {
-          "name": "_user",
+          "name": "user",
           "type": "pubkey"
         },
         {
-          "name": "_word_index",
+          "name": "word_index",
           "type": "u64"
         }
       ]
@@ -433,7 +433,7 @@
         "the owner upgrades the program in place (`upgrade`) and then calls",
         "this; it runs only while the config's version is below this build's.",
         "Resources under the previous ref leave through the new one once the",
-        "kind table lists the previous version as its alias: a transaction",
+        "kind tree lists the previous version as its alias: a transaction",
         "converts them, and the new resource unwraps."
       ],
       "discriminator": [
@@ -899,36 +899,31 @@
     },
     {
       "code": 6023,
-      "name": "TokenTransferFailed",
-      "msg": "Token transfer failed - check the SPL Token error in the logs"
-    },
-    {
-      "code": 6024,
       "name": "UnwrapToEscrow",
       "msg": "Unwrap recipient is the escrow authority - the tokens would never leave escrow"
     },
     {
-      "code": 6025,
+      "code": 6024,
       "name": "InvalidInitialization",
       "msg": "The config is already at this build's CONFIG_VERSION - rotating the logic ref takes a build that raises it"
     },
     {
-      "code": 6026,
+      "code": 6025,
       "name": "OwnableUnauthorizedAccount",
       "msg": "The signer is not the forwarder's owner"
     },
     {
-      "code": 6027,
+      "code": 6026,
       "name": "OwnableInvalidOwner",
       "msg": "The zero key cannot be the owner"
     },
     {
-      "code": 6028,
+      "code": 6027,
       "name": "InvalidUpgradeBuffer",
       "msg": "Buffer is not a loader buffer holding a program"
     },
     {
-      "code": 6029,
+      "code": 6028,
       "name": "Unauthorized",
       "msg": "Unauthorized: the signer does not hold the authority this instruction requires"
     }
