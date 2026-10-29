@@ -162,7 +162,6 @@ pub fn wrap_auth(
 ) -> anyhow::Result<(WrapAuth, Vec<u8>)> {
     let message = wrap
         .signed_message(terms.nonce, WRAP_DEADLINE, root)
-        .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to derive the wrap's signed message")?
         .into_bytes();
     let auth = WrapAuth {
@@ -194,7 +193,6 @@ pub fn wrap(
     let layout = wrap
         .deposit
         .layout()
-        .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to lay out the wrap")?;
     let (auth, message) = wrap_auth(&wrap, user, terms, layout.root())?;
     let action = wrap
@@ -204,7 +202,6 @@ pub fn wrap(
             compliance(seed, kind_tree),
             &mut rng(seed),
         )
-        .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to build the wrap's witnesses")?;
     Ok(WrapData {
         witnesses: witnesses(action),
@@ -231,7 +228,6 @@ pub fn unwrap_flow<L: Logic>(
         owner.keys.clone(),
         recipient.to_bytes(),
     )
-    .map_err(|e| anyhow::anyhow!("{e:?}"))
     .context("failed to build the unwrap's resources")
 }
 
@@ -259,7 +255,6 @@ pub fn unwrap<L: Logic>(
     let unwrap = unwrap_flow::<L>(forwarder, mint, wrapped, owner, recipient, path)?;
     let root = unwrap
         .layout()
-        .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to lay out the unwrap")?
         .root();
     let action = unwrap
@@ -270,7 +265,6 @@ pub fn unwrap<L: Logic>(
                 anoma_pa_testkit::fixtures::kind_tree(),
             ),
         )
-        .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to build the unwrap's witnesses")?;
     Ok(witnesses(action))
 }
@@ -308,12 +302,10 @@ pub fn migrate(
         owner.keys.clone(),
         label_hash(&format!("{seed}/rand-seed")),
     )
-    .map_err(|e| anyhow::anyhow!("{e:?}"))
     .context("failed to build the migration's resources")?;
     let layout = migration
         .deposit
         .layout()
-        .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to lay out the migration")?;
     let auth_sig = owner.auth_sk.sign(
         EMERGENCY_MIGRATING_AUTH_SIGNATURE_DOMAIN,
@@ -326,7 +318,6 @@ pub fn migrate(
             compliance(seed, anoma_pa_testkit::fixtures::kind_tree()),
             &mut rng(seed),
         )
-        .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to build the migration's witnesses")?;
     Ok(MigrationData {
         witnesses: witnesses(action),

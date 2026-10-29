@@ -134,7 +134,8 @@ where
     let [pulled, deposited] = wrap.deposit.resources();
     let mut resources = vec![spent, pulled, deposited];
     resources.insert(unwrapped_at, unwrapped);
-    let layout = Layout::new(resources).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    let deposited_at = resources.len() - 1;
+    let layout = Layout::new(resources).context("failed to lay out the action")?;
     let root = layout.root();
 
     let [spend, burn] = unwrap.logic_witnesses(
@@ -145,7 +146,7 @@ where
     let (auth, _) = fixtures::wrap_auth(&wrap, &forwarder.user, terms, root)?;
     let seed = format!("call-order/unwrap-first={unwrap_first}");
     let [pull, deposit] = wrap.logic_witnesses(
-        layout.resource(3),
+        layout.resource(deposited_at),
         root,
         auth,
         &fixtures::discovery_pk(),
@@ -158,7 +159,7 @@ where
             logic_witnesses,
             fixtures::compliance(&seed, anoma_pa_testkit::fixtures::kind_tree()),
         )
-        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        .context("failed to build the action's witnesses")?;
     prove_actions(env, &[fixtures::witnesses(action)]).await
 }
 
