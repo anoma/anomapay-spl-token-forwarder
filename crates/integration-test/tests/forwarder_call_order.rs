@@ -12,6 +12,8 @@ use anomapay_spl_token_forwarder_integration_test::refusal::balances;
 use anomapay_spl_token_forwarder_integration_test::setup::{self, Forwarder, balance};
 use anyhow::Context;
 use solana_signer::Signer;
+use transfer_library::TransferLogic;
+use transfer_library::action::Layout;
 
 /// The user wraps its whole balance first, so the wrap of the action can only
 /// pull the tokens the unwrap of the same action releases to the user.
@@ -105,7 +107,7 @@ where
         .protocol_adapter
         .commitment_tree
         .path_to(wrapped.commitment())?;
-    let unwrap = fixtures::unwrap_parts(
+    let unwrap = fixtures::unwrap_flow::<TransferLogic>(
         forwarder.program,
         forwarder.mint,
         wrapped,
@@ -113,25 +115,52 @@ where
         forwarder.user.pubkey(),
         path,
     )?;
-    let wrap = fixtures::wrap_parts(
+    let wrap = fixtures::wrap_flow(
         forwarder.program,
         forwarder.mint,
-        &forwarder.user,
         owner,
-        WrapTerms {
-            amount,
-            nonce: 2,
-            ed25519_ix_index: 0,
-        },
+        amount,
         "call-order/wrap",
-    )?;
-    let parts = if unwrap_first {
-        vec![unwrap.consumed, unwrap.created, wrap.consumed, wrap.created]
-    } else {
-        vec![unwrap.consumed, wrap.consumed, unwrap.created, wrap.created]
+    );
+    let terms = WrapTerms {
+        amount,
+        nonce: 2,
+        ed25519_ix_index: 0,
     };
-    let action = fixtures::action(parts, &format!("call-order/unwrap-first={unwrap_first}"))?;
-    prove_actions(env, &[action]).await
+    // The unwrap's consumed resource, the wrap's consumed one and the wrap's
+    // created one, with the unwrap's created one at `unwrapped_at`.
+    let unwrapped_at = if unwrap_first { 1 } else { 2 };
+    let [spent, unwrapped] = unwrap.resources();
+    let [pulled, deposited] = wrap.deposit.resources();
+    let mut resources = vec![spent, pulled, deposited];
+    resources.insert(unwrapped_at, unwrapped);
+    let deposited_at = resources.len() - 1;
+    let layout = Layout::new(resources).context("failed to lay out the action")?;
+    let root = layout.root();
+
+    let [spend, burn] = unwrap.logic_witnesses(
+        layout.resource(unwrapped_at),
+        root,
+        fixtures::unwrap_auth::<TransferLogic>(owner, root),
+    );
+    let (auth, _) = fixtures::wrap_auth(&wrap, &forwarder.user, terms, root)?;
+    let seed = format!("call-order/unwrap-first={unwrap_first}");
+    let [pull, deposit] = wrap.logic_witnesses(
+        layout.resource(deposited_at),
+        root,
+        auth,
+        &fixtures::discovery_pk(),
+        &mut fixtures::rng("call-order/wrap"),
+    );
+    let mut logic_witnesses = vec![spend, pull, deposit];
+    logic_witnesses.insert(unwrapped_at, burn);
+    let action = layout
+        .action(
+            logic_witnesses,
+            fixtures::compliance(&seed, anoma_pa_testkit::fixtures::kind_tree()),
+        )
+        .context("failed to build the action's witnesses")?;
+    prove_actions(env, &[fixtures::witnesses(action)]).await
 }
 
 #[tokio::test(flavor = "multi_thread")]

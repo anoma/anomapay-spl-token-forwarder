@@ -1399,18 +1399,6 @@ dependencies = [
 
 [[package]]
 name = "anoma-pa-solana-client"
-version = "0.8.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?tag=bindings%2Fv0.8.0#8cc3c3a7fb54c9926b8e1ea9b280a99457f679aa"
-dependencies = [
- "bincode",
- "heck 0.5.0",
- "serde",
- "serde_json",
- "sha2 0.10.9",
-]
-
-[[package]]
-name = "anoma-pa-solana-client"
 version = "0.9.0"
 source = "git+https://github.com/anoma/anoma-pa-solana-client?tag=bindings%2Fv0.9.0#5887eed34c30048689e0bf7126e2f22d1a93c5a2"
 dependencies = [
@@ -1441,7 +1429,7 @@ version = "0.5.0"
 source = "git+https://github.com/anoma/solana-protocol-adapter?tag=bindings%2Fv0.5.0#575ea12a28bd728bea6ac99484a3480521bb6ab2"
 dependencies = [
  "anchor-lang",
- "anoma-pa-solana-client 0.9.0",
+ "anoma-pa-solana-client",
  "anoma-pa-testkit",
  "anoma-risc0-kind-trees",
  "anoma-rm-risc0",
@@ -1570,22 +1558,10 @@ dependencies = [
 
 [[package]]
 name = "anomapay-spl-token-forwarder-client"
-version = "0.6.0"
-source = "git+https://github.com/anoma/anomapay-spl-token-forwarder?tag=bindings%2Fv0.6.0#220ed827053046cfeb0d43ceeaf826f09ae6b30f"
-dependencies = [
- "anchor-lang",
- "anoma-pa-solana-client 0.8.0",
- "base64 0.22.1",
- "serde_json",
- "sha2 0.10.9",
-]
-
-[[package]]
-name = "anomapay-spl-token-forwarder-client"
 version = "0.7.0"
 dependencies = [
  "anchor-lang",
- "anoma-pa-solana-client 0.9.0",
+ "anoma-pa-solana-client",
  "base64 0.22.1",
  "serde",
  "serde_json",
@@ -1606,11 +1582,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "anomapay-spl-token-forwarder-client"
+version = "0.7.0"
+source = "git+https://github.com/anoma/anomapay-spl-token-forwarder?tag=bindings%2Fv0.7.0#3b41ae1d4d5ce0904c689abc410ca5f483918f91"
+dependencies = [
+ "anchor-lang",
+ "anoma-pa-solana-client",
+ "base64 0.22.1",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "anomapay-spl-token-forwarder-integration-test"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
- "anoma-pa-solana-client 0.9.0",
+ "anoma-pa-solana-client",
  "anoma-pa-solana-integration-test",
  "anoma-pa-testkit",
  "anoma-rm-risc0",
@@ -4236,7 +4224,7 @@ checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
 [[package]]
 name = "emergency_migrating_transfer_library"
 version = "2.0.0-rc.11"
-source = "git+https://github.com/anoma/anomapay-solana-resource?rev=3f82aea9b5d63d979aa48678c63504bac5fc99dc#3f82aea9b5d63d979aa48678c63504bac5fc99dc"
+source = "git+https://github.com/anoma/anomapay-solana-resource?tag=v2.0.0-rc.11#5519385a9ba2708d9a62ba1bef07c34362113399"
 dependencies = [
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",
@@ -4251,7 +4239,7 @@ dependencies = [
 [[package]]
 name = "emergency_migrating_transfer_witness"
 version = "2.0.0-rc.11"
-source = "git+https://github.com/anoma/anomapay-solana-resource?rev=3f82aea9b5d63d979aa48678c63504bac5fc99dc#3f82aea9b5d63d979aa48678c63504bac5fc99dc"
+source = "git+https://github.com/anoma/anomapay-solana-resource?tag=v2.0.0-rc.11#5519385a9ba2708d9a62ba1bef07c34362113399"
 dependencies = [
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",
@@ -14639,11 +14627,11 @@ dependencies = [
 [[package]]
 name = "transfer_library"
 version = "2.0.0-rc.11"
-source = "git+https://github.com/anoma/anomapay-solana-resource?rev=3f82aea9b5d63d979aa48678c63504bac5fc99dc#3f82aea9b5d63d979aa48678c63504bac5fc99dc"
+source = "git+https://github.com/anoma/anomapay-solana-resource?tag=v2.0.0-rc.11#5519385a9ba2708d9a62ba1bef07c34362113399"
 dependencies = [
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",
- "anomapay-spl-token-forwarder-client 0.6.0",
+ "anomapay-spl-token-forwarder-client 0.7.0 (git+https://github.com/anoma/anomapay-spl-token-forwarder?tag=bindings%2Fv0.7.0)",
  "hex-literal",
  "k256",
  "serde",
@@ -14653,7 +14641,7 @@ dependencies = [
 [[package]]
 name = "transfer_witness"
 version = "2.0.0-rc.11"
-source = "git+https://github.com/anoma/anomapay-solana-resource?rev=3f82aea9b5d63d979aa48678c63504bac5fc99dc#3f82aea9b5d63d979aa48678c63504bac5fc99dc"
+source = "git+https://github.com/anoma/anomapay-solana-resource?tag=v2.0.0-rc.11#5519385a9ba2708d9a62ba1bef07c34362113399"
 dependencies = [
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",
