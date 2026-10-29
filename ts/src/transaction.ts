@@ -12,24 +12,17 @@
 import {
   getAddressComparator,
   getCompiledTransactionMessageEncoder,
-  getShortU16Encoder,
-  getTransactionDecoder,
   isSignerRole,
   isWritableRole,
   mergeRoles,
   AccountRole,
   type Address,
-  type Blockhash,
+  type BlockhashLifetimeConstraint,
   type Instruction,
   type Transaction,
+  type TransactionMessageBytes,
   type TransactionWithBlockhashLifetime,
 } from "@solana/kit";
-
-/** A blockhash and the last block height a transaction under it lands in. */
-export interface BlockhashLifetime {
-  blockhash: Blockhash;
-  lastValidBlockHeight: bigint;
-}
 
 /**
  * The legacy transaction of `instructions`, which `feePayer` pays for, under
@@ -40,7 +33,7 @@ export interface BlockhashLifetime {
 export function compileLegacyTransaction(
   feePayer: Address,
   instructions: readonly Instruction[],
-  lifetime: BlockhashLifetime,
+  lifetime: BlockhashLifetimeConstraint,
 ): Transaction & TransactionWithBlockhashLifetime {
   const roles = new Map<Address, AccountRole>([[feePayer, AccountRole.WRITABLE_SIGNER]]);
   const merge = (address: Address, role: AccountRole) =>
@@ -59,10 +52,11 @@ export function compileLegacyTransaction(
   const index = new Map(accounts.map((address, i) => [address, i]));
   const count = (f: (role: AccountRole) => boolean) => accounts.filter((a) => f(roles.get(a)!)).length;
 
+  const numSignerAccounts = count(isSignerRole);
   const messageBytes = getCompiledTransactionMessageEncoder().encode({
     version: "legacy",
     header: {
-      numSignerAccounts: count(isSignerRole),
+      numSignerAccounts,
       numReadonlySignerAccounts: count((r) => r === AccountRole.READONLY_SIGNER),
       numReadonlyNonSignerAccounts: count((r) => r === AccountRole.READONLY),
     },
@@ -73,15 +67,13 @@ export function compileLegacyTransaction(
       ...(ix.accounts ? { accountIndices: ix.accounts.map((a) => index.get(a.address)!) } : null),
       ...(ix.data ? { data: ix.data } : null),
     })),
-  });
+  }) as TransactionMessageBytes;
 
-  // The wire form with every signature zero, which kit's decoder reads into a
-  // transaction whose signers, the message's, have no signature yet.
-  const signers = count(isSignerRole);
-  const wire = new Uint8Array([
-    ...getShortU16Encoder().encode(signers),
-    ...new Uint8Array(64 * signers),
-    ...messageBytes,
-  ]);
-  return { ...getTransactionDecoder().decode(wire), lifetimeConstraint: lifetime };
+  // The message's signers, none of which has signed yet, as kit's
+  // compileTransaction gives them.
+  return {
+    messageBytes,
+    signatures: Object.fromEntries(accounts.slice(0, numSignerAccounts).map((signer) => [signer, null])),
+    lifetimeConstraint: lifetime,
+  };
 }
