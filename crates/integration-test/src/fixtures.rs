@@ -25,7 +25,7 @@ use solana_keypair::Keypair;
 use solana_signer::Signer;
 use surfpool_sdk::Pubkey;
 use transfer_library::TransferLogic;
-use transfer_library::action::{self, ComplianceParams, Owner, TransferAction, WrapAuth};
+use transfer_library::action::{self, ComplianceParams, Owner, TransferAction};
 use transfer_witness::{ForwarderCall, LabelInfo, ValueInfo, WrapAuthInfo};
 
 use crate::logic::{Logic, Witness};
@@ -126,8 +126,8 @@ pub struct WrapTerms {
 
 /// A wrap through the forwarder `forwarder` of `terms.amount` of `mint`,
 /// from `user`'s token account into a resource `owner` holds, proven against
-/// `kind_tree`. `seed` makes the action's resources distinct from every
-/// other test's.
+/// `kind_tree`: the action of [`wrap_parts`]. `seed` makes the action's
+/// resources distinct from every other test's.
 pub fn wrap(
     forwarder: Pubkey,
     mint: Pubkey,
@@ -137,50 +137,19 @@ pub fn wrap(
     kind_tree: &KindTree,
     seed: &str,
 ) -> anyhow::Result<WrapData> {
-    let wrap = action::wrap::<TransferLogic>(
-        label(forwarder, mint),
-        terms.amount,
-        label_hash(&format!("{seed}/ephemeral-nonce")),
-        owner.keys.clone(),
-        label_hash(&format!("{seed}/rand-seed")),
-    )
-    .map_err(|e| anyhow::anyhow!("{e:?}"))
-    .context("failed to build the wrap's resources")?;
-    let message = wrap
-        .signed_message(terms.nonce, WRAP_DEADLINE)
-        .map_err(|e| anyhow::anyhow!("{e:?}"))
-        .context("failed to derive the wrap's signed message")?
-        .into_bytes();
-    let signature: [u8; 64] = user.sign_message(&message).into();
-    let auth = WrapAuth {
-        user: user.pubkey().to_bytes(),
-        info: WrapAuthInfo {
-            nonce: terms.nonce,
-            deadline: WRAP_DEADLINE,
-            signature,
-            ed25519_ix_index: terms.ed25519_ix_index,
-        },
-    };
-    let action = wrap
-        .action(
-            auth,
-            &discovery_pk(),
-            compliance(seed, kind_tree),
-            &mut ChaCha20Rng::from_seed(label_hash(&format!("{seed}/rng"))),
-        )
-        .map_err(|e| anyhow::anyhow!("{e:?}"))
-        .context("failed to build the wrap's witnesses")?;
+    let WrapParts { parts, message } = wrap_parts(forwarder, mint, user, owner, terms, seed)?;
+    let action = action(vec![parts.consumed, parts.created], kind_tree, seed)?;
     Ok(WrapData {
-        witnesses: witnesses(action),
-        created: wrap.deposit.created,
-        signed_message: message,
+        witnesses: action.witnesses,
+        created: action.resources[1],
+        signed_message: message.of(action.action_tree_root),
     })
 }
 
 /// An unwrap of `wrapped`, `owner`'s shielded resource of `L` under the
 /// label of `forwarder` and `mint`, releasing its tokens to `recipient`'s
-/// token account. `path` is the wrapped resource's path in the adapter's
-/// commitment tree.
+/// token account: the action of [`unwrap_parts`]. `path` is the wrapped
+/// resource's path in the adapter's commitment tree.
 pub fn unwrap<L: Logic>(
     forwarder: Pubkey,
     mint: Pubkey,
@@ -189,34 +158,14 @@ pub fn unwrap<L: Logic>(
     recipient: Pubkey,
     path: MerklePath,
 ) -> anyhow::Result<ActionWitnesses> {
-    let unwrap = action::unwrap::<L>(
-        label(forwarder, mint),
-        wrapped,
-        owner.keys.clone(),
-        recipient.to_bytes(),
-    )
-    .map_err(|e| anyhow::anyhow!("{e:?}"))
-    .context("failed to build the unwrap's resources")?;
-    let root: Digest = unwrap
-        .action_tree_root()
-        .map_err(|e| anyhow::anyhow!("{e:?}"))
-        .context("failed to compute the unwrap's action tree root")?;
-    let auth_sig = owner.auth_sk.sign(
-        <L::Call as ForwarderCall>::AUTH_SIGNATURE_DOMAIN,
-        root.as_bytes(),
-    );
-    let action = unwrap
-        .action(
-            auth_sig,
-            path,
-            compliance(
-                &format!("unwrap/{}", root),
-                anoma_pa_testkit::fixtures::kind_tree(),
-            ),
-        )
-        .map_err(|e| anyhow::anyhow!("{e:?}"))
-        .context("failed to build the unwrap's witnesses")?;
-    Ok(witnesses(action))
+    let parts = unwrap_parts::<L>(forwarder, mint, wrapped, owner, recipient, path)?;
+    let seed = format!("unwrap/{}", wrapped.commitment());
+    Ok(action(
+        vec![parts.consumed, parts.created],
+        anoma_pa_testkit::fixtures::kind_tree(),
+        &seed,
+    )?
+    .witnesses)
 }
 
 /// Builds the logic witness of a resource of an action from the resource and
@@ -248,12 +197,20 @@ pub struct Parts {
     pub created: Part,
 }
 
+/// A built action: its witnesses, its resources in the order of its parts,
+/// and its tree root.
+pub struct ActionData {
+    pub witnesses: ActionWitnesses,
+    pub resources: Vec<Resource>,
+    pub action_tree_root: Digest,
+}
+
 /// One action of `parts`, in their order, which is the order the adapter
-/// settles them and runs their forwarder calls in, proven against the empty
-/// kind tree. A created resource's nonce derives from its index among the
+/// settles them and runs their forwarder calls in, proven against
+/// `kind_tree`. A created resource's nonce derives from its index among the
 /// created resources and the action's nullifiers, as the compliance circuit
 /// requires. `seed` draws the action's commitment randomness.
-pub fn action(parts: Vec<Part>, seed: &str) -> anyhow::Result<ActionWitnesses> {
+pub fn action(parts: Vec<Part>, kind_tree: &KindTree, seed: &str) -> anyhow::Result<ActionData> {
     let nullifiers = parts
         .iter()
         .filter_map(|part| match part {
@@ -309,31 +266,70 @@ pub fn action(parts: Vec<Part>, seed: &str) -> anyhow::Result<ActionWitnesses> {
         .map_err(|e| anyhow::anyhow!("{e:?}"))
         .context("failed to compute the action tree root")?;
 
+    let mut resources = Vec::with_capacity(placed.len());
     let mut resource_witnesses = Vec::with_capacity(placed.len());
     let mut logic_witnesses = Vec::with_capacity(placed.len());
     for (position, (resource, resource_witness, logic)) in placed.into_iter().enumerate() {
+        resources.push(resource);
         resource_witnesses.push(resource_witness);
         logic_witnesses.push(
             logic(resource, root)
                 .with_context(|| format!("failed to build the logic of resource {position}"))?,
         );
     }
-    let kind_tree = anoma_pa_testkit::fixtures::kind_tree();
     let ComplianceParams { rcv, .. } = compliance(seed, kind_tree);
     let kind_paths = kind_tree.kind_paths_for(&resource_witnesses);
-    Ok(ActionWitnesses {
-        compliance_witness: Box::new(ComplianceWitness::from_parts(
-            resource_witnesses,
-            INITIAL_ROOT,
-            &rcv,
-            kind_paths,
-        )),
-        logic_witnesses,
+    Ok(ActionData {
+        witnesses: ActionWitnesses {
+            compliance_witness: Box::new(ComplianceWitness::from_parts(
+                resource_witnesses,
+                INITIAL_ROOT,
+                &rcv,
+                kind_paths,
+            )),
+            logic_witnesses,
+        },
+        resources,
+        action_tree_root: root,
     })
 }
 
-/// A wrap's resources for [`action`], as [`wrap`] builds them: the user signs
+/// The message a user signs for a wrap of `terms` through the forwarder
+/// `forwarder` of `mint`, once the action it is in fixes its tree root.
+#[derive(Clone, Copy)]
+pub struct SignedMessage {
+    forwarder: Pubkey,
+    mint: Pubkey,
+    terms: WrapTerms,
+}
+
+impl SignedMessage {
+    /// The base64 digest of the wrap message for the action tree root
+    /// `root`, as UTF-8 text: what the user signs.
+    pub fn of(&self, root: Digest) -> Vec<u8> {
+        WrapMessage {
+            forwarder_id: self.forwarder.to_bytes(),
+            token_mint: self.mint.to_bytes(),
+            amount: self.terms.amount,
+            nonce: self.terms.nonce,
+            deadline: WRAP_DEADLINE,
+            action_tree_root: root.into(),
+        }
+        .base64_digest()
+        .into_bytes()
+    }
+}
+
+/// A wrap's resources for [`action`], and the message the user signs over
 /// the root of the action they end up in.
+pub struct WrapParts {
+    pub parts: Parts,
+    pub message: SignedMessage,
+}
+
+/// The resources of a wrap of `terms.amount` of `mint` through the forwarder
+/// `forwarder`, from `user`'s token account into a resource `owner` holds.
+/// `seed` makes them distinct from every other test's.
 pub fn wrap_parts(
     forwarder: Pubkey,
     mint: Pubkey,
@@ -341,7 +337,7 @@ pub fn wrap_parts(
     owner: &ShieldedOwner,
     terms: WrapTerms,
     seed: &str,
-) -> anyhow::Result<Parts> {
+) -> anyhow::Result<WrapParts> {
     let wrap = action::wrap::<TransferLogic>(
         label(forwarder, mint),
         terms.amount,
@@ -351,17 +347,14 @@ pub fn wrap_parts(
     )
     .map_err(|e| anyhow::anyhow!("{e:?}"))
     .context("failed to build the wrap's resources")?;
+    let message = SignedMessage {
+        forwarder,
+        mint,
+        terms,
+    };
     let (wrap_label, user) = (label(forwarder, mint), user.insecure_clone());
     let consumed: PartLogic = Box::new(move |resource, root| {
-        let message = WrapMessage {
-            forwarder_id: forwarder.to_bytes(),
-            token_mint: mint.to_bytes(),
-            amount: terms.amount,
-            nonce: terms.nonce,
-            deadline: WRAP_DEADLINE,
-            action_tree_root: root.into(),
-        }
-        .base64_digest();
+        let signature = user.sign_message(&message.of(root)).into();
         Ok(Box::new(Witness(
             TransferLogic::mint_resource_logic_with_wrap_auth(
                 resource,
@@ -372,7 +365,7 @@ pub fn wrap_parts(
                 WrapAuthInfo {
                     nonce: terms.nonce,
                     deadline: WRAP_DEADLINE,
-                    signature: user.sign_message(message.as_bytes()).into(),
+                    signature,
                     ed25519_ix_index: terms.ed25519_ix_index,
                 },
             ),
@@ -396,23 +389,28 @@ pub fn wrap_parts(
         )))
     });
     let deposit = wrap.deposit;
-    Ok(Parts {
-        consumed: Part::Consumed {
-            resource: deposit.consumed,
-            nf_key: NullifierKey::default(),
-            path: None,
-            logic: consumed,
+    Ok(WrapParts {
+        parts: Parts {
+            consumed: Part::Consumed {
+                resource: deposit.consumed,
+                nf_key: NullifierKey::default(),
+                path: None,
+                logic: consumed,
+            },
+            created: Part::Created {
+                resource: deposit.created,
+                logic: created,
+            },
         },
-        created: Part::Created {
-            resource: deposit.created,
-            logic: created,
-        },
+        message,
     })
 }
 
-/// An unwrap's resources for [`action`], as [`unwrap`] builds them for the
-/// transfer logic: the owner signs the root of the action they end up in.
-pub fn unwrap_parts(
+/// The resources of an unwrap of `wrapped`, `owner`'s shielded resource of
+/// `L` under the label of `forwarder` and `mint`, to `recipient`'s token
+/// account, at `path` in the adapter's commitment tree: the owner signs the
+/// root of the action they end up in under `L`'s domain.
+pub fn unwrap_parts<L: Logic>(
     forwarder: Pubkey,
     mint: Pubkey,
     wrapped: Resource,
@@ -420,7 +418,7 @@ pub fn unwrap_parts(
     recipient: Pubkey,
     path: MerklePath,
 ) -> anyhow::Result<Parts> {
-    let unwrap = action::unwrap::<TransferLogic>(
+    let unwrap = action::unwrap::<L>(
         label(forwarder, mint),
         wrapped,
         owner.keys.clone(),
@@ -431,10 +429,10 @@ pub fn unwrap_parts(
     let signer = owner.clone();
     let consumed: PartLogic = Box::new(move |resource, root| {
         let auth_sig = signer.auth_sk.sign(
-            <<TransferLogic as Logic>::Call as ForwarderCall>::AUTH_SIGNATURE_DOMAIN,
+            <L::Call as ForwarderCall>::AUTH_SIGNATURE_DOMAIN,
             root.as_bytes(),
         );
-        Ok(Box::new(Witness(
+        Ok(Box::new(Witness(L::from(
             TransferLogic::consume_persistent_resource_logic(
                 resource,
                 root,
@@ -442,15 +440,12 @@ pub fn unwrap_parts(
                 signer.keys.value,
                 auth_sig,
             ),
-        )))
+        ))))
     });
     let burn_label = label(forwarder, mint);
     let created: PartLogic = Box::new(move |resource, root| {
-        Ok(Box::new(Witness(TransferLogic::burn_resource_logic(
-            resource,
-            root,
-            burn_label,
-            recipient.to_bytes(),
+        Ok(Box::new(Witness(L::from(
+            TransferLogic::burn_resource_logic(resource, root, burn_label, recipient.to_bytes()),
         ))))
     });
     Ok(Parts {

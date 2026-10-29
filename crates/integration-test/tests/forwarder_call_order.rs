@@ -5,7 +5,7 @@
 use anoma_pa_solana_integration_test::envs::common::environment::Environment;
 use anoma_pa_testkit::environment::Prover;
 use anoma_pa_testkit::transaction::Transaction;
-use anoma_pa_testkit::{execute_tx, prove_actions};
+use anoma_pa_testkit::{execute_tx, latest_root, prove_actions};
 use anoma_rm_risc0::resource::Resource;
 use anomapay_spl_token_forwarder_integration_test::fixtures::{
     self, Parts, ShieldedOwner, WrapTerms,
@@ -14,6 +14,7 @@ use anomapay_spl_token_forwarder_integration_test::refusal::balances;
 use anomapay_spl_token_forwarder_integration_test::setup::{self, Forwarder, balance};
 use anyhow::Context;
 use solana_signer::Signer;
+use transfer_library::TransferLogic;
 
 /// The user wraps its whole balance first, so the wrap of the action can only
 /// pull the tokens the unwrap of the same action releases to the user.
@@ -68,15 +69,21 @@ where
     );
 
     let unwrap_first = prove_unwrap_and_wrap(env, forwarder, &owner, wrapped, amount, true).await?;
+    let root_before = latest_root(env).await?;
     execute_tx(env, unwrap_first)
         .await
         .context("failed to settle the action with the unwrap first")?;
+    let root_after = latest_root(env).await?;
+    println!("the unwrap first in the list: the latest root moves {root_before} -> {root_after}");
+    anyhow::ensure!(
+        root_after != root_before,
+        "the action with the unwrap first adds its commitments"
+    );
     let after = balances(env, &accounts).await?;
     println!("the unwrap first in the list: user and escrow hold {after:?}");
     anyhow::ensure!(
         after == [0, escrow_before + amount],
-        "the wrap pulls the {amount} the unwrap releases back into the escrow, which holds {}",
-        escrow_before + amount
+        "the balances end where they started: the wrap pulls back the {amount} the unwrap released"
     );
     Ok(())
 }
@@ -101,7 +108,7 @@ where
         .protocol_adapter
         .commitment_tree
         .path_to(wrapped.commitment())?;
-    let unwrap = fixtures::unwrap_parts(
+    let unwrap = fixtures::unwrap_parts::<TransferLogic>(
         forwarder.program,
         forwarder.mint,
         wrapped,
@@ -120,7 +127,8 @@ where
             ed25519_ix_index: 0,
         },
         "call-order/wrap",
-    )?;
+    )?
+    .parts;
     let (
         Parts {
             consumed: spent,
@@ -137,7 +145,8 @@ where
         vec![spent, pulled, unwrapped, deposited]
     };
     let seed = format!("call-order/unwrap-first={unwrap_first}");
-    prove_actions(env, &[fixtures::action(parts, &seed)?]).await
+    let action = fixtures::action(parts, anoma_pa_testkit::fixtures::kind_tree(), &seed)?;
+    prove_actions(env, &[action.witnesses]).await
 }
 
 #[tokio::test(flavor = "multi_thread")]
