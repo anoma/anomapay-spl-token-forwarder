@@ -469,7 +469,7 @@ dependencies = [
 
 [[package]]
 name = "anomapay-spl-token-forwarder-client"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anchor-lang",
  "anoma-pa-solana-client",
@@ -5404,7 +5404,7 @@ dependencies = [
 
 [[package]]
 name = "spl-token-forwarder"
-version = "2.0.0-rc.9"
+version = "2.0.0-rc.10"
 dependencies = [
  "anchor-lang",
  "anoma-rm-core",
