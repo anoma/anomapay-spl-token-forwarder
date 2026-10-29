@@ -83,7 +83,7 @@ where
     println!("the unwrap first in the list: user and escrow hold {after:?}");
     anyhow::ensure!(
         after == [0, escrow_before + amount],
-        "the balances end where they started: the wrap pulls back the {amount} the unwrap released"
+        "the balances end where the first wrap left them: the wrap pulls back the {amount} the unwrap released"
     );
     Ok(())
 }
