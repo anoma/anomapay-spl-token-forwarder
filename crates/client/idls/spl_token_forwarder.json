@@ -2,7 +2,7 @@
   "address": "34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4",
   "metadata": {
     "name": "spl_token_forwarder",
-    "version": "2.0.0-rc.10",
+    "version": "2.0.0-rc.11",
     "spec": "0.1.0",
     "description": "SPL Token forwarder for wrap/unwrap operations with Ed25519 signature verification"
   },
