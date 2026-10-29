@@ -899,36 +899,31 @@
     },
     {
       "code": 6023,
-      "name": "TokenTransferFailed",
-      "msg": "Token transfer failed - check the SPL Token error in the logs"
-    },
-    {
-      "code": 6024,
       "name": "UnwrapToEscrow",
       "msg": "Unwrap recipient is the escrow authority - the tokens would never leave escrow"
     },
     {
-      "code": 6025,
+      "code": 6024,
       "name": "InvalidInitialization",
       "msg": "The config is already at this build's CONFIG_VERSION - rotating the logic ref takes a build that raises it"
     },
     {
-      "code": 6026,
+      "code": 6025,
       "name": "OwnableUnauthorizedAccount",
       "msg": "The signer is not the forwarder's owner"
     },
     {
-      "code": 6027,
+      "code": 6026,
       "name": "OwnableInvalidOwner",
       "msg": "The zero key cannot be the owner"
     },
     {
-      "code": 6028,
+      "code": 6027,
       "name": "InvalidUpgradeBuffer",
       "msg": "Buffer is not a loader buffer holding a program"
     },
     {
-      "code": 6029,
+      "code": 6028,
       "name": "Unauthorized",
       "msg": "Unauthorized: the signer does not hold the authority this instruction requires"
     }

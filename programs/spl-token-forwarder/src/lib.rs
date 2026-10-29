@@ -505,7 +505,8 @@ fn spl_close_account_ix(
 /// authority as the signer: as the user's delegate on a wrap, as the escrow
 /// account's owner on an unwrap or a closing drain. The SPL Token program
 /// enforces the delegate approval, the balance and that both accounts hold
-/// the same mint; the transferred amount is exact, so no before/after
+/// the same mint, and its refusal halts the forwarder with the token
+/// program's error; the transferred amount is exact, so no before/after
 /// balance check is needed.
 fn transfer_signed_by_escrow<'info>(
     source: &AccountInfo<'info>,
@@ -533,11 +534,7 @@ fn transfer_signed_by_escrow<'info>(
             token_program.clone(),
         ],
         &[ESCROW_SIGNER_SEEDS],
-    )
-    .map_err(|e| {
-        msg!("Token transfer failed: {:?}", e);
-        ErrorCode::TokenTransferFailed
-    })?;
+    )?;
     Ok(())
 }
 
