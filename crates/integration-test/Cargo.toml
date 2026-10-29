@@ -22,12 +22,12 @@ e2e = ["anoma-pa-solana-integration-test/e2e"]
 
 [dependencies]
 # The adapter's harness: pa-testkit's environments for the Solana adapter.
-anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "7c22597e9be666dcb0aba90fcbd61b5b43d6678a", default-features = false }
+anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "bindings/v0.5.0", default-features = false }
 # The Anchor the harness and the programs build with: the traits of the
 # generated bindings (account decoding, discriminators).
 anchor-lang = { git = "https://github.com/otter-sec/anchor", rev = "2c9747a2d31bd5e94745cee6c083577f3e6675c0" }
 # The client and pa-testkit the harness pins.
-anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", rev = "94c4b3bb5b4c74d66093330d79cebca789120552" }
+anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", tag = "bindings/v0.9.0" }
 anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "ce0dba467d5b00cd216acc7de44c263f5335add6", default-features = false, features = [
   "fixtures",
 ] }

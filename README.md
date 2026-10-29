@@ -19,7 +19,7 @@ The adapter calls the forwarder through the external calls a settled transaction
 | `client/` | The operator scripts' TypeScript instruction builders, PDAs and cluster helpers |
 | `docs/` | [OPERATIONS.md](docs/OPERATIONS.md) (deploying and operating the forwarder), [INTEGRATION.md](docs/INTEGRATION.md) (its events and call segments), [EMERGENCY_MIGRATION.md](docs/EMERGENCY_MIGRATION.md) (the emergency-migrating build, for a flaw in a circuit version) and [DEVNET_DEPLOYMENT.md](docs/DEVNET_DEPLOYMENT.md) (the devnet record) |
 
-The program builds against the adapter's program crate, pinned by revision in `Cargo.toml`: it reads the adapter's state account to check that the adapter is paused before the owner closes the forwarder's accounts, and uses the upgrade helpers the adapter shares with its forwarders.
+The program builds against the adapter's program crate, pinned by release tag in `Cargo.toml`: it reads the adapter's state account to check that the adapter is paused before the owner closes the forwarder's accounts, and uses the upgrade helpers the adapter shares with its forwarders.
 
 ## Development
 

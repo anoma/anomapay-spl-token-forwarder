@@ -1411,8 +1411,8 @@ dependencies = [
 
 [[package]]
 name = "anoma-pa-solana-client"
-version = "0.8.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=94c4b3bb5b4c74d66093330d79cebca789120552#94c4b3bb5b4c74d66093330d79cebca789120552"
+version = "0.9.0"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?tag=bindings%2Fv0.9.0#5887eed34c30048689e0bf7126e2f22d1a93c5a2"
 dependencies = [
  "anchor-lang",
  "anoma-rm-risc0",
@@ -1437,11 +1437,11 @@ dependencies = [
 
 [[package]]
 name = "anoma-pa-solana-integration-test"
-version = "0.4.0"
-source = "git+https://github.com/anoma/solana-protocol-adapter?rev=7c22597e9be666dcb0aba90fcbd61b5b43d6678a#7c22597e9be666dcb0aba90fcbd61b5b43d6678a"
+version = "0.5.0"
+source = "git+https://github.com/anoma/solana-protocol-adapter?tag=bindings%2Fv0.5.0#575ea12a28bd728bea6ac99484a3480521bb6ab2"
 dependencies = [
  "anchor-lang",
- "anoma-pa-solana-client 0.8.0 (git+https://github.com/anoma/anoma-pa-solana-client?rev=94c4b3bb5b4c74d66093330d79cebca789120552)",
+ "anoma-pa-solana-client 0.9.0",
  "anoma-pa-testkit",
  "anoma-risc0-kind-trees",
  "anoma-rm-risc0",
@@ -1573,7 +1573,7 @@ name = "anomapay-spl-token-forwarder-client"
 version = "0.6.0"
 dependencies = [
  "anchor-lang",
- "anoma-pa-solana-client 0.8.0 (git+https://github.com/anoma/anoma-pa-solana-client?rev=94c4b3bb5b4c74d66093330d79cebca789120552)",
+ "anoma-pa-solana-client 0.9.0",
  "base64 0.22.1",
  "serde",
  "serde_json",
@@ -1599,7 +1599,7 @@ version = "0.6.0"
 source = "git+https://github.com/anoma/anomapay-spl-token-forwarder?tag=bindings%2Fv0.6.0#220ed827053046cfeb0d43ceeaf826f09ae6b30f"
 dependencies = [
  "anchor-lang",
- "anoma-pa-solana-client 0.8.0 (git+https://github.com/anoma/anoma-pa-solana-client?tag=bindings%2Fv0.8.0)",
+ "anoma-pa-solana-client 0.8.0",
  "base64 0.22.1",
  "serde_json",
  "sha2 0.10.9",
@@ -1610,7 +1610,7 @@ name = "anomapay-spl-token-forwarder-integration-test"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
- "anoma-pa-solana-client 0.8.0 (git+https://github.com/anoma/anoma-pa-solana-client?rev=94c4b3bb5b4c74d66093330d79cebca789120552)",
+ "anoma-pa-solana-client 0.9.0",
  "anoma-pa-solana-integration-test",
  "anoma-pa-testkit",
  "anoma-rm-risc0",

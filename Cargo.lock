@@ -390,8 +390,8 @@ dependencies = [
 
 [[package]]
 name = "anoma-pa-solana-client"
-version = "0.8.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?rev=94c4b3bb5b4c74d66093330d79cebca789120552#94c4b3bb5b4c74d66093330d79cebca789120552"
+version = "0.9.0"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?tag=bindings%2Fv0.9.0#5887eed34c30048689e0bf7126e2f22d1a93c5a2"
 dependencies = [
  "anchor-lang",
  "anoma-rm-risc0",
@@ -2898,7 +2898,7 @@ dependencies = [
 [[package]]
 name = "protocol-adapter"
 version = "2.0.0-rc.10"
-source = "git+https://github.com/anoma/solana-protocol-adapter?rev=7c22597e9be666dcb0aba90fcbd61b5b43d6678a#7c22597e9be666dcb0aba90fcbd61b5b43d6678a"
+source = "git+https://github.com/anoma/solana-protocol-adapter?tag=contracts%2Fv2.0.0-rc.10#6f18b62fa1612d0da817da8b3579c529287889f0"
 dependencies = [
  "anchor-lang",
  "anoma-rm-core",
