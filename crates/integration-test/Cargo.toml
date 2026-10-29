@@ -22,27 +22,27 @@ e2e = ["anoma-pa-solana-integration-test/e2e"]
 
 [dependencies]
 # The adapter's harness: pa-testkit's environments for the Solana adapter.
-anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "bindings/v0.5.0", default-features = false }
+anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "c8eda8dfa65f542829bdee33d5e2e070e1489535", default-features = false }
 # The Anchor the harness and the programs build with: the traits of the
 # generated bindings (account decoding, discriminators).
 anchor-lang = { git = "https://github.com/otter-sec/anchor", rev = "2c9747a2d31bd5e94745cee6c083577f3e6675c0" }
 # The client and pa-testkit the harness pins.
 anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", tag = "bindings/v0.9.0" }
-anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "ce0dba467d5b00cd216acc7de44c263f5335add6", default-features = false, features = [
+anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "c2a44b6a466b21176aa2e3ee82684e1882588b81", default-features = false, features = [
   "fixtures",
 ] }
 anomapay-spl-token-forwarder-client = { path = "../client", features = ["rpc"] }
-anoma-rm-risc0 = { version = "=2.0.0-rc.8.1", default-features = false, features = ["transaction"] }
-anoma-rm-risc0-gadgets = "=2.0.0-rc.8.1"
+anoma-rm-risc0 = { version = "=2.0.0-rc.8.2", default-features = false, features = ["transaction"] }
+anoma-rm-risc0-gadgets = "=2.0.0-rc.8.2"
 # The AnomaPay transfer resource whose logic ref (`TOKEN_TRANSFER_ID`) the
 # forwarder serves, and its emergency-migrating logic
 # (`EMERGENCY_MIGRATING_TOKEN_TRANSFER_ID`), which the emergency-migrating
 # build moves to: another build has another logic ref, which a forwarder
 # configured for this one refuses.
-emergency_migrating_transfer_library = { git = "https://github.com/anoma/anomapay-solana-resource", tag = "v2.0.0-rc.11" }
-emergency_migrating_transfer_witness = { git = "https://github.com/anoma/anomapay-solana-resource", tag = "v2.0.0-rc.11" }
-transfer_library = { git = "https://github.com/anoma/anomapay-solana-resource", tag = "v2.0.0-rc.11" }
-transfer_witness = { git = "https://github.com/anoma/anomapay-solana-resource", tag = "v2.0.0-rc.11" }
+emergency_migrating_transfer_library = { git = "https://github.com/anoma/anomapay-solana-resource", tag = "v2.0.0-rc.12" }
+emergency_migrating_transfer_witness = { git = "https://github.com/anoma/anomapay-solana-resource", tag = "v2.0.0-rc.12" }
+transfer_library = { git = "https://github.com/anoma/anomapay-solana-resource", tag = "v2.0.0-rc.12" }
+transfer_witness = { git = "https://github.com/anoma/anomapay-solana-resource", tag = "v2.0.0-rc.12" }
 anyhow = "1.0"
 bincode = "1.3"
 k256 = "0.13"
