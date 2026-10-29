@@ -7,14 +7,11 @@ use anoma_pa_testkit::environment::Prover;
 use anoma_pa_testkit::transaction::Transaction;
 use anoma_pa_testkit::{execute_tx, latest_root, prove_actions};
 use anoma_rm_risc0::resource::Resource;
-use anomapay_spl_token_forwarder_integration_test::fixtures::{
-    self, Parts, ShieldedOwner, WrapTerms,
-};
+use anomapay_spl_token_forwarder_integration_test::fixtures::{self, ShieldedOwner, WrapTerms};
 use anomapay_spl_token_forwarder_integration_test::refusal::balances;
 use anomapay_spl_token_forwarder_integration_test::setup::{self, Forwarder, balance};
 use anyhow::Context;
 use solana_signer::Signer;
-use transfer_library::TransferLogic;
 
 /// The user wraps its whole balance first, so the wrap of the action can only
 /// pull the tokens the unwrap of the same action releases to the user.
@@ -108,7 +105,7 @@ where
         .protocol_adapter
         .commitment_tree
         .path_to(wrapped.commitment())?;
-    let unwrap = fixtures::unwrap_parts::<TransferLogic>(
+    let unwrap = fixtures::unwrap_parts(
         forwarder.program,
         forwarder.mint,
         wrapped,
@@ -127,26 +124,14 @@ where
             ed25519_ix_index: 0,
         },
         "call-order/wrap",
-    )?
-    .parts;
-    let (
-        Parts {
-            consumed: spent,
-            created: unwrapped,
-        },
-        Parts {
-            consumed: pulled,
-            created: deposited,
-        },
-    ) = (unwrap, wrap);
+    )?;
     let parts = if unwrap_first {
-        vec![spent, unwrapped, pulled, deposited]
+        vec![unwrap.consumed, unwrap.created, wrap.consumed, wrap.created]
     } else {
-        vec![spent, pulled, unwrapped, deposited]
+        vec![unwrap.consumed, wrap.consumed, unwrap.created, wrap.created]
     };
-    let seed = format!("call-order/unwrap-first={unwrap_first}");
-    let action = fixtures::action(parts, anoma_pa_testkit::fixtures::kind_tree(), &seed)?;
-    prove_actions(env, &[action.witnesses]).await
+    let action = fixtures::action(parts, &format!("call-order/unwrap-first={unwrap_first}"))?;
+    prove_actions(env, &[action]).await
 }
 
 #[tokio::test(flavor = "multi_thread")]
