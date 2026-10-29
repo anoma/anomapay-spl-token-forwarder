@@ -45,7 +45,7 @@ The logic ref changes whenever the resource circuit is rebuilt. It is rotated as
 STF_LOGIC_REF=<new 32-byte hex verifying key> ./scripts/dev.sh forwarder reinitialize --cluster <c>   # owner wallet
 ```
 
-Escrow and nonce bitmaps are untouched. The instruction emits `Initialized` with the new version, as OpenZeppelin's reinitializer does; read the new ref from the config account. Resources wrapped under the previous ref leave through the new one once the adapter's kind tree lists the previous version as an alias of the new one (anoma/risc0-kind-trees ADR-0008, rule R2): a transaction converts each into a resource under the new ref, which then unwraps. Until that tree's root is installed (the adapter's `set_kind_tree_root`, through its `set-kind-table` command), they stay in escrow and can neither unwrap nor convert.
+Escrow and nonce bitmaps are untouched. The instruction emits `Initialized` with the new version, as OpenZeppelin's reinitializer does; read the new ref from the config account. Resources wrapped under the previous ref leave through the new one once the adapter's kind tree lists the previous version as an alias of the new one (anoma/risc0-kind-trees ADR-0008, rule R2): a transaction converts each into a resource under the new ref, which then unwraps. Until that tree's root is installed (the adapter's `set_kind_tree_root`, through its `set-kind-tree-root` command), they stay in escrow and can neither unwrap nor convert.
 
 ## Checking a devnet deployment with a wrap and an unwrap
 
