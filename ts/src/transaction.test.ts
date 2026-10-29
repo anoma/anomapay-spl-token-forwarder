@@ -36,13 +36,13 @@ const compiledByKit = (instructions: Instruction[]) =>
   );
 
 describe("compileLegacyTransaction", () => {
-  // Instructions with signers, writable and read-only accounts and a
-  // read-only invoked program, which kit compiles.
+  // Instructions with writable and read-only signers, writable and read-only
+  // accounts and a read-only invoked program, which kit compiles.
   it("compiles what kit compiles to kit's bytes", async () => {
     const instructions = [
       await forwarder.initNonceBitmapIx(payer, key(2), 3n),
       await forwarder.transferOwnershipIx(key(4), key(5)),
-      await forwarder.closeNonceBitmapsBatchIx(key(4), key(6), [key(7), key(8)]),
+      await forwarder.closeNonceBitmapsBatchIx(key(10), key(6), [key(7), key(8)]),
     ];
     const ours = compileLegacyTransaction(payer, instructions, lifetime);
     const kits = compiledByKit(instructions);
@@ -50,6 +50,10 @@ describe("compileLegacyTransaction", () => {
     expect(Array.from(ours.messageBytes)).toEqual(Array.from(kits.messageBytes));
     expect(ours.signatures).toEqual(kits.signatures);
     expect(ours.lifetimeConstraint).toEqual(lifetime);
+    // transfer_ownership's owner, key(4), only signs.
+    const message = getCompiledTransactionMessageDecoder().decode(ours.messageBytes);
+    console.log(message.header);
+    expect(message.header.numReadonlySignerAccounts).toBe(1);
   });
 
   // The upgrade passes the forwarder, which it invokes, writable to the
@@ -63,7 +67,8 @@ describe("compileLegacyTransaction", () => {
     );
     if (message.version !== "legacy") throw new Error(`a ${message.version} message, not a legacy one`);
     console.log(message.header, message.staticAccounts);
-    const { numSignerAccounts, numReadonlyNonSignerAccounts } = message.header;
+    const { numSignerAccounts, numReadonlySignerAccounts, numReadonlyNonSignerAccounts } = message.header;
+    expect(numReadonlySignerAccounts, "the owner, key(4), only signs").toBe(1);
     const position = message.staticAccounts.indexOf(forwarder.programId);
     const writableNonSigners = message.staticAccounts.length - numReadonlyNonSignerAccounts;
     expect(position, "the forwarder is a writable non-signer").toBeGreaterThanOrEqual(numSignerAccounts);

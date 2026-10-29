@@ -317,7 +317,11 @@ abstract class ForwarderInstance {
     );
   }
 
-  /** `upgrade` to `buffer`'s code, by the owner, after the compute budget it needs; the buffer's rent goes to `spill`. */
+  /**
+   * `upgrade` to `buffer`'s code, by the owner, after the compute budget it
+   * needs; the buffer's rent goes to `spill`. kit refuses the writable invoked
+   * program: compile with `compileLegacyTransaction`.
+   */
   async upgradeIxs(owner: Address, buffer: Address, spill: Address): Promise<[Instruction, Instruction]> {
     return [
       getSetComputeUnitLimitInstruction({ units: UPGRADE_COMPUTE_UNIT_LIMIT }),

@@ -236,9 +236,7 @@ describe("the instances' builders", () => {
     ]);
   });
 
-  // `@anchor-lang/core` 1.x encoded an instruction's arguments into a fixed
-  // 1000-byte buffer, which held at most 30 vulnerable logic refs; Anchor 2's
-  // coder sizes each encoding by its value.
+  // The coder sizes each encoding by its value: 40 refs encode to 1324 bytes.
   it("encode a reinitialize of 40 vulnerable logic refs, more than 1000 bytes", async () => {
     const f = EmergencyMigratingSplTokenForwarder.at(rpc, program);
     const refs = Array.from({ length: 40 }, (_, i) => bytes(i + 1));
