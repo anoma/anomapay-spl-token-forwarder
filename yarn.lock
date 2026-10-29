@@ -518,7 +518,7 @@
     "@solana/errors" "8.5.0"
     "@solana/promises" "8.5.0"
 
-"@solana/sysvars@8.5.0", "@solana/sysvars@^8.5.0":
+"@solana/sysvars@8.5.0":
   version "8.5.0"
   resolved "https://registry.yarnpkg.com/@solana/sysvars/-/sysvars-8.5.0.tgz#8b706127ce20daf2c016c87dee0da6d497e868db"
   integrity sha512-vidKFEOAujEVizDUHFCmmIpHsS3Zu/fXJKcDUtbUn+bwD9Z1fRiper8rZW3Qdtgu1GmrH3O8MoyL2Nrp7k6QNw==

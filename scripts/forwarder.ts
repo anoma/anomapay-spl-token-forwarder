@@ -33,21 +33,31 @@
 import * as anchor from "@anchor-lang/core";
 import { Program } from "@anchor-lang/core";
 import { getCreateAssociatedTokenIdempotentInstructionAsync } from "@solana-program/token";
-import { appendTransactionMessageInstruction, createTransactionMessage, pipe } from "@solana/kit";
+import { appendTransactionMessageInstruction, createTransactionMessage, pipe, type Instruction } from "@solana/kit";
 import { confirmedProvider } from "../client/provider";
-import { SplTokenForwarder } from "../target/types/spl_token_forwarder";
-import { initializeForwarder, reinitializeForwarder } from "../client/instructions";
+import type { SplTokenForwarder as SplTokenForwarderIdl } from "../target/types/spl_token_forwarder";
+import { SplTokenForwarder } from "../ts/src/instance";
 import { deriveForwarderConfigPda, deriveForwarderEscrowAuthority, deriveTokenAccount } from "../ts/src/pda";
-import { fail, requireHexBytes, requirePubkey } from "./cli-utils";
+import { fail, requireEnv, requireHexBytes, requirePubkey } from "./cli-utils";
 
-const provider = confirmedProvider();
+const provider = confirmedProvider(requireEnv("ANCHOR_PROVIDER_URL", "the RPC endpoint"), process.env.ANCHOR_WS_URL);
 anchor.setProvider(provider);
 const wallet = provider.wallet;
-const forwarder = anchor.workspace.SplTokenForwarder as Program<SplTokenForwarder>;
+// This cluster's build (target/idl): its config read through the IDL's types,
+// its instructions built by the bindings' instance.
+const forwarder = anchor.workspace.SplTokenForwarder as Program<SplTokenForwarderIdl>;
+const instance = SplTokenForwarder.at(provider.rpc, forwarder.address);
 // The adapter this build of the forwarder pairs with (env/<cluster>.env).
 const adapterProgramId = requirePubkey("PROTOCOL_ADAPTER_PROGRAM_ID", "the protocol adapter the forwarder serves");
 
 const requireMint = () => requirePubkey("STF_TOKEN_MINT", "the mint whose escrow to operate on");
+
+/** Sends `ix`, which the wallet signs and pays for. */
+async function send(ix: Instruction) {
+  await provider.sendAndConfirm(
+    pipe(createTransactionMessage({ version: 0 }), (m) => appendTransactionMessageInstruction(ix, m)),
+  );
+}
 
 async function configPda() {
   return (await deriveForwarderConfigPda(forwarder.address))[0];
@@ -94,7 +104,7 @@ async function init() {
     console.log(`  adapter:   ${adapterProgramId}`);
     console.log(`  logic ref: ${Buffer.from(logicRef).toString("hex")}`);
     console.log(`  owner:     ${owner}`);
-    await initializeForwarder(forwarder, adapterProgramId, logicRef, owner, wallet.address).rpc();
+    await send(await instance.initializeIx(wallet.address, adapterProgramId, logicRef, owner));
     console.log("✅ Config initialized");
   }
 
@@ -106,9 +116,7 @@ async function init() {
       owner: escrowAuthority,
       mint,
     });
-    await provider.sendAndConfirm(
-      pipe(createTransactionMessage({ version: 0 }), (m) => appendTransactionMessageInstruction(create, m)),
-    );
+    await send(create);
     const escrowAta = await deriveTokenAccount(escrowAuthority, mint);
     console.log(`✅ Escrow for ${mint}: authority ${escrowAuthority}, ATA ${escrowAta}`);
   }
@@ -122,7 +130,7 @@ async function reinitializeCommand() {
   );
   const existing = await requireConfig();
   const previous = Buffer.from(existing.logicRef).toString("hex");
-  await reinitializeForwarder(forwarder, wallet.address, logicRef).rpc();
+  await send(await instance.reinitializeIx(wallet.address, logicRef));
   const config = await requireConfig();
   console.log(
     `✅ Logic ref rotated: ${previous} -> ${Buffer.from(config.logicRef).toString("hex")} (config version ${config.version})`,

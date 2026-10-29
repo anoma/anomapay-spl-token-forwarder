@@ -11,8 +11,7 @@
     "@noble/hashes": "^1.8.0",
     "@solana-program/compute-budget": "^0.20.0",
     "@solana-program/token": "^0.16.1",
-    "@solana/kit": "^8.5.0",
-    "@solana/sysvars": "^8.5.0"
+    "@solana/kit": "^8.5.0"
   },
   "devDependencies": {
     "@solana-program/program-metadata": "^0.10.0",
