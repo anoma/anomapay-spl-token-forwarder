@@ -2898,7 +2898,7 @@ dependencies = [
 [[package]]
 name = "protocol-adapter"
 version = "2.0.0-rc.11"
-source = "git+https://github.com/anoma/solana-protocol-adapter?rev=c8eda8dfa65f542829bdee33d5e2e070e1489535#c8eda8dfa65f542829bdee33d5e2e070e1489535"
+source = "git+https://github.com/anoma/solana-protocol-adapter?tag=contracts%2Fv2.0.0-rc.11#7e1d46a87c1c925e25ebf0c6ea1b214b8c238afb"
 dependencies = [
  "anchor-lang",
  "anoma-rm-core",

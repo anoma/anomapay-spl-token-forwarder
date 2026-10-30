@@ -18,7 +18,7 @@ anchor-lang = { git = "https://github.com/otter-sec/anchor", rev = "2c9747a2d31b
 # harness share one copy of it. The transfer resource's crates the tests also
 # take bring an older copy of this forwarder's client, which only those crates
 # use.
-protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "c8eda8dfa65f542829bdee33d5e2e070e1489535", default-features = false, features = ["no-entrypoint"] }
+protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "contracts/v2.0.0-rc.11", default-features = false, features = ["no-entrypoint"] }
 anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", tag = "bindings/v0.9.0", default-features = false }
 
 [profile.release]
