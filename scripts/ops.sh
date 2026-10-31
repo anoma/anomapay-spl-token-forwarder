@@ -47,10 +47,8 @@ Development:
                  type-check them and run their tests
 
 Cluster operations (--cluster required):
-  deploy         First-time deploy of the production build. On localnet the
-                 forwarder is initialized at once; on devnet/mainnet its IDL
-                 is published, and forwarder init is left for after the
-                 metadata account is given to the owner.
+  deploy         First-time deploy of the production build, then forwarder
+                 init; on devnet/mainnet its IDL is published before init.
   upgrade        Rebuild and upgrade in place: through the forwarder's own
                  upgrade (owner wallet) once its upgrade authority is its PDA,
                  else through the loader
@@ -59,8 +57,7 @@ Cluster operations (--cluster required):
                  environment variables; see scripts/forwarder.ts.
   idl-publish    Publish the production IDL on chain (the program's canonical
                  Program Metadata IDL account; signer must be the upgrade
-                 authority to create it, the upgrade authority or its
-                 authority to update it)
+                 authority, so only before init)
   status         Show the wallet's address and balance, and whether the
                  forwarder is deployed and initialized
 
@@ -82,8 +79,8 @@ Flags:
   --e2e            integration-test: the e2e cases
   --check          test-program: compare instead of writing
 
-Forwarder initialization parameters (required by forwarder init and a
-localnet deploy, which initializes):
+Forwarder initialization parameters (required by forwarder init and deploy,
+which initializes):
   STF_LOGIC_REF        32-byte hex logic ref the forwarder serves
   STF_OWNER            base58 pubkey of the forwarder's initial owner, who
                        alone upgrades it and rotates its logic ref
@@ -452,11 +449,9 @@ run_operator_script() {
 cmd_deploy() {
   require_cmd anchor
   require_cmd yarn
-  # A localnet deploy initializes the forwarder (below): check its parameters
-  # before deploying.
-  if [[ "$CLUSTER" == "localnet" ]]; then
-    require_forwarder_init_params
-  fi
+  # A deploy initializes the forwarder (below): check its parameters before
+  # deploying.
+  require_forwarder_init_params
   if ! is_deployed "$FORWARDER_PROGRAM_ID"; then
     program_keypair >/dev/null
   fi
@@ -466,18 +461,13 @@ cmd_deploy() {
   deploy_program
 
   # `initialize` hands the program's upgrade authority to the program, and
-  # only the upgrade authority creates the program's canonical metadata
-  # account. On devnet and mainnet the IDL is published first, and
-  # initialization waits until the deployer has given that account to the
-  # owner, by hand (docs/OPERATIONS.md).
-  if [[ "$CLUSTER" == "localnet" ]]; then
-    echo "Initializing SPL token forwarder (idempotent)..."
-    run_ts scripts/forwarder.ts init
-  else
+  # only the upgrade authority writes the program's canonical metadata
+  # account, so on devnet and mainnet the IDL is published first.
+  if [[ "$CLUSTER" != "localnet" ]]; then
     cmd_idl_publish
-    echo "Next, by hand: give the forwarder's canonical metadata account to its owner, then run" \
-      "forwarder init (docs/OPERATIONS.md)."
   fi
+  echo "Initializing SPL token forwarder (idempotent)..."
+  run_ts scripts/forwarder.ts init
 
   echo ""
   echo "✅ Deploy complete (${CLUSTER}): ${FORWARDER_PROGRAM_ID}"
@@ -516,8 +506,8 @@ cmd_forwarder() {
 # generic Anchor clients decode the program's instructions, accounts, and
 # events straight from the cluster. The production build self-checks that the
 # dev-only instructions are absent, so a development IDL cannot be published
-# by accident. The program's upgrade authority creates the account; it or the
-# account's explicit authority updates it (client/programMetadata.ts).
+# by accident. The program's upgrade authority alone writes the account
+# (client/programMetadata.ts), so this runs only before `initialize`.
 cmd_idl_publish() {
   run_operator_script publish-idl.ts "$PROGRAM_IDL"
 }
