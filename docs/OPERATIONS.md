@@ -14,12 +14,10 @@ The forwarder's owner is set by its `initialize` (`STF_OWNER`) and stored in its
 export STF_LOGIC_REF=<32-byte hex verifying key of the AnomaPay resource logic>
 export STF_OWNER=<the owner's pubkey>
 export STF_TOKEN_MINT=<base58 mint>          # optional: also creates the mint's escrow ATA
-./scripts/dev.sh deploy --cluster devnet     # publishes the IDL, stops before init
-# by hand: give the forwarder's canonical IDL account to the owner
-./scripts/dev.sh forwarder init --cluster devnet
+./scripts/dev.sh deploy --cluster devnet     # publishes the IDL, then initializes
 ```
 
-A first deploy reads the forwarder's keypair path from the uncommitted `env/<cluster>.keys.env` ([env/README.md](../env/README.md)). On devnet and mainnet, `deploy` publishes the forwarder's IDL and stops before `initialize`, for the reason the adapter's deploy does: `initialize` gives the upgrade authority, which alone creates the program's canonical metadata accounts, to the program, so the deployer gives the IDL account to the owner (`program-metadata set-authority`) before initializing. On localnet it initializes at once.
+A first deploy reads the forwarder's keypair path from the uncommitted `env/<cluster>.keys.env` ([env/README.md](../env/README.md)). On devnet and mainnet, `deploy` publishes the forwarder's IDL before `initialize`: `initialize` gives the upgrade authority, which alone writes the program's canonical metadata accounts, to the program, so the IDL account keeps what the deploy published. On localnet it publishes no IDL.
 
 The program's upgrade authority, the deployer, initializes the config, as the EVM proxy runs its initializer at deployment; no other signer can. It hands the upgrade authority to the program's PDA. The config pins the adapter program id (`env/<cluster>.env`), the logic ref and the owner. A wrap is only executed when the adapter forwards it for a resource carrying that logic ref. One escrow authority, a PDA of the forwarder, owns every mint's escrow: the associated token account of the authority and the mint, as the EVM forwarder holds every token at its own address. `forwarder init` with `STF_TOKEN_MINT` creates a mint's escrow account, and the same command adds further mints later.
 

@@ -160,6 +160,33 @@ async fn publish_idl_writes_the_canonical_idl_account() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Once `initialize` has handed the upgrade authority to the program, no
+/// wallet writes the canonical IDL account, the owner included.
+#[tokio::test(flavor = "multi_thread")]
+async fn publish_idl_refuses_the_owner_once_initialized() -> anyhow::Result<()> {
+    let (env, local) = setup::local().await?;
+    let (pda, _) = derive_upgrade_authority_pda(&local.forwarder.program);
+    let ran = run_script(
+        &env,
+        &local.owner,
+        "publish-idl.ts",
+        &["target/idl/spl_token_forwarder.json"],
+        &[],
+    )?;
+    anyhow::ensure!(
+        !ran.success
+            && ran.stderr.contains(&format!(
+                "cannot write {}'s canonical IDL account",
+                local.forwarder.program
+            ))
+            && ran
+                .stderr
+                .contains(&format!("the program's upgrade authority is {pda}")),
+        "{ran}"
+    );
+    Ok(())
+}
+
 /// Before `initialize` the wallet holding the upgrade authority upgrades
 /// through the loader; after it, the owner upgrades through the program,
 /// which runs the buffer's code and announces its hash.
