@@ -2,15 +2,15 @@
 
 Live state is always what `./scripts/dev.sh status --cluster devnet` reports; this file records what was deployed, by whom, and when. Update it after every deploy, upgrade, initialization or teardown. The adapter's record, and the settlement lookup table's, are the adapter repository's [docs/DEVNET_DEPLOYMENT.md](https://github.com/anoma/solana-protocol-adapter/blob/anthony/arm-v2-port/solana-pa-prototype/docs/DEVNET_DEPLOYMENT.md). The operations recorded below until 2026-10-04 ran from the adapter repository, where the forwarder lived, as `dev.sh <command> stf` and `dev.sh forwarder <command>`.
 
-**Record last verified:** 2026-10-22
+**Record last verified:** 2026-10-31
 
-## Fresh deployment (addresses since 2026-10-27, not yet deployed)
+## Deployment of 2026-10-31
 
-A deployment from scratch under new program IDs, for the clients generated from the programs' IDLs; the 2026-10-01 deployment below stays on devnet, unused. `env/devnet.env` names its addresses, and the operator's uncommitted `env/devnet.keys.env` names the program keypair, kept outside the repository.
+A deployment from scratch under new program IDs, for the clients generated from the programs' IDLs; the 2026-10-01 deployment below stays on devnet, unused. `env/devnet.env` names its addresses, and the operator's uncommitted `env/devnet.keys.env` names the program keypair, kept outside the repository. Deployed 2026-10-31 by the operator wallet `5S8LtbDPtQE7GtWWMBFY78gmiYp2LqS5BsoFDxKjoHr9`, the forwarder's stored owner; `initialize` handed the upgrade authority to the program's PDA `4Pyfdwbm98NFqUyaPMjRNryPVx3Kt7LqSQGXKWWJ3TkG` (seed `upgrade_authority`), so upgrades go through the owner-only `upgrade` (`dev.sh upgrade`).
 
 | Program | ID | State |
 |---|---|---|
-| SPL Token Forwarder | `34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4` | not yet deployed; to be initialized with the adapter `2gH5DnTwDLLFk3oYxnbrceSFdTMtvaxQz29x5W8Etmpx`, recorded in the adapter repository's record |
+| SPL Token Forwarder | `34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4` | deployed 2026-10-31, slot 517245444, from `9e81431` (spl-token-forwarder 2.0.0-rc.11; the deterministic build, executable hash `15ff41aa639cb02fc2596829998f3c0ca8103e31ed097aee82a69dc2a5fcc98d`, which the deployed program matches; `STF_LOGIC_REF=… STF_OWNER=… dev.sh deploy --prebuilt`, `5MyieDjCvgmtjRyLkjujH8pHo4T5vhtTC8SGe81DAPvJhCb8kHHpPGWMq5sgz4Sv4KsErBkhGsh2BWULcK2SCnuC`), which wrote the production IDL to the canonical Program Metadata account `6PkLX6BmNmX35XeMYEW8Lxy9s5FMwHBA3MRvXkDL3cTu` and initialized the config. ProgramData `8RDK7t1dBPn6FgNdJBE4QQirfLvu4mckMatpDXCdeRZb`. Config `BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar` (version 7) pins the adapter `2gH5DnTwDLLFk3oYxnbrceSFdTMtvaxQz29x5W8Etmpx`, recorded in the adapter repository's record, and the logic ref `c17a7ca5a0ec39b80d6efd7c1c8b810c3d9fb722ab32fbbc36f9eb683bce0b5b` (anoma/anomapay-solana-resource `v2.0.0-rc.12`); escrow authority `A3srA2cw6o11TCSyMpBbnpLVnu6RLe6eGZEFz3d2m8h1`, event authority `2LWJSMdT7QLhmcd1edp9tiQPq5cDhrEU7t3hEBGSToNd` |
 
 ## Deployment of 2026-10-01 (unused since 2026-10-27)
 
