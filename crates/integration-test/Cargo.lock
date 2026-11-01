@@ -1402,6 +1402,18 @@ name = "anoma-pa-solana-client"
 version = "0.9.0"
 source = "git+https://github.com/anoma/anoma-pa-solana-client?tag=bindings%2Fv0.9.0#5887eed34c30048689e0bf7126e2f22d1a93c5a2"
 dependencies = [
+ "bincode",
+ "heck 0.5.0",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "anoma-pa-solana-client"
+version = "0.10.0"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?tag=bindings%2Fv0.10.0#26a612eb0ee3353e03f73447ac080c5615c708ce"
+dependencies = [
  "anchor-lang",
  "anoma-rm-risc0",
  "base64 0.22.1",
@@ -1425,11 +1437,11 @@ dependencies = [
 
 [[package]]
 name = "anoma-pa-solana-integration-test"
-version = "0.6.0"
-source = "git+https://github.com/anoma/solana-protocol-adapter?tag=bindings%2Fv0.6.0#7e1d46a87c1c925e25ebf0c6ea1b214b8c238afb"
+version = "0.7.0"
+source = "git+https://github.com/anoma/solana-protocol-adapter?tag=bindings%2Fv0.7.0#3800e4bf642ccaa3a01ac4b133e5fc23fb6d426b"
 dependencies = [
  "anchor-lang",
- "anoma-pa-solana-client",
+ "anoma-pa-solana-client 0.10.0",
  "anoma-pa-testkit",
  "anoma-risc0-kind-trees",
  "anoma-rm-risc0",
@@ -1562,7 +1574,7 @@ version = "0.7.0"
 source = "git+https://github.com/anoma/anomapay-spl-token-forwarder?tag=bindings%2Fv0.7.0#3b41ae1d4d5ce0904c689abc410ca5f483918f91"
 dependencies = [
  "anchor-lang",
- "anoma-pa-solana-client",
+ "anoma-pa-solana-client 0.9.0",
  "base64 0.22.1",
  "serde_json",
  "sha2 0.10.9",
@@ -1570,10 +1582,10 @@ dependencies = [
 
 [[package]]
 name = "anomapay-spl-token-forwarder-client"
-version = "0.8.0"
+version = "0.10.0"
 dependencies = [
  "anchor-lang",
- "anoma-pa-solana-client",
+ "anoma-pa-solana-client 0.10.0",
  "base64 0.22.1",
  "serde",
  "serde_json",
@@ -1598,12 +1610,12 @@ name = "anomapay-spl-token-forwarder-integration-test"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
- "anoma-pa-solana-client",
+ "anoma-pa-solana-client 0.10.0",
  "anoma-pa-solana-integration-test",
  "anoma-pa-testkit",
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",
- "anomapay-spl-token-forwarder-client 0.8.0",
+ "anomapay-spl-token-forwarder-client 0.10.0",
  "anyhow",
  "base64 0.22.1",
  "bincode",
