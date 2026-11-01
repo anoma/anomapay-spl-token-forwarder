@@ -47,10 +47,11 @@ function instanceError(f: () => unknown): InstanceError {
 }
 
 describe("recordedDeployment", () => {
-  it("is no deployment on devnet while staging's program is not deployed yet", () => {
-    const error = instanceError(() => recordedDeployment("staging", DEVNET_GENESIS));
-    console.log(error.message);
-    expect(error.detail).toEqual({ kind: "NoDeployment", chainId: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1" });
+  it("is staging's devnet forwarder at the IDL's address", () => {
+    const found = recordedDeployment("staging", DEVNET_GENESIS);
+    console.log(found);
+    expect(found.chainId).toBe("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1");
+    expect(found.programId).toBe(address(idl.address));
   });
 
   it("is no deployment where production records none", () => {
