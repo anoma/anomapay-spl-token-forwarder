@@ -23,8 +23,10 @@ local = ["anoma-pa-solana-integration-test/local"]
 e2e = ["anoma-pa-solana-integration-test/e2e"]
 
 [dependencies]
-# The adapter's harness: pa-testkit's environments for the Solana adapter.
-anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "bindings/v0.9.0", default-features = false }
+# The adapter's harness: pa-testkit's environments for the Solana adapter, at
+# the merge of anoma/solana-protocol-adapter#168, which proves against the kind
+# tree devnet's adapter holds.
+anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "da4a600e02e0952cd7b9cf628a02f33c5dc5744b", default-features = false }
 # The Anchor the harness and the programs build with: the traits of the
 # generated bindings (account decoding, discriminators).
 anchor-lang = "1.2.2"
