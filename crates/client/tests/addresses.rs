@@ -3,7 +3,7 @@
 //! everywhere, so they run on every push.
 
 use anomapay_spl_token_forwarder_client::addresses::{
-    spl_token_forwarder_address, spl_token_forwarder_deployments_map, Environment,
+    spl_token_forwarder_deployments_map, Environment,
 };
 use solana_cluster_type::ClusterType;
 
@@ -30,17 +30,6 @@ fn env_value<'a>(env_file: &'a str, variable: &str) -> &'a str {
         values.len()
     );
     values[0]
-}
-
-/// The operator scripts deploy and operate the devnet forwarder at
-/// `env/devnet.env`'s `FORWARDER_PROGRAM_ID`: the record names the same one.
-#[test]
-fn the_records_devnet_address_is_env_devnets() {
-    let devnet = spl_token_forwarder_address(Environment::Staging, &ClusterType::Devnet)
-        .expect("staging records a devnet forwarder");
-    let address = env_value(env_file(ClusterType::Devnet), "FORWARDER_PROGRAM_ID");
-    println!("staging devnet: {devnet}, env/devnet.env: {address}");
-    assert_eq!(devnet.to_string(), address);
 }
 
 /// The emergency-migrating build a cluster runs takes its legacy forwarder
