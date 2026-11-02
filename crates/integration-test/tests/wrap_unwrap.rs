@@ -1,5 +1,6 @@
-//! Wraps and unwraps through the forwarder, settled by the adapter, on the
-//! local environment and the e2e environment.
+//! Wraps and unwraps through the forwarder, and transfers of the wrapped
+//! resources between them, settled by the adapter, on the local environment
+//! and the e2e environment.
 
 use anoma_pa_solana_integration_test::envs::common::environment::Environment;
 use anoma_pa_testkit::environment::Prover;
@@ -50,6 +51,19 @@ async fn local_wraps_then_unwraps() -> anyhow::Result<()> {
 async fn e2e_test_wraps_then_unwraps() -> anyhow::Result<()> {
     let (mut env, forwarder) = setup::e2e().await?;
     forwarder.wraps_then_unwraps(&mut env).await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn local_wraps_transfers_then_unwraps() -> anyhow::Result<()> {
+    let (mut env, local) = setup::local().await?;
+    local.forwarder.wraps_transfers_then_unwraps(&mut env).await
+}
+
+#[cfg(feature = "e2e")]
+#[tokio::test(flavor = "multi_thread")]
+async fn e2e_test_wraps_transfers_then_unwraps() -> anyhow::Result<()> {
+    let (mut env, forwarder) = setup::e2e().await?;
+    forwarder.wraps_transfers_then_unwraps(&mut env).await
 }
 
 #[tokio::test(flavor = "multi_thread")]

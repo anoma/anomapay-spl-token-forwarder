@@ -1,4 +1,4 @@
-//! AnomaPay wrap, unwrap and migration actions, built with
+//! AnomaPay wrap, unwrap, transfer and migration actions, built with
 //! anomapay-solana-resource's action builders and wrapped as pa-testkit
 //! action witnesses.
 
@@ -233,7 +233,7 @@ pub fn unwrap_flow<L: Logic>(
 
 /// `owner`'s signature over the tree root `root` of an action that spends
 /// its resource of `L`, under `L`'s domain.
-pub fn unwrap_auth<L: Logic>(owner: &ShieldedOwner, root: Digest) -> AuthoritySignature {
+pub fn spend_auth<L: Logic>(owner: &ShieldedOwner, root: Digest) -> AuthoritySignature {
     owner.auth_sk.sign(
         <L::Call as ForwarderCall>::AUTH_SIGNATURE_DOMAIN,
         root.as_bytes(),
@@ -259,7 +259,7 @@ pub fn unwrap<L: Logic>(
         .root();
     let action = unwrap
         .action(
-            unwrap_auth::<L>(owner, root),
+            spend_auth::<L>(owner, root),
             compliance(
                 &format!("unwrap/{root}"),
                 anoma_pa_testkit::fixtures::kind_tree(),
@@ -267,6 +267,53 @@ pub fn unwrap<L: Logic>(
         )
         .context("failed to build the unwrap's witnesses")?;
     Ok(witnesses(action))
+}
+
+/// A transfer, unproven: its witnesses and the shielded resource it creates,
+/// which the recipient holds.
+pub struct TransferData {
+    pub witnesses: ActionWitnesses,
+    pub created: Resource,
+}
+
+/// A transfer of `sent`, `sender`'s shielded resource under the label of
+/// `forwarder` and `mint` at `path` in the adapter's commitment tree, into a
+/// resource of its quantity `recipient` holds. It calls no forwarder: both
+/// its resources are shielded. `seed` makes the created resource distinct
+/// from every other test's.
+pub fn transfer(
+    forwarder: Pubkey,
+    mint: Pubkey,
+    sent: Resource,
+    path: MerklePath,
+    sender: &ShieldedOwner,
+    recipient: &ShieldedOwner,
+    seed: &str,
+) -> anyhow::Result<TransferData> {
+    let transfer = action::transfer::<TransferLogic>(
+        label(forwarder, mint),
+        sent,
+        path,
+        sender.keys.clone(),
+        recipient.keys.recipient(),
+        label_hash(&format!("{seed}/rand-seed")),
+    )
+    .context("failed to build the transfer's resources")?;
+    let layout = transfer
+        .layout()
+        .context("failed to lay out the transfer")?;
+    let action = transfer
+        .action(
+            spend_auth::<TransferLogic>(sender, layout.root()),
+            &discovery_pk(),
+            compliance(seed, anoma_pa_testkit::fixtures::kind_tree()),
+            &mut rng(seed),
+        )
+        .context("failed to build the transfer's witnesses")?;
+    Ok(TransferData {
+        witnesses: witnesses(action),
+        created: layout.resource(1),
+    })
 }
 
 /// A migration, unproven: its witnesses and the resource of the
