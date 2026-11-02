@@ -39,7 +39,7 @@ pub use input::{
     encode_wrap_forwarder_input, ForwarderInput, InputError, MigrateEntry, MigrateInput,
     UnwrapInput, WrapInput,
 };
-pub use wrap_message::{sha256, WrapMessage, WRAP_MESSAGE_LEN};
+pub use wrap_message::{WrapMessage, WRAP_MESSAGE_LEN};
 
 #[cfg(feature = "solana")]
 pub use forwarder::{

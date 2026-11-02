@@ -48,7 +48,7 @@ impl WrapMessage {
 
     /// SHA-256 of the serialized 120-byte layout.
     pub fn sha256_digest(&self) -> [u8; 32] {
-        sha256(&self.serialize())
+        Sha256::digest(self.serialize()).into()
     }
 
     /// Base64-encode the SHA-256 digest as UTF-8 text. This is the exact byte
@@ -57,11 +57,6 @@ impl WrapMessage {
     pub fn base64_digest(&self) -> String {
         base64::engine::general_purpose::STANDARD.encode(self.sha256_digest())
     }
-}
-
-/// SHA-256 over arbitrary bytes.
-pub fn sha256(bytes: &[u8]) -> [u8; 32] {
-    Sha256::digest(bytes).into()
 }
 
 #[cfg(test)]

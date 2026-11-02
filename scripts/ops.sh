@@ -37,7 +37,8 @@ Development:
   typecheck      Type-check and format-check the operator scripts against the
                  production IDL's types (the program is not compiled), and
                  check the client's copies of the production and
-                 emergency-migrating IDLs are the program's
+                 emergency-migrating IDLs, and the integration tests' copy of
+                 the development IDL, are the program's
   script-test    Run the operator scripts against the harness's local runtime
                  (crates/integration-test/tests/operator_scripts.rs), after
                  installing their dependencies and generating the types they
@@ -641,6 +642,13 @@ case "$COMMAND" in
     emergency_migrating_idl
     if ! cmp "$EMERGENCY_MIGRATING_IDL" crates/client/idls/emergency_migrating_spl_token_forwarder.json; then
       echo "❌ crates/client/idls/emergency_migrating_spl_token_forwarder.json is not the emergency-migrating build's IDL; copy $EMERGENCY_MIGRATING_IDL over it." >&2
+      exit 1
+    fi
+    # The integration tests' copy of the development build's IDL, which
+    # generates the bindings of its development-only instructions, is the
+    # program's (release_idl built it).
+    if ! cmp "$DEV_IDL" crates/integration-test/idls/spl_token_forwarder_dev.json; then
+      echo "❌ crates/integration-test/idls/spl_token_forwarder_dev.json is not the development build's IDL; copy $DEV_IDL over it." >&2
       exit 1
     fi
     yarn run typecheck

@@ -3,7 +3,10 @@
 
 use std::sync::Arc;
 
-use anchor_lang::{AccountDeserialize, AnchorDeserialize, AnchorSerialize, Discriminator};
+use anchor_lang::{
+    AccountDeserialize, AnchorDeserialize, AnchorSerialize, Discriminator, InstructionData,
+    ToAccountMetas,
+};
 use anoma_pa_solana_client::settlement::CallAccounts;
 use anoma_pa_solana_integration_test::envs::common::environment::Environment;
 use anoma_pa_solana_integration_test::envs::local::Environment as LocalEnv;
@@ -21,11 +24,11 @@ use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::constan
     CONFIG_VERSION, NONCES_PER_WORD,
 };
 use anomapay_spl_token_forwarder_client::{
-    derive_forwarder_config_pda, derive_forwarder_escrow_authority, initialize_ix, sha256,
-    upgrade_ixs,
+    derive_forwarder_config_pda, derive_forwarder_escrow_authority, initialize_ix, upgrade_ixs,
 };
 use anyhow::Context;
-use solana_instruction::{AccountMeta, Instruction};
+use sha2::{Digest, Sha256};
+use solana_instruction::Instruction;
 use solana_keypair::Keypair;
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
 use solana_program_pack::Pack;
@@ -36,6 +39,7 @@ use surfpool_sdk::Pubkey;
 use transfer_library::TransferLogic;
 
 use crate::fixtures::{self, ShieldedOwner, WrapTerms};
+use crate::generated::spl_token_forwarder_dev::client as dev;
 use crate::logic::Logic;
 use crate::submitter::Rewritten;
 use anomapay_spl_token_forwarder_client::submitter::SplTokenForwarderCalls;
@@ -535,18 +539,15 @@ pub async fn set_config_version<P>(
     local: &OwnedForwarder,
     version: u64,
 ) -> anyhow::Result<()> {
-    let (program, owner) = (local.forwarder.program, local.owner.pubkey());
-    // The development builds' instruction, which the release IDLs leave
-    // out: Anchor's discriminator of it.
-    let mut data = sha256(b"global:dev_set_config_version")[..8].to_vec();
-    data.extend_from_slice(&version.to_le_bytes());
+    let program = local.forwarder.program;
     let set = Instruction {
         program_id: program,
-        accounts: vec![
-            AccountMeta::new_readonly(owner, true),
-            AccountMeta::new(derive_forwarder_config_pda(&program).0, false),
-        ],
-        data,
+        accounts: dev::accounts::DevSetConfigVersion {
+            authority: local.owner.pubkey(),
+            config: derive_forwarder_config_pda(&program).0,
+        }
+        .to_account_metas(None),
+        data: dev::args::DevSetConfigVersion { version }.data(),
     };
     env.send(&[set], &[&local.owner])
         .await
@@ -613,7 +614,7 @@ pub fn discriminator<E: Discriminator>() -> [u8; 8] {
 /// trailing zero bytes.
 pub fn executable_hash(code: &[u8]) -> [u8; 32] {
     let end = code.iter().rposition(|&b| b != 0).map_or(0, |i| i + 1);
-    sha256(&code[..end])
+    Sha256::digest(&code[..end]).into()
 }
 
 /// The upgrade authority the loader records for `program`; None once the

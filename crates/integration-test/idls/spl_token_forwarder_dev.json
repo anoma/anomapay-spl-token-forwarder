@@ -1,0 +1,1208 @@
+{
+  "address": "34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4",
+  "metadata": {
+    "name": "spl_token_forwarder",
+    "version": "2.0.0-rc.11",
+    "spec": "0.1.0",
+    "description": "SPL Token forwarder for wrap/unwrap operations with Ed25519 signature verification"
+  },
+  "instructions": [
+    {
+      "name": "close_config",
+      "docs": [
+        "Close the config PDA; its rent goes to the owner, who signs. Call",
+        "last. Requires the adapter to be paused."
+      ],
+      "discriminator": [
+        145,
+        9,
+        72,
+        157,
+        95,
+        125,
+        61,
+        85
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The owner, who receives the config's rent."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
+        },
+        {
+          "name": "pa_state"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_escrow",
+      "docs": [
+        "Drain a mint's escrow to the recipient and close the escrow token",
+        "account; its rent goes to the owner, who signs. Requires the adapter",
+        "to be paused.",
+        "",
+        "The closing instructions recover the rent of the forwarder's",
+        "accounts, which EVM storage does not hold: they have no EVM",
+        "counterpart. The owner holds them because the owner can already",
+        "replace the program's code (`upgrade`), as the EVM forwarder's owner",
+        "can replace its implementation; the paused adapter keeps them from",
+        "running under live settlements."
+      ],
+      "discriminator": [
+        139,
+        171,
+        94,
+        146,
+        191,
+        91,
+        144,
+        50
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The owner, who receives the closed escrow ATA's rent."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
+        },
+        {
+          "name": "escrow_ata",
+          "writable": true
+        },
+        {
+          "name": "escrow_authority",
+          "address": "A3srA2cw6o11TCSyMpBbnpLVnu6RLe6eGZEFz3d2m8h1"
+        },
+        {
+          "name": "recipient_ata",
+          "writable": true
+        },
+        {
+          "name": "token_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "pa_state"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_nonce_bitmaps_batch",
+      "docs": [
+        "Close the nonce bitmaps passed as remaining accounts; their rent goes",
+        "to the owner, who signs. Requires the adapter to be paused."
+      ],
+      "discriminator": [
+        212,
+        67,
+        15,
+        190,
+        226,
+        141,
+        142,
+        101
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The owner, who receives the closed bitmaps' rent."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
+        },
+        {
+          "name": "pa_state"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "dev_set_config_version",
+      "docs": [
+        "Overwrite the config's version. Development builds only: lets the",
+        "integration suite put a config below this build's CONFIG_VERSION, as a",
+        "config an earlier build initialized is, and observe `reinitialize`",
+        "rotate it once."
+      ],
+      "discriminator": [
+        172,
+        26,
+        37,
+        171,
+        69,
+        214,
+        224,
+        79
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
+        }
+      ],
+      "args": [
+        {
+          "name": "version",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "forward_call",
+      "docs": [
+        "Forward a wrap or unwrap call from the Protocol Adapter, returning",
+        "the empty output, as the EVM ERC20 forwarder's `_forwardCall` does.",
+        "",
+        "Like the EVM V2 `ForwarderBaseUpgradeable.forwardCall()`, this does not check the",
+        "adapter's paused state: the adapter does not call forwarders while paused."
+      ],
+      "discriminator": [
+        159,
+        170,
+        224,
+        10,
+        253,
+        105,
+        108,
+        222
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
+        },
+        {
+          "name": "ix_sysvar",
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "logic_ref",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "input",
+          "type": "bytes"
+        }
+      ],
+      "returns": "bytes"
+    },
+    {
+      "name": "init_nonce_bitmap",
+      "docs": [
+        "Create the nonce bitmap for one 256-nonce word of `user`, paid by",
+        "whoever signs, unless it exists, when it does nothing. Permissionless:",
+        "the bitmap holds nothing but used bits, and a wrap requires it to",
+        "exist. The adapter forwards no signer to a forwarder, so the account",
+        "cannot be created during the wrap itself; a submitter sends this",
+        "instruction ahead of every wrap's settlement, and needs not read the",
+        "chain to know whether the bitmap is there. An existing bitmap keeps",
+        "its bits: only its bump, the canonical one it already holds, is",
+        "written."
+      ],
+      "discriminator": [
+        214,
+        13,
+        125,
+        121,
+        72,
+        220,
+        241,
+        42
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "nonce_bitmap",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  110,
+                  111,
+                  110,
+                  99,
+                  101,
+                  95,
+                  98,
+                  105,
+                  116,
+                  109,
+                  97,
+                  112
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "user"
+              },
+              {
+                "kind": "arg",
+                "path": "word_index"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "user",
+          "type": "pubkey"
+        },
+        {
+          "name": "word_index",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize",
+      "docs": [
+        "Initialize the forwarder config, owned by `initial_owner`.",
+        "",
+        "As the EVM V2 forwarder's initializer: the owner set (the zero key",
+        "refused) and announced, no zero adapter or logic ref. Signed by the",
+        "program's upgrade authority, the deployer, which it hands to the",
+        "program's upgrade authority PDA, so from then on only `upgrade`, for",
+        "the owner, upgrades the program."
+      ],
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "program",
+          "docs": [
+            "This program, which the `Initialized` event's self-invocation needs."
+          ],
+          "address": "34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4"
+        },
+        {
+          "name": "program_data",
+          "docs": [
+            "This program's ProgramData, where the loader records the upgrade",
+            "authority: the deployer, who alone initializes the forwarder and",
+            "hands the authority to `upgrade_authority`."
+          ],
+          "writable": true,
+          "address": "8RDK7t1dBPn6FgNdJBE4QQirfLvu4mckMatpDXCdeRZb"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "event_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  95,
+                  95,
+                  101,
+                  118,
+                  101,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "upgrade_authority",
+          "docs": [
+            "seeds pin it."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  112,
+                  103,
+                  114,
+                  97,
+                  100,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "bpf_loader_upgradeable",
+          "address": "BPFLoaderUpgradeab1e11111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "protocol_adapter",
+          "type": "pubkey"
+        },
+        {
+          "name": "logic_ref",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "initial_owner",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "reinitialize",
+      "docs": [
+        "Rotate the logic ref, once per build that raises CONFIG_VERSION.",
+        "Mirrors the EVM forwarder's rotation: the owner upgrades the proxy to",
+        "an implementation whose `reinitializer(n)` writes the new ref",
+        "(`upgradeToAndCall`), and escrow and nonces stay. Here",
+        "the owner upgrades the program in place (`upgrade`) and then calls",
+        "this; it runs only while the config's version is below this build's.",
+        "Resources under the previous ref leave through the new one once the",
+        "kind tree lists the previous version as its alias: a transaction",
+        "converts them, and the new resource unwraps."
+      ],
+      "discriminator": [
+        135,
+        255,
+        205,
+        161,
+        223,
+        162,
+        94,
+        137
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "logic_ref",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "renounce_ownership",
+      "docs": [
+        "Give up the ownership for good. Mirrors OwnableUpgradeable's",
+        "`renounceOwnership`: owner only; the owner becomes the zero key, so",
+        "no owner-only instruction, `upgrade` and `reinitialize` included, can",
+        "run again."
+      ],
+      "discriminator": [
+        19,
+        143,
+        91,
+        79,
+        34,
+        168,
+        174,
+        125
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "transfer_ownership",
+      "docs": [
+        "Move the ownership to `new_owner`. Mirrors OwnableUpgradeable's",
+        "`transferOwnership`: owner only, effective at once, the zero key",
+        "refused (`OwnableInvalidOwner`), announced with `OwnershipTransferred`."
+      ],
+      "discriminator": [
+        65,
+        177,
+        215,
+        73,
+        53,
+        45,
+        99,
+        47
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "new_owner",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "upgrade",
+      "docs": [
+        "Replace this program's code with the code in `buffer`, as the",
+        "adapter's `upgrade`. Mirrors the UUPS `upgradeToAndCall` the EVM",
+        "forwarder's owner calls (`_authorizeUpgrade`, owner only), announced",
+        "with `Upgraded`, which names the new code by its executable hash. The",
+        "buffer's authority must be the owner, who wrote it; the program hands",
+        "it to its upgrade authority PDA, which signs the upgrade, and its rent",
+        "goes to `spill`. The new code runs from the next slot."
+      ],
+      "discriminator": [
+        239,
+        238,
+        57,
+        74,
+        205,
+        87,
+        165,
+        26
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "address": "BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar"
+        },
+        {
+          "name": "program_data",
+          "docs": [
+            "address pins it."
+          ],
+          "writable": true,
+          "address": "8RDK7t1dBPn6FgNdJBE4QQirfLvu4mckMatpDXCdeRZb"
+        },
+        {
+          "name": "upgraded_program",
+          "docs": [
+            "the address pins it."
+          ],
+          "writable": true,
+          "address": "34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4"
+        },
+        {
+          "name": "buffer",
+          "docs": [
+            "loader requires to be the owner, who signs; `executable_hash` refuses",
+            "any other account."
+          ],
+          "writable": true
+        },
+        {
+          "name": "spill",
+          "writable": true
+        },
+        {
+          "name": "upgrade_authority",
+          "docs": [
+            "the seeds pin it."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  112,
+                  103,
+                  114,
+                  97,
+                  100,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        },
+        {
+          "name": "clock",
+          "address": "SysvarC1ock11111111111111111111111111111111"
+        },
+        {
+          "name": "bpf_loader_upgradeable",
+          "address": "BPFLoaderUpgradeab1e11111111111111111111111"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "version",
+      "docs": [
+        "The release this build is. Mirrors the EVM forwarder's `VERSION`:",
+        "read from the deployed program (by simulation), it names the code an",
+        "address runs, which an in-place upgrade changes."
+      ],
+      "discriminator": [
+        118,
+        65,
+        195,
+        198,
+        129,
+        216,
+        252,
+        192
+      ],
+      "accounts": [],
+      "args": [],
+      "returns": "string"
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
+    {
+      "name": "NonceBitmap",
+      "discriminator": [
+        154,
+        14,
+        30,
+        131,
+        149,
+        1,
+        169,
+        146
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "Initialized",
+      "discriminator": [
+        167,
+        111,
+        190,
+        136,
+        109,
+        29,
+        191,
+        90
+      ]
+    },
+    {
+      "name": "OwnershipTransferred",
+      "discriminator": [
+        71,
+        234,
+        56,
+        148,
+        14,
+        39,
+        34,
+        42
+      ]
+    },
+    {
+      "name": "Unwrapped",
+      "discriminator": [
+        154,
+        254,
+        126,
+        18,
+        244,
+        97,
+        129,
+        147
+      ]
+    },
+    {
+      "name": "Upgraded",
+      "discriminator": [
+        136,
+        228,
+        110,
+        228,
+        183,
+        148,
+        97,
+        109
+      ]
+    },
+    {
+      "name": "Wrapped",
+      "discriminator": [
+        255,
+        133,
+        209,
+        238,
+        236,
+        4,
+        112,
+        232
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidInput",
+      "msg": "Invalid input data"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidInputLength",
+      "msg": "Invalid input length"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidTokenAccountData",
+      "msg": "Invalid token account data - too short or malformed"
+    },
+    {
+      "code": 6003,
+      "name": "InsufficientRemainingAccounts",
+      "msg": "Insufficient remaining accounts - check logs for expected count"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidTokenProgram",
+      "msg": "Invalid token program - expected SPL Token program ID"
+    },
+    {
+      "code": 6005,
+      "name": "WrongTokenAccountOwner",
+      "msg": "Token account owner mismatch - the account does not belong to the party the transfer names"
+    },
+    {
+      "code": 6006,
+      "name": "WrongTokenAccountMint",
+      "msg": "Token account mint mismatch - the account does not hold the mint the transfer names"
+    },
+    {
+      "code": 6007,
+      "name": "UnknownOperation",
+      "msg": "Unknown operation code"
+    },
+    {
+      "code": 6008,
+      "name": "ProtocolAdapterMismatch",
+      "msg": "The caller is not the protocol adapter"
+    },
+    {
+      "code": 6009,
+      "name": "LogicRefMismatch",
+      "msg": "The calling resource's logic ref is not this forwarder's"
+    },
+    {
+      "code": 6010,
+      "name": "DeadlineExpired",
+      "msg": "Signature deadline has expired"
+    },
+    {
+      "code": 6011,
+      "name": "NonceAlreadyUsed",
+      "msg": "Nonce has already been used (replay attack prevented)"
+    },
+    {
+      "code": 6012,
+      "name": "Ed25519InstructionNotFound",
+      "msg": "Ed25519 instruction not found at specified index"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidEd25519Instruction",
+      "msg": "Invalid Ed25519 instruction format"
+    },
+    {
+      "code": 6014,
+      "name": "Ed25519PubkeyMismatch",
+      "msg": "Ed25519 public key mismatch"
+    },
+    {
+      "code": 6015,
+      "name": "Ed25519MessageMismatch",
+      "msg": "Ed25519 message mismatch"
+    },
+    {
+      "code": 6016,
+      "name": "ProtocolAdapterNotPaused",
+      "msg": "Protocol Adapter not paused - cannot close the forwarder's accounts"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidPaState",
+      "msg": "Invalid PA state account - does not match derived PDA from protocol_adapter"
+    },
+    {
+      "code": 6018,
+      "name": "ZeroProtocolAdapterNotAllowed",
+      "msg": "Zero protocol adapter not allowed"
+    },
+    {
+      "code": 6019,
+      "name": "ZeroLogicRefNotAllowed",
+      "msg": "Zero logic ref not allowed"
+    },
+    {
+      "code": 6020,
+      "name": "InvalidEscrowAuthority",
+      "msg": "Invalid escrow authority"
+    },
+    {
+      "code": 6021,
+      "name": "InvalidNonceBitmapPda",
+      "msg": "Invalid nonce bitmap PDA - doesn't match derived address"
+    },
+    {
+      "code": 6022,
+      "name": "NonceBitmapMissing",
+      "msg": "Nonce bitmap account does not exist - create it with init_nonce_bitmap before the wrap"
+    },
+    {
+      "code": 6023,
+      "name": "UnwrapToEscrow",
+      "msg": "Unwrap recipient is the escrow authority - the tokens would never leave escrow"
+    },
+    {
+      "code": 6024,
+      "name": "InvalidInitialization",
+      "msg": "The config is already at this build's CONFIG_VERSION - rotating the logic ref takes a build that raises it"
+    },
+    {
+      "code": 6025,
+      "name": "OwnableUnauthorizedAccount",
+      "msg": "The signer is not the forwarder's owner"
+    },
+    {
+      "code": 6026,
+      "name": "OwnableInvalidOwner",
+      "msg": "The zero key cannot be the owner"
+    },
+    {
+      "code": 6027,
+      "name": "InvalidUpgradeBuffer",
+      "msg": "Buffer is not a loader buffer holding a program"
+    },
+    {
+      "code": 6028,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: the signer does not hold the authority this instruction requires"
+    }
+  ],
+  "types": [
+    {
+      "name": "Config",
+      "docs": [
+        "Configuration account for the forwarder.",
+        "",
+        "The adapter and logic ref mirror the EVM V2 forwarder's",
+        "`ForwarderBaseUpgradeable` state, `version` its `Initializable` version,",
+        "and `owner` its `OwnableUpgradeable` owner."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "protocol_adapter",
+            "docs": [
+              "The Protocol Adapter program ID that can call forward_call"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "logic_ref",
+            "docs": [
+              "The logic reference (verifying key) this forwarder handles"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "version",
+            "docs": [
+              "The version the config was last initialized at, as OpenZeppelin",
+              "Initializable's `_initialized`: `initialize` records CONFIG_VERSION,",
+              "and `reinitialize` raises it to CONFIG_VERSION once."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "owner",
+            "docs": [
+              "The forwarder's owner, as the EVM V2 forwarder's OwnableUpgradeable",
+              "owner: it upgrades the program (`upgrade`), rotates the logic ref",
+              "(`reinitialize`), and moves or renounces the ownership. The all-zero",
+              "key once renounced, which no one can sign for."
+            ],
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Initialized",
+      "docs": [
+        "Mirrors OpenZeppelin Initializable: `event Initialized(uint64 version);`"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "NonceBitmap",
+      "docs": [
+        "One 256-nonce word of a user's wrap nonces (Permit2's bitmap pattern).",
+        "",
+        "Seeds: [\"nonce_bitmap\", user, word_index_le_bytes]. Created by anyone",
+        "through `init_nonce_bitmap`, which pays its rent and leaves an existing",
+        "bitmap as it is; a wrap only reads and sets bits, so no signer reaches the",
+        "forwarder through the adapter's CPI."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bits",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "The canonical bump of the bitmap's address, stored by `init_nonce_bitmap`."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OwnershipTransferred",
+      "docs": [
+        "Mirrors OpenZeppelin Ownable: `event OwnershipTransferred(address indexed",
+        "previousOwner, address indexed newOwner);`. The zero key stands for no",
+        "owner: the previous owner when `initialize` sets the first one, the new owner when `renounce_ownership` gives it up."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "previous_owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "new_owner",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Unwrapped",
+      "docs": [
+        "Mirrors EVM: `event Unwrapped(address indexed token, address indexed to, uint128 amount);`"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "token",
+            "type": "pubkey"
+          },
+          {
+            "name": "to",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Upgraded",
+      "docs": [
+        "Mirrors ERC1967: `event Upgraded(address indexed implementation);`, the",
+        "new code named by its executable hash, as the adapter's `Upgraded`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "implementation_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Wrapped",
+      "docs": [
+        "Mirrors EVM: `event Wrapped(address indexed token, address indexed from, uint128 amount);`"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "token",
+            "type": "pubkey"
+          },
+          {
+            "name": "from",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ],
+  "constants": [
+    {
+      "name": "CONFIG_SEED",
+      "type": "bytes",
+      "value": "[99, 111, 110, 102, 105, 103]"
+    },
+    {
+      "name": "CONFIG_VERSION",
+      "docs": [
+        "The config version this build initializes to and reinitializes to, as",
+        "the `n` of an OpenZeppelin `reinitializer(n)`. A build that rotates the",
+        "logic ref raises it by one, so its `reinitialize` runs once."
+      ],
+      "type": "u64",
+      "value": "7"
+    },
+    {
+      "name": "ESCROW_SEED",
+      "docs": [
+        "Seed of the escrow authority."
+      ],
+      "type": "bytes",
+      "value": "[101, 115, 99, 114, 111, 119]"
+    },
+    {
+      "name": "NONCES_PER_WORD",
+      "type": "u64",
+      "value": "256"
+    },
+    {
+      "name": "NONCE_BITMAP_SEED",
+      "docs": [
+        "Nonce bitmap PDA, one per user per 256-nonce word."
+      ],
+      "type": "bytes",
+      "value": "[110, 111, 110, 99, 101, 95, 98, 105, 116, 109, 97, 112]"
+    },
+    {
+      "name": "OP_UNWRAP",
+      "type": "u8",
+      "value": "1"
+    },
+    {
+      "name": "OP_WRAP",
+      "docs": [
+        "Operation codes, the first byte of a `forward_call` input."
+      ],
+      "type": "u8",
+      "value": "0"
+    }
+  ]
+}
