@@ -4,7 +4,7 @@
 // package ships the IDLs it encodes and decodes with.
 
 import type { Idl } from "@anchor-lang/core";
-import { getProgramDerivedAddress, type Address } from "@solana/kit";
+import { AccountRole, getProgramDerivedAddress, type Address } from "@solana/kit";
 
 import forwarderJson from "./data/spl_token_forwarder.json" with { type: "json" };
 import emergencyMigratingJson from "./data/emergency_migrating_spl_token_forwarder.json" with { type: "json" };
@@ -42,4 +42,10 @@ export async function idlPda(of: Idl, instruction: string, account: string, prog
     return Uint8Array.from(seed.value);
   });
   return (await getProgramDerivedAddress({ programAddress: program, seeds }))[0];
+}
+
+/** The role of an account with the IDL's `signer` and `writable` flags. */
+export function accountRole(signer: boolean, writable: boolean): AccountRole {
+  if (signer) return writable ? AccountRole.WRITABLE_SIGNER : AccountRole.READONLY_SIGNER;
+  return writable ? AccountRole.WRITABLE : AccountRole.READONLY;
 }

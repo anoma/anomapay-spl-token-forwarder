@@ -1,8 +1,9 @@
 //! Builders for the forwarder's instructions, over the generated
 //! `client::accounts` and `client::args` of `generated::spl_token_forwarder`,
 //! and for the forwarder's CPI account segments inside a settle
-//! transaction's `remaining_accounts`, which no IDL lists. Each builder
-//! takes the address the forwarder is deployed at. Ordering is owned by the
+//! transaction's `remaining_accounts`: the head the IDL declares for
+//! `forward_call`, then the accounts of the call, which no IDL lists. Each
+//! builder takes the address the forwarder is deployed at. Ordering is owned by the
 //! forwarder program; integrators must use these builders rather than
 //! hand-rolling the slice.
 
@@ -17,7 +18,6 @@ use anoma_pa_solana_client::{
     derive_event_authority_pda, derive_program_data_address, derive_upgrade_authority_pda,
 };
 
-use crate::constants::FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS;
 use crate::generated::spl_token_forwarder::client::{accounts, args};
 use crate::generated::spl_token_forwarder::constants::NONCES_PER_WORD;
 use crate::pda::{
@@ -269,19 +269,21 @@ pub fn close_config_ix(
     )
 }
 
-/// The head of every forwarder CPI segment: the forwarder (segment marker),
-/// its config, the instructions sysvar, then the forwarder's event authority
-/// and the forwarder again, which its CPI events need.
-pub(crate) fn forwarder_segment_head(
-    forwarder_program: &Pubkey,
-) -> [AccountMeta; FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS as usize] {
-    [
-        AccountMeta::new_readonly(*forwarder_program, false),
-        AccountMeta::new_readonly(derive_forwarder_config_pda(forwarder_program).0, false),
-        AccountMeta::new_readonly(sysvar::instructions::id(), false),
-        AccountMeta::new_readonly(derive_event_authority_pda(forwarder_program).0, false),
-        AccountMeta::new_readonly(*forwarder_program, false),
-    ]
+/// The head of every forwarder CPI segment: the forwarder, the program the
+/// adapter calls, then the accounts of its `forward_call`, as the generated
+/// `client::accounts::ForwardCall` lays them out.
+pub(crate) fn forwarder_segment_head(forwarder_program: &Pubkey) -> Vec<AccountMeta> {
+    let mut head = vec![AccountMeta::new_readonly(*forwarder_program, false)];
+    head.extend(
+        accounts::ForwardCall {
+            config: derive_forwarder_config_pda(forwarder_program).0,
+            ix_sysvar: sysvar::instructions::id(),
+            event_authority: derive_event_authority_pda(forwarder_program).0,
+            program: *forwarder_program,
+        }
+        .to_account_metas(None),
+    );
+    head
 }
 
 /// Build the wrap forwarder CPI segment: `[forwarder_program, config,
@@ -297,7 +299,7 @@ pub fn build_wrap_forwarder_accounts(
     let (escrow_authority, _) = derive_forwarder_escrow_authority(forwarder_program);
     let (nonce_bitmap_pda, _) =
         derive_nonce_bitmap_pda(forwarder_program, user, nonce_word_index(nonce));
-    let mut accounts = forwarder_segment_head(forwarder_program).to_vec();
+    let mut accounts = forwarder_segment_head(forwarder_program);
     accounts.extend([
         AccountMeta::new(get_associated_token_address(user, token_mint), false),
         AccountMeta::new(
@@ -320,7 +322,7 @@ pub fn build_unwrap_forwarder_accounts(
     token_mint: &Pubkey,
 ) -> Vec<AccountMeta> {
     let (escrow_authority, _) = derive_forwarder_escrow_authority(forwarder_program);
-    let mut accounts = forwarder_segment_head(forwarder_program).to_vec();
+    let mut accounts = forwarder_segment_head(forwarder_program);
     accounts.extend([
         AccountMeta::new(
             get_associated_token_address(&escrow_authority, token_mint),
@@ -336,7 +338,10 @@ pub fn build_unwrap_forwarder_accounts(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::constants::{FORWARDER_UNWRAP_NUM_ACCOUNTS, FORWARDER_WRAP_NUM_ACCOUNTS};
+    use crate::constants::{
+        FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS, FORWARDER_UNWRAP_NUM_ACCOUNTS,
+        FORWARDER_WRAP_NUM_ACCOUNTS,
+    };
     use std::str::FromStr;
 
     fn canonical_spl_token_program_id() -> Pubkey {
@@ -502,24 +507,64 @@ acct 8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR false false
         }
     }
 
+    /// The head of every segment is the forwarder, then the accounts both
+    /// builds' IDLs declare for `forward_call`, in their order, with their
+    /// flags and addresses.
     #[test]
-    fn wrap_segment_is_the_forwarder_layout() {
+    fn the_segment_head_is_the_forwarder_then_its_forward_call_accounts() {
+        let forwarder = crate::generated::spl_token_forwarder::ID;
+        let head = forwarder_segment_head(&forwarder);
+        println!("head: {head:?}");
+        assert_eq!(head.len(), usize::from(FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS));
+        assert_eq!(head[0], AccountMeta::new_readonly(forwarder, false));
+        for idl in [crate::idl::idl(), crate::idl::emergency_migrating_idl()] {
+            let build = idl["metadata"]["name"].as_str().unwrap().to_owned();
+            let declared = idl["instructions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|ix| ix["name"] == "forward_call")
+                .unwrap_or_else(|| panic!("{build} declares no forward_call"))["accounts"]
+                .as_array()
+                .unwrap()
+                .clone();
+            assert_eq!(head.len(), 1 + declared.len(), "{build}");
+            for (meta, account) in head[1..].iter().zip(&declared) {
+                let name = account["name"].as_str().unwrap();
+                assert_eq!(
+                    meta.is_writable,
+                    account["writable"] == true,
+                    "{build} {name}"
+                );
+                assert_eq!(meta.is_signer, account["signer"] == true, "{build} {name}");
+                let expected = match name {
+                    // Anchor's `#[event_cpi]` accounts, which the IDL gives
+                    // no address.
+                    "event_authority" => derive_event_authority_pda(&forwarder).0,
+                    "program" => forwarder,
+                    _ => idl_address(account, &forwarder)
+                        .unwrap_or_else(|| panic!("{build}: {name} has no address")),
+                };
+                assert_eq!(meta.pubkey, expected, "{build} {name}");
+            }
+        }
+    }
+
+    #[test]
+    fn wrap_segment_is_the_head_then_the_wrap_accounts() {
         let forwarder = Pubkey::new_unique();
         let user = Pubkey::new_unique();
         let mint = Pubkey::new_unique();
         let nonce = 300;
         let accs = build_wrap_forwarder_accounts(&forwarder, &user, &mint, nonce);
         assert_eq!(accs.len(), FORWARDER_WRAP_NUM_ACCOUNTS as usize);
+        let head = usize::from(FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS);
+        assert_eq!(accs[..head], forwarder_segment_head(&forwarder)[..]);
 
         let escrow_authority = derive_forwarder_escrow_authority(&forwarder).0;
         assert_eq!(
-            keys(&accs),
+            keys(&accs[head..]),
             vec![
-                forwarder,
-                derive_forwarder_config_pda(&forwarder).0,
-                sysvar::instructions::id(),
-                derive_event_authority_pda(&forwarder).0,
-                forwarder,
                 get_associated_token_address(&user, &mint),
                 get_associated_token_address(&escrow_authority, &mint),
                 escrow_authority,
@@ -527,46 +572,44 @@ acct 8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR false false
                 canonical_spl_token_program_id(),
             ]
         );
-        let writable: Vec<bool> = accs.iter().map(|a| a.is_writable).collect();
+        let writable: Vec<bool> = accs[head..].iter().map(|a| a.is_writable).collect();
         assert_eq!(
             writable,
-            [false, false, false, false, false, true, true, false, true, false],
+            [true, true, false, true, false],
             "the user ATA, escrow ATA and nonce bitmap are written"
         );
         assert!(accs.iter().all(|a| !a.is_signer));
     }
 
     #[test]
-    fn unwrap_segment_is_the_forwarder_layout() {
+    fn unwrap_segment_is_the_head_then_the_unwrap_accounts() {
         let forwarder = Pubkey::new_unique();
         let recipient = Pubkey::new_unique();
         let mint = Pubkey::new_unique();
         let accs = build_unwrap_forwarder_accounts(&forwarder, &recipient, &mint);
         assert_eq!(accs.len(), FORWARDER_UNWRAP_NUM_ACCOUNTS as usize);
+        let head = usize::from(FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS);
+        assert_eq!(accs[..head], forwarder_segment_head(&forwarder)[..]);
 
         let escrow_authority = derive_forwarder_escrow_authority(&forwarder).0;
         assert_eq!(
-            keys(&accs),
+            keys(&accs[head..]),
             vec![
-                forwarder,
-                derive_forwarder_config_pda(&forwarder).0,
-                sysvar::instructions::id(),
-                derive_event_authority_pda(&forwarder).0,
-                forwarder,
                 get_associated_token_address(&escrow_authority, &mint),
                 get_associated_token_address(&recipient, &mint),
                 escrow_authority,
                 canonical_spl_token_program_id(),
             ]
         );
-        let writable: Vec<bool> = accs.iter().map(|a| a.is_writable).collect();
+        let writable: Vec<bool> = accs[head..].iter().map(|a| a.is_writable).collect();
         assert_eq!(
             writable,
-            [false, false, false, false, false, true, true, false, false],
+            [true, true, false, false],
             "the escrow ATA and recipient ATA are written"
         );
         assert!(accs.iter().all(|a| !a.is_signer));
     }
+
     #[test]
     fn nonce_word_index_covers_256_nonces_per_word() {
         assert_eq!(nonce_word_index(0), 0);

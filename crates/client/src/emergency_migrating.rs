@@ -99,7 +99,7 @@ pub fn build_migrate_forwarder_accounts(
     entries: &[MigrateEntry],
 ) -> Vec<AccountMeta> {
     let (pa_state, _) = derive_pa_state_pda(protocol_adapter);
-    let mut accounts = forwarder_segment_head(forwarder_program).to_vec();
+    let mut accounts = forwarder_segment_head(forwarder_program);
     accounts.extend([
         AccountMeta::new_readonly(pa_state, false),
         AccountMeta::new_readonly(derive_vulnerable_logic_refs_pda(forwarder_program).0, false),
@@ -126,7 +126,7 @@ pub fn build_migrate_forwarder_accounts(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::forwarder_migrate_num_accounts;
+    use crate::constants::{forwarder_migrate_num_accounts, FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS};
     use crate::forwarder::tests::{
         assert_event_accounts, assert_is_expected, assert_matches_the_idl, key,
     };
@@ -225,8 +225,10 @@ acct 11111111111111111111111111111111 false false
         }
         let (pa_state, _) = derive_pa_state_pda(&adapter);
         let segment = build_migrate_forwarder_accounts(&forwarder, &adapter, &[entry]);
+        let head = usize::from(FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS);
+        assert_eq!(segment[..head], forwarder_segment_head(&forwarder)[..]);
         assert_eq!(
-            segment[5..],
+            segment[head..],
             [
                 AccountMeta::new_readonly(pa_state, false),
                 AccountMeta::new_readonly(derive_vulnerable_logic_refs_pda(&forwarder).0, false),
@@ -244,7 +246,7 @@ acct 11111111111111111111111111111111 false false
         assert_eq!(
             forwarder_migrate_num_accounts(83),
             None,
-            "7 + 3 * 83 exceeds a u8"
+            "the head, 2 and 3 * 83 exceed a u8"
         );
     }
 }
