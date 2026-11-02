@@ -15,12 +15,12 @@ import {
 } from "@solana/kit";
 
 import { idl } from "./idl.js";
-import { SplTokenForwarder } from "./instance.js";
+import { SplTokenForwarderInstance } from "./contract.js";
 import { compileLegacyTransaction } from "./transaction.js";
 
 const rpc = createSolanaRpc("http://127.0.0.1:1");
 const key = (n: number) => getAddressDecoder().decode(new Uint8Array(32).fill(n));
-const forwarder = SplTokenForwarder.at(rpc, address(idl.address));
+const forwarder = new SplTokenForwarderInstance(address(idl.address), rpc);
 const lifetime = { blockhash: blockhash(key(9)), lastValidBlockHeight: 7n };
 const payer = key(1);
 
@@ -69,7 +69,7 @@ describe("compileLegacyTransaction", () => {
     console.log(message.header, message.staticAccounts);
     const { numSignerAccounts, numReadonlySignerAccounts, numReadonlyNonSignerAccounts } = message.header;
     expect(numReadonlySignerAccounts, "the owner, key(4), only signs").toBe(1);
-    const position = message.staticAccounts.indexOf(forwarder.programId);
+    const position = message.staticAccounts.indexOf(forwarder.address);
     const writableNonSigners = message.staticAccounts.length - numReadonlyNonSignerAccounts;
     expect(position, "the forwarder is a writable non-signer").toBeGreaterThanOrEqual(numSignerAccounts);
     expect(position, "the forwarder is a writable non-signer").toBeLessThan(writableNonSigners);

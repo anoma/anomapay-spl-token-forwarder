@@ -1,8 +1,9 @@
-//! The repository's operator scripts (`scripts/*.ts`), run against an
-//! environment's runtime as `ops.sh` runs them against a cluster: through
-//! ts-node, with the endpoint, the wallet and the adapter's address in the
-//! environment. They need `yarn install` and the production build's IDL and
-//! types (`ops.sh script-test` prepares both).
+//! The repository's operator scripts (`scripts/*.ts`), and the TypeScript
+//! readers of these tests (`ts/*.ts`), run against an environment's runtime
+//! as `ops.sh` runs the scripts against a cluster: through ts-node, with the
+//! endpoint, the wallet and the adapter's address in the environment. They
+//! need `yarn install` and the production build's IDL and types (`ops.sh
+//! script-test` prepares both).
 
 use std::path::PathBuf;
 use std::process::Output;
@@ -46,6 +47,35 @@ pub fn run_script<P>(
     args: &[&str],
     vars: &[(&str, String)],
 ) -> anyhow::Result<Ran> {
+    run_ts(env, wallet, &format!("scripts/{script}"), args, vars)
+}
+
+/// Runs this crate's `ts/<reader>` against `env`'s runtime, as `run_script`
+/// runs a script.
+pub fn run_reader<P>(
+    env: &Environment<P>,
+    wallet: &Keypair,
+    reader: &str,
+    vars: &[(&str, String)],
+) -> anyhow::Result<Ran> {
+    run_ts(
+        env,
+        wallet,
+        &format!("crates/integration-test/ts/{reader}"),
+        &[],
+        vars,
+    )
+}
+
+/// Runs the TypeScript file at `path`, relative to the repository root, as
+/// `run_script` describes.
+fn run_ts<P>(
+    env: &Environment<P>,
+    wallet: &Keypair,
+    path: &str,
+    args: &[&str],
+    vars: &[(&str, String)],
+) -> anyhow::Result<Ran> {
     let surfnet = env.surfnet()?;
     let wallet_file = std::env::temp_dir().join(format!(
         "operator-script-wallet-{}-{}.json",
@@ -56,7 +86,7 @@ pub fn run_script<P>(
         .map_err(|e| anyhow::anyhow!("failed to write {}: {e}", wallet_file.display()))?;
     let output: std::io::Result<Output> = std::process::Command::new("npx")
         .args(["ts-node", "-P", "tsconfig.json"])
-        .arg(format!("scripts/{script}"))
+        .arg(path)
         .args(args)
         .current_dir(repository())
         .env("ANCHOR_PROVIDER_URL", surfnet.rpc_url())
@@ -70,7 +100,7 @@ pub fn run_script<P>(
         .output();
     std::fs::remove_file(&wallet_file)
         .with_context(|| format!("failed to remove {}", wallet_file.display()))?;
-    let output = output.with_context(|| format!("failed to run scripts/{script}"))?;
+    let output = output.with_context(|| format!("failed to run {path}"))?;
     Ok(Ran {
         success: output.status.success(),
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),

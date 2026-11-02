@@ -1,6 +1,9 @@
-//! Writes the size of the forwarder's `NonceBitmap` account, as its IDL lays
-//! it out: the account's discriminator, then the Borsh encoding of its type,
-//! which has a fixed size. `constants::NONCE_BITMAP_ACCOUNT_SIZE` includes it.
+//! Writes what `constants` reads of the forwarder's IDL: the size of its
+//! `NonceBitmap` account, as the IDL lays it out (the account's
+//! discriminator, then the Borsh encoding of its type, which has a fixed
+//! size), which `NONCE_BITMAP_ACCOUNT_SIZE` includes; and the number of
+//! accounts its `forward_call` takes, which `FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS`
+//! includes.
 
 use std::path::Path;
 
@@ -14,11 +17,31 @@ fn main() {
         &std::fs::read_to_string(IDL).unwrap_or_else(|e| panic!("failed to read {IDL}: {e}")),
     )
     .unwrap_or_else(|e| panic!("{IDL} is not JSON: {e}"));
-    let size = account_size(&idl, "NonceBitmap");
-    let out = Path::new(&std::env::var("OUT_DIR").expect("cargo sets OUT_DIR"))
-        .join("nonce_bitmap_account_size.rs");
-    std::fs::write(&out, size.to_string())
+    write(
+        "nonce_bitmap_account_size.rs",
+        account_size(&idl, "NonceBitmap"),
+    );
+    write(
+        "forward_call_num_accounts.rs",
+        instruction_accounts(&idl, "forward_call"),
+    );
+}
+
+/// Writes `value` to the file `name` of `OUT_DIR`.
+fn write(name: &str, value: usize) {
+    let out = Path::new(&std::env::var("OUT_DIR").expect("cargo sets OUT_DIR")).join(name);
+    std::fs::write(&out, value.to_string())
         .unwrap_or_else(|e| panic!("failed to write {}: {e}", out.display()));
+}
+
+/// The number of accounts the instruction `name` of `idl` takes.
+fn instruction_accounts(idl: &Value, name: &str) -> usize {
+    idl["instructions"]
+        .as_array()
+        .and_then(|instructions| instructions.iter().find(|ix| ix["name"] == name))
+        .and_then(|ix| ix["accounts"].as_array())
+        .unwrap_or_else(|| panic!("{IDL} declares no instruction {name} with accounts"))
+        .len()
 }
 
 /// The bytes of the account `name` of `idl`: its discriminator and its type.

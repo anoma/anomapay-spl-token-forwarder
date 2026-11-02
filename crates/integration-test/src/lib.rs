@@ -4,6 +4,7 @@
 //! calls' accounts.
 
 pub mod fixtures;
+pub mod generated;
 pub mod logic;
 pub mod refusal;
 pub mod scripts;

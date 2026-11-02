@@ -1,11 +1,12 @@
 // Constants of the forwarder's interface with the adapter.
 
+import { idl, idlInstruction } from "./idl.js";
+
 /**
  * Number of accounts every forwarder CPI segment starts with: the forwarder,
- * its config, the instructions sysvar, the event authority and the forwarder
- * again.
+ * the program the adapter calls, then the accounts of its `forward_call`.
  */
-export const FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS = 5;
+export const FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS = 1 + idlInstruction(idl, "forward_call").accounts.length;
 
 /** Number of accounts in a wrap forwarder CPI segment (`buildWrapForwarderAccounts`). */
 export const FORWARDER_WRAP_NUM_ACCOUNTS = FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS + 5;

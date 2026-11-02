@@ -1,13 +1,14 @@
 // Builders for the forwarder's CPI account segments inside a settle
-// transaction's remaining accounts, which no IDL lists. Ordering is owned by
-// the forwarder program; integrators must use these builders rather than
-// hand-rolling the slice. The forwarder's own instructions are built by its
-// instances (`instance.ts`).
+// transaction's remaining accounts: the head the IDL declares for
+// `forward_call`, then the accounts of the call, which no IDL lists. Ordering
+// is owned by the forwarder program; integrators must use these builders
+// rather than hand-rolling the slice. The forwarder's own instructions are
+// built by its instances (`contract.ts`).
 
 import { TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { AccountRole, type AccountMeta, type Address } from "@solana/kit";
 
-import { idl, idlConstant } from "./idl.js";
+import { idl, idlAccountMetas, idlConstant } from "./idl.js";
 import {
   deriveAdapterNullifierPda,
   deriveAdapterRootMarkerPda,
@@ -37,17 +38,19 @@ const readonly = (address: Address): AccountMeta => ({ address, role: AccountRol
 const writable = (address: Address): AccountMeta => ({ address, role: AccountRole.WRITABLE });
 
 /**
- * The accounts every forwarder CPI segment starts with: the forwarder (the
- * call's target), its config, the instructions sysvar, then the event
- * authority and the forwarder again, which its CPI events need.
+ * The accounts every forwarder CPI segment starts with: the forwarder, the
+ * program the adapter calls, then the accounts the IDL declares for its
+ * `forward_call`, in the IDL's order and with its flags.
  */
-async function forwarderSegmentHead(forwarderProgram: Address): Promise<AccountMeta[]> {
+export async function forwarderSegmentHead(forwarderProgram: Address): Promise<AccountMeta[]> {
   return [
     readonly(forwarderProgram),
-    readonly((await deriveForwarderConfigPda(forwarderProgram))[0]),
-    readonly(SYSVAR_INSTRUCTIONS_ADDRESS),
-    readonly(await deriveEventAuthorityPda(forwarderProgram)),
-    readonly(forwarderProgram),
+    ...idlAccountMetas(idl, "forward_call", {
+      config: (await deriveForwarderConfigPda(forwarderProgram))[0],
+      ix_sysvar: SYSVAR_INSTRUCTIONS_ADDRESS,
+      event_authority: await deriveEventAuthorityPda(forwarderProgram),
+      program: forwarderProgram,
+    }),
   ];
 }
 

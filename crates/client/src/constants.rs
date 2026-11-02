@@ -1,9 +1,10 @@
 //! Constants of the forwarder's interface with the adapter.
 
 /// Number of accounts every forwarder CPI segment starts with: the forwarder,
-/// its config, the instructions sysvar, the event authority and the
-/// forwarder again.
-pub const FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS: u8 = 5;
+/// the program the adapter calls, then the accounts the IDL declares for its
+/// `forward_call`, as `build.rs` counts them.
+pub const FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS: u8 =
+    1 + include!(concat!(env!("OUT_DIR"), "/forward_call_num_accounts.rs"));
 
 /// Number of accounts in a wrap forwarder CPI segment
 /// (`build_wrap_forwarder_accounts`): the head, the user's and the escrow's

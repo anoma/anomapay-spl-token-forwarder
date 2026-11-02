@@ -37,9 +37,12 @@ Development:
   typecheck      Type-check and format-check the operator scripts against the
                  production IDL's types (the program is not compiled), and
                  check the client's copies of the production and
-                 emergency-migrating IDLs are the program's
-  script-test    Run the operator scripts against the harness's local runtime
-                 (crates/integration-test/tests/operator_scripts.rs), after
+                 emergency-migrating IDLs, and the integration tests' copy of
+                 the development IDL, are the program's
+  script-test    Run the operator scripts, and the TypeScript bindings' reads
+                 of the emergency-migrating build, against the harness's local
+                 runtime (crates/integration-test/tests/operator_scripts.rs,
+                 and emergency_migrating.rs's the_typescript_ tests), after
                  installing their dependencies and generating the types they
                  import
   ts-test        Check the Rust and TypeScript bindings carry one version,
@@ -627,6 +630,9 @@ case "$COMMAND" in
     ensure_node_modules
     release_idl
     (cd crates/integration-test && cargo test --features scripts --test operator_scripts)
+    # The TypeScript bindings' emergency-migrating reads after an incident,
+    # by the reader the integration tests run as they run the scripts.
+    (cd crates/integration-test && cargo test --features scripts --test emergency_migrating the_typescript_)
     ;;
   typecheck)
     require_cmd yarn
@@ -641,6 +647,13 @@ case "$COMMAND" in
     emergency_migrating_idl
     if ! cmp "$EMERGENCY_MIGRATING_IDL" crates/client/idls/emergency_migrating_spl_token_forwarder.json; then
       echo "❌ crates/client/idls/emergency_migrating_spl_token_forwarder.json is not the emergency-migrating build's IDL; copy $EMERGENCY_MIGRATING_IDL over it." >&2
+      exit 1
+    fi
+    # The integration tests' copy of the development build's IDL, which
+    # generates the bindings of its development-only instructions, is the
+    # program's (release_idl built it).
+    if ! cmp "$DEV_IDL" crates/integration-test/idls/spl_token_forwarder_dev.json; then
+      echo "❌ crates/integration-test/idls/spl_token_forwarder_dev.json is not the development build's IDL; copy $DEV_IDL over it." >&2
       exit 1
     fi
     yarn run typecheck

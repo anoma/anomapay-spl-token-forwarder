@@ -390,8 +390,8 @@ dependencies = [
 
 [[package]]
 name = "anoma-pa-solana-client"
-version = "0.10.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?tag=bindings%2Fv0.10.0#26a612eb0ee3353e03f73447ac080c5615c708ce"
+version = "0.12.0"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?tag=bindings%2Fv0.12.0#04b3ba00084cca858f8b73a4c503435c0d01f90d"
 dependencies = [
  "anchor-lang",
  "anoma-rm-risc0",
@@ -412,6 +412,7 @@ dependencies = [
  "solana-signature",
  "solana-transaction",
  "solana-transaction-error",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -469,12 +470,11 @@ dependencies = [
 
 [[package]]
 name = "anomapay-spl-token-forwarder-client"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "anchor-lang",
  "anoma-pa-solana-client",
  "base64 0.22.1",
- "serde",
  "serde_json",
  "sha2 0.10.9",
  "solana-cluster-type",
@@ -491,6 +491,7 @@ dependencies = [
  "solana-transaction-error",
  "spl-associated-token-account-interface",
  "spl-token-interface",
+ "thiserror 2.0.21",
  "tokio",
 ]
 

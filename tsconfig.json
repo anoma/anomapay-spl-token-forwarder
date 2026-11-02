@@ -7,14 +7,15 @@
     // read their IDLs through JSON import attributes, which need a module
     // mode that has them; node20 compiles the scripts as CommonJS still.
     "module": "node20",
-    // The scripts and the package sources they import, under one root.
+    // The scripts, the integration tests' readers, and the package sources
+    // they import, under one root.
     "rootDir": ".",
     "target": "es2020",
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "skipLibCheck": true
   },
-  "include": ["client/**/*.ts", "scripts/**/*.ts"],
+  "include": ["client/**/*.ts", "scripts/**/*.ts", "crates/integration-test/ts/**/*.ts"],
   "ts-node": {
     // The operator scripts run as CommonJS; the bindings package (`ts/`)
     // they import from is an ES module package, compiled here as CommonJS,

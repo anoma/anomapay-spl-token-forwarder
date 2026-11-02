@@ -36,7 +36,7 @@ import { getCreateAssociatedTokenIdempotentInstructionAsync } from "@solana-prog
 import { appendTransactionMessageInstruction, createTransactionMessage, pipe, type Instruction } from "@solana/kit";
 import { confirmedProvider } from "../client/provider";
 import type { SplTokenForwarder as SplTokenForwarderIdl } from "../target/types/spl_token_forwarder";
-import { SplTokenForwarder } from "../ts/src/instance";
+import { SplTokenForwarderInstance } from "../ts/src/contract";
 import { deriveForwarderConfigPda, deriveForwarderEscrowAuthority, deriveTokenAccount } from "../ts/src/pda";
 import { fail, requireEnv, requireHexBytes, requirePubkey } from "./cli-utils";
 
@@ -46,7 +46,7 @@ const wallet = provider.wallet;
 // This cluster's build (target/idl): its config read through the IDL's types,
 // its instructions built by the bindings' instance.
 const forwarder = anchor.workspace.SplTokenForwarder as Program<SplTokenForwarderIdl>;
-const instance = SplTokenForwarder.at(provider.rpc, forwarder.address);
+const instance = new SplTokenForwarderInstance(forwarder.address, provider.rpc);
 // The adapter this build of the forwarder pairs with (env/<cluster>.env).
 const adapterProgramId = requirePubkey("PROTOCOL_ADAPTER_PROGRAM_ID", "the protocol adapter the forwarder serves");
 

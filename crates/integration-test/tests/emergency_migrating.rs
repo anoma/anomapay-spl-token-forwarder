@@ -32,7 +32,7 @@ use anomapay_spl_token_forwarder_client::generated::emergency_migrating_spl_toke
     Initialized, LogicRefReplaced, Migrated, VulnerableLogicRefListed,
 };
 use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::constants::CONFIG_VERSION;
-use anomapay_spl_token_forwarder_client::instance::EmergencyMigratingSplTokenForwarder;
+use anomapay_spl_token_forwarder_client::contract::EmergencyMigratingSplTokenForwarderInstance;
 use anomapay_spl_token_forwarder_client::{
     MigrateEntry, MigrateInput, decode_vulnerable_logic_refs, encode_migrate_forwarder_input,
     forwarder_migrate_num_accounts,
@@ -116,7 +116,7 @@ async fn is_migrated<P>(
     nullifier: [u8; 32],
 ) -> anyhow::Result<bool> {
     Ok(
-        EmergencyMigratingSplTokenForwarder::at(&env.protocol_adapter.rpc, *program)
+        EmergencyMigratingSplTokenForwarderInstance::new(*program, &env.protocol_adapter.rpc)
             .is_nullifier_migrated(&nullifier)
             .await?,
     )
@@ -653,8 +653,8 @@ fn emergency_migrating_idl_version() -> anyhow::Result<String> {
         .ok_or_else(|| anyhow::anyhow!("the IDL records no version: {}", idl["metadata"]))
 }
 
-// The client's emergency-migrating instance (`instance::
-// EmergencyMigratingSplTokenForwarder`) on the forwarder of an incident.
+// The client's emergency-migrating instance (`contract::
+// EmergencyMigratingSplTokenForwarderInstance`) on the forwarder of an incident.
 // Before `reinitialize` it lists no logic ref and holds no migration record,
 // and its marker reads answer false, as the EVM draft's empty storage does.
 // After `reinitialize` lists the transfer logic ref and one migration records
@@ -665,7 +665,7 @@ async fn every_read_of_the_emergency_migrating_instance_answers_the_incident() -
     let mut incident = before_the_incident(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
     let rpc = incident.env.protocol_adapter.rpc.clone();
     let program = incident.local.forwarder.program;
-    let instance = EmergencyMigratingSplTokenForwarder::at(&rpc, program);
+    let instance = EmergencyMigratingSplTokenForwarderInstance::new(program, &rpc);
     let vulnerable = bytes(logic_ref());
     let unlisted = bytes(random_logic_ref());
     let entry = incident.entry()?;
@@ -754,6 +754,91 @@ async fn every_read_of_the_emergency_migrating_instance_answers_the_incident() -
         legacy == built_with,
         "legacy_forwarder() is {legacy}, the local build is built with {built_with}"
     );
+    Ok(())
+}
+
+// The TypeScript bindings' emergency-migrating instance
+// (`ts/src/contract.ts`'s `EmergencyMigratingSplTokenForwarderInstance`) on
+// the forwarder of an incident, read by `ts/emergency-migrating-reads.ts`:
+// after `reinitialize` lists the transfer logic ref and one migration
+// records the wrapped resource, it answers that ref vulnerable and another
+// not, and that resource migrated and the resource of a record no migration
+// wrote, and one without a record, not. Needs the scripts' dependencies:
+// `ops.sh script-test`.
+#[cfg(feature = "scripts")]
+#[tokio::test(flavor = "multi_thread")]
+async fn the_typescript_emergency_migrating_instance_answers_the_incident() -> anyhow::Result<()> {
+    use anomapay_spl_token_forwarder_integration_test::scripts::{hex, run_reader};
+
+    let mut incident = before_the_incident(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
+    let program = incident.local.forwarder.program;
+    let entry = incident.entry()?;
+    incident.deny_and_reinitialize().await?;
+    let tx = incident.prove_migration(vec![entry.clone()], 1).await?;
+    incident.env.protocol_adapter.settled(tx).await?;
+    // A record `init_migration_record` created, of a resource never migrated.
+    let unmigrated = [0x77; 32];
+    let payer = incident.env.protocol_adapter.payer_pubkey();
+    incident
+        .env
+        .send(
+            &[EmergencyMigratingSplTokenForwarderInstance::new(
+                program,
+                &incident.env.protocol_adapter.rpc,
+            )
+            .init_migration_record_ix(&payer, &unmigrated)],
+            &[],
+        )
+        .await?;
+
+    let logic_refs = [
+        (bytes(logic_ref()), true),
+        (bytes(random_logic_ref()), false),
+    ];
+    let nullifiers = [
+        (entry.nullifier, true),
+        (unmigrated, false),
+        ([0x78; 32], false),
+    ];
+    let list = |values: &[([u8; 32], bool)]| {
+        values
+            .iter()
+            .map(|(value, _)| hex(value))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let ran = run_reader(
+        &incident.env,
+        incident.env.protocol_adapter.payer()?,
+        "emergency-migrating-reads.ts",
+        &[
+            ("FORWARDER_PROGRAM_ID", program.to_string()),
+            ("LOGIC_REFS", list(&logic_refs)),
+            ("NULLIFIERS", list(&nullifiers)),
+        ],
+    )?;
+    println!("{ran}");
+    anyhow::ensure!(ran.success, "the reader failed: {ran}");
+    let answers: serde_json::Value = serde_json::from_str(
+        ran.stdout
+            .lines()
+            .last()
+            .ok_or_else(|| anyhow::anyhow!("the reader printed nothing: {ran}"))?,
+    )?;
+    for (read, values) in [
+        ("isLogicRefVulnerable", &logic_refs[..]),
+        ("isNullifierMigrated", &nullifiers[..]),
+    ] {
+        for (value, expected) in values {
+            let answer = &answers[read][hex(value)];
+            println!("{read}({}): {answer}", hex(value));
+            anyhow::ensure!(
+                *answer == serde_json::Value::Bool(*expected),
+                "the TypeScript instance's {read}({}) is {answer}, the incident set up {expected}",
+                hex(value)
+            );
+        }
+    }
     Ok(())
 }
 

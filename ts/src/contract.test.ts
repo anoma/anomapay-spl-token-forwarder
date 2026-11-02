@@ -16,15 +16,14 @@ import {
 } from "@solana/kit";
 
 import { UPGRADE_COMPUTE_UNIT_LIMIT } from "./constants.js";
-import type { DeploymentRecord } from "./deployments.js";
 import { emergencyMigratingIdl, idl, idlConstant } from "./idl.js";
 import {
-  EmergencyMigratingSplTokenForwarder,
-  InstanceError,
-  recordedDeployment,
+  EmergencyMigratingSplTokenForwarderInstance,
+  recordedAddress,
   returnedString,
-  SplTokenForwarder,
-} from "./instance.js";
+  SplTokenForwarderInstance,
+} from "./contract.js";
+import { BindingsError } from "./error.js";
 import {
   deriveForwarderConfigPda,
   deriveForwarderEscrowAuthority,
@@ -35,56 +34,38 @@ import {
 const DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 const MAINNET_GENESIS = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
 
-/** The error `f` throws, which must be an `InstanceError`. */
-function instanceError(f: () => unknown): InstanceError {
+/** The error `f` throws, which must be a `BindingsError`. */
+function bindingsError(f: () => unknown): BindingsError {
   try {
     f();
   } catch (error) {
-    expect(error).toBeInstanceOf(InstanceError);
-    return error as InstanceError;
+    expect(error).toBeInstanceOf(BindingsError);
+    return error as BindingsError;
   }
   throw new Error("no error was thrown");
 }
 
-describe("recordedDeployment", () => {
-  it("is staging's devnet forwarder at the IDL's address", () => {
-    const found = recordedDeployment("staging", DEVNET_GENESIS);
+describe("recordedAddress", () => {
+  it("finds the recorded staging devnet forwarder at the IDL's address", () => {
+    const found = recordedAddress("staging", DEVNET_GENESIS);
     console.log(found);
-    expect(found.chainId).toBe("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1");
-    expect(found.programId).toBe(address(idl.address));
+    expect(found).toBe(address(idl.address));
   });
 
-  it("is no deployment where production records none", () => {
-    expect(instanceError(() => recordedDeployment("production", MAINNET_GENESIS)).detail).toEqual({
-      kind: "NoDeployment",
-      chainId: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
-    });
+  it("finds production recording nothing on mainnet-beta", () => {
+    const e = bindingsError(() => recordedAddress("production", MAINNET_GENESIS));
+    console.log(e.message);
+    expect(e.detail).toEqual({ kind: "UnsupportedChain", cluster: "mainnet-beta" });
   });
 
-  // A cluster no environment records, such as a local validator, is no
-  // deployment, under the chain id its genesis hash gives.
-  it("is no deployment on an unrecorded cluster", () => {
+  // A genesis hash of no known cluster, such as a local validator's, is
+  // ChainIdUnknown in every environment.
+  it("finds a genesis hash of no known cluster ChainIdUnknown", () => {
     for (const environment of ["staging", "production"] as const) {
-      expect(instanceError(() => recordedDeployment(environment, "11111111111111111111111111111111")).detail).toEqual({
-        kind: "NoDeployment",
-        chainId: "solana:11111111111111111111111111111111",
-      });
+      const e = bindingsError(() => recordedAddress(environment, "11111111111111111111111111111111"));
+      console.log(`${environment}: ${e.message}`);
+      expect(e.detail).toEqual({ kind: "ChainIdUnknown" });
     }
-  });
-
-  it("is the cluster's deployed entry", () => {
-    const record: DeploymentRecord = {
-      staging: [{ chainId: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", programId: idl.address, deploymentSlot: 4242 }],
-      production: [],
-    };
-    const found = recordedDeployment("staging", DEVNET_GENESIS, record);
-    console.log(found);
-    expect(found).toEqual({
-      chainId: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
-      programId: address(idl.address),
-      deploymentSlot: 4242,
-    });
-    expect(() => recordedDeployment("production", DEVNET_GENESIS, record)).toThrow(InstanceError);
   });
 });
 
@@ -139,7 +120,7 @@ const sentInstructions = (of: Idl) =>
 
 /** The builders both builds' instances share, each with its arguments' expected bytes. */
 async function sharedBuilders(
-  f: SplTokenForwarder | EmergencyMigratingSplTokenForwarder,
+  f: SplTokenForwarderInstance | EmergencyMigratingSplTokenForwarderInstance,
 ): Promise<[string, Instruction, Uint8Array][]> {
   return [
     ["initialize", await f.initializeIx(key(1), key(2), bytes(3), key(4)), concat(bytes(2), bytes(3), bytes(4))],
@@ -154,13 +135,13 @@ async function sharedBuilders(
   ];
 }
 
-const productionBuilders = async (f: SplTokenForwarder): Promise<[string, Instruction, Uint8Array][]> => [
+const productionBuilders = async (f: SplTokenForwarderInstance): Promise<[string, Instruction, Uint8Array][]> => [
   ...(await sharedBuilders(f)),
   ["reinitialize", await f.reinitializeIx(key(1), bytes(3)), bytes(3)],
 ];
 
 const emergencyMigratingBuilders = async (
-  f: EmergencyMigratingSplTokenForwarder,
+  f: EmergencyMigratingSplTokenForwarderInstance,
 ): Promise<[string, Instruction, Uint8Array][]> => [
   ...(await sharedBuilders(f)),
   [
@@ -175,11 +156,11 @@ describe("the instances' builders", () => {
   const program = address(idl.address);
 
   for (const [build, of, built] of [
-    ["production", idl, () => productionBuilders(SplTokenForwarder.at(rpc, program))],
+    ["production", idl, () => productionBuilders(new SplTokenForwarderInstance(program, rpc))],
     [
       "emergency-migrating",
       emergencyMigratingIdl,
-      () => emergencyMigratingBuilders(EmergencyMigratingSplTokenForwarder.at(rpc, program)),
+      () => emergencyMigratingBuilders(new EmergencyMigratingSplTokenForwarderInstance(program, rpc)),
     ],
   ] as const) {
     it(`build every instruction a client sends the ${build} build, as its IDL declares it`, async () => {
@@ -209,8 +190,8 @@ describe("the instances' builders", () => {
     ]);
     const otherConfig = (await deriveForwarderConfigPda(other))[0];
     const all = [
-      ...(await productionBuilders(SplTokenForwarder.at(rpc, other))),
-      ...(await emergencyMigratingBuilders(EmergencyMigratingSplTokenForwarder.at(rpc, other))),
+      ...(await productionBuilders(new SplTokenForwarderInstance(other, rpc))),
+      ...(await emergencyMigratingBuilders(new EmergencyMigratingSplTokenForwarderInstance(other, rpc))),
     ];
     for (const [name, ix] of all) {
       expect(ix.programAddress, name).toBe(other);
@@ -223,12 +204,12 @@ describe("the instances' builders", () => {
   });
 
   it("put the upgrade's compute budget first", async () => {
-    const [budget] = await SplTokenForwarder.at(rpc, program).upgradeIxs(key(1), key(2), key(3));
+    const [budget] = await new SplTokenForwarderInstance(program, rpc).upgradeIxs(key(1), key(2), key(3));
     expect(budget).toEqual(getSetComputeUnitLimitInstruction({ units: UPGRADE_COMPUTE_UNIT_LIMIT }));
   });
 
   it("put the bitmaps to close after the named accounts, writable", async () => {
-    const ix = await SplTokenForwarder.at(rpc, program).closeNonceBitmapsBatchIx(key(1), key(2), [key(5), key(6)]);
+    const ix = await new SplTokenForwarderInstance(program, rpc).closeNonceBitmapsBatchIx(key(1), key(2), [key(5), key(6)]);
     expect(ix.accounts!.slice(3)).toEqual([
       { address: key(5), role: AccountRole.WRITABLE },
       { address: key(6), role: AccountRole.WRITABLE },
@@ -237,7 +218,7 @@ describe("the instances' builders", () => {
 
   // The coder sizes each encoding by its value: 40 refs encode to 1324 bytes.
   it("encode a reinitialize of 40 vulnerable logic refs, more than 1000 bytes", async () => {
-    const f = EmergencyMigratingSplTokenForwarder.at(rpc, program);
+    const f = new EmergencyMigratingSplTokenForwarderInstance(program, rpc);
     const refs = Array.from({ length: 40 }, (_, i) => bytes(i + 1));
     const ix = await f.reinitializeIx(key(1), key(2), bytes(3), refs);
     const data = ix.data!;
@@ -248,11 +229,37 @@ describe("the instances' builders", () => {
   });
 });
 
+describe("the instances' reads", () => {
+  // Nothing listens on port 1, so every request fails: each read names what
+  // it fetched, so every read is the one the read fetches its answer from.
+  it("fail with RpcTransportError when the RPC cannot answer, naming what they read", async () => {
+    const production = new SplTokenForwarderInstance(key(9), rpc);
+    const emergency = new EmergencyMigratingSplTokenForwarderInstance(key(9), rpc);
+    for (const [what, read] of [
+      ["the forwarder's config", () => production.getLogicRef()],
+      ["the forwarder's config", () => production.getProtocolAdapter()],
+      ["the forwarder's config", () => production.owner()],
+      ["the simulation of version", () => production.version(key(1))],
+      ["the forwarder's config", () => emergency.getLogicRef()],
+      ["the forwarder's config", () => emergency.getProtocolAdapter()],
+      ["the forwarder's config", () => emergency.owner()],
+      ["the simulation of version", () => emergency.version(key(1))],
+      ["the vulnerable logic refs", () => emergency.isLogicRefVulnerable(bytes(1))],
+      ["the migration record", () => emergency.isNullifierMigrated(bytes(1))],
+    ] as const) {
+      const e = await read().catch((error: unknown) => error);
+      console.log(`${what}: ${String(e)}`);
+      expect(e, what).toBeInstanceOf(BindingsError);
+      expect(e, what).toMatchObject({ detail: { kind: "RpcTransportError", what: expect.stringMatching(new RegExp(`^${what}`)) } });
+    }
+  });
+});
+
 describe("the emergency-migrating instance", () => {
   it("names the IDL's legacy forwarder", () => {
     const declared = idlConstant(emergencyMigratingIdl, "LEGACY_FORWARDER");
     console.log(`LEGACY_FORWARDER: ${declared}`);
-    expect(EmergencyMigratingSplTokenForwarder.at(rpc, key(9)).legacyForwarder()).toBe(declared);
+    expect(new EmergencyMigratingSplTokenForwarderInstance(key(9), rpc).legacyForwarder()).toBe(declared);
   });
 });
 
@@ -278,7 +285,7 @@ describe("returnedString", () => {
       ["no bytes", returnData(program, new Uint8Array())],
       ["not UTF-8", returnData(program, Uint8Array.of(1, 0, 0, 0, 0xff))],
     ] as const) {
-      const error = instanceError(() => returnedString(program, data));
+      const error = bindingsError(() => returnedString(program, data));
       console.log(`${what}: ${error.message}`);
       expect(error.detail.kind, what).toBe("Decode");
     }

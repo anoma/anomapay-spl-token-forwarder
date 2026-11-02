@@ -1,9 +1,10 @@
 // The forwarder deployed at an address, as the EVM bindings return the ERC20
-// forwarder: its reads under their EVM names, from its config and the
-// emergency-migrating build's accounts, and its instructions, built for its
-// address with its build's IDL, as the Rust crate's `instance` reads and
-// builds them. The reads and instructions both builds declare are written
-// once (`ForwarderInstance`); each build's class adds its own.
+// forwarder (`contract::erc20_forwarder`): its reads under their EVM names,
+// from its config and the emergency-migrating build's accounts, and its
+// instructions, built for its address with its build's IDL, as the Rust
+// crate's `contract` reads and builds them. The reads and instructions both
+// builds declare are written once (`ForwarderInstance`); each build's class
+// adds its own.
 
 import { BorshCoder, type Idl } from "@anchor-lang/core";
 import { getSetComputeUnitLimitInstruction } from "@solana-program/compute-budget";
@@ -26,14 +27,14 @@ import {
   type Instruction,
   type Rpc,
   type SolanaRpcApiMainnet,
-  type TransactionError,
 } from "@solana/kit";
 
 import { decodeVulnerableLogicRefs } from "./accounts.js";
+import { clusterOfGenesisHash, splTokenForwarderAddress, type Environment } from "./addresses.js";
 import { coder, emergencyMigratingCoder } from "./coder.js";
 import { UPGRADE_COMPUTE_UNIT_LIMIT } from "./constants.js";
-import { chainIdOfGenesisHash, deployment, type Deployment, type DeploymentRecord, type Environment } from "./deployments.js";
-import { emergencyMigratingIdl, idl, idlConstant } from "./idl.js";
+import { BindingsError } from "./error.js";
+import { emergencyMigratingIdl, idl, idlAccountMetas, idlConstant } from "./idl.js";
 import {
   BPF_LOADER_UPGRADEABLE,
   deriveEventAuthorityPda,
@@ -53,104 +54,43 @@ import {
 /** The system program, which creates the accounts the forwarder's instructions initialize. */
 const SYSTEM_PROGRAM = address("11111111111111111111111111111111");
 
-/** Why an instance could not be made or could not answer. */
-export type InstanceErrorDetail =
-  /** The environment records no deployed forwarder on the cluster. */
-  | { kind: "NoDeployment"; chainId: string }
-  /** An account the answer is read from does not exist. */
-  | { kind: "AccountMissing"; address: Address }
-  /** An RPC request failed: retrying may succeed. */
-  | { kind: "Rpc"; what: string; error: string }
-  /** What the chain holds does not decode. */
-  | { kind: "Decode"; what: string; error: string }
-  /** A simulated instruction failed. */
-  | { kind: "Simulation"; error: TransactionError; logs: readonly string[] };
-
-/** JSON text of a value kit's RPC returns, each bigint (which `JSON.stringify` refuses) as its decimal digits. */
-const toJson = (value: unknown): string =>
-  JSON.stringify(value, (_, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
-
-function describe(detail: InstanceErrorDetail): string {
-  switch (detail.kind) {
-    case "NoDeployment":
-      return `no deployed forwarder is recorded on ${detail.chainId}`;
-    case "AccountMissing":
-      return `the account ${detail.address} does not exist`;
-    case "Rpc":
-      return `failed to fetch ${detail.what}: ${detail.error}`;
-    case "Decode":
-      return `${detail.what} does not decode: ${detail.error}`;
-    case "Simulation":
-      return `the simulation failed: ${toJson(detail.error)}; logs: ${toJson(detail.logs)}`;
-  }
-}
-
-export class InstanceError extends Error {
-  constructor(
-    readonly detail: InstanceErrorDetail,
-    options?: ErrorOptions,
-  ) {
-    super(describe(detail), options);
-    this.name = "InstanceError";
-  }
-}
-
-/** The RPC's answer `response`, a failed request thrown as `Rpc`. */
+/** The RPC's answer `response`, a failed request thrown as `RpcTransportError`. */
 async function answered<T>(what: string, response: Promise<T>): Promise<T> {
   try {
     return await response;
   } catch (error) {
-    throw new InstanceError({ kind: "Rpc", what, error: String(error) }, { cause: error });
+    throw new BindingsError({ kind: "RpcTransportError", what, error: String(error) }, { cause: error });
   }
 }
 
-/**
- * The forwarder `environment` records on the cluster whose genesis hash is
- * `genesisHash`, in `record` (the package's `deployments.json` by default).
- * Both builds run at the one address: the emergency-migrating build replaces
- * the production build in place.
- */
-export function recordedDeployment(
-  environment: Environment,
-  genesisHash: string,
-  record?: DeploymentRecord,
-): Deployment {
-  const id = chainIdOfGenesisHash(genesisHash);
-  const recorded = deployment(environment, id, record);
-  if (recorded === undefined) throw new InstanceError({ kind: "NoDeployment", chainId: id });
+/** The forwarder `environment` records on the cluster whose genesis hash is `genesisHash`. */
+export function recordedAddress(environment: Environment, genesisHash: string): Address {
+  const cluster = clusterOfGenesisHash(genesisHash);
+  if (cluster === undefined) throw new BindingsError({ kind: "ChainIdUnknown" });
+  const recorded = splTokenForwarderAddress(environment, cluster);
+  if (recorded === undefined) throw new BindingsError({ kind: "UnsupportedChain", cluster });
   return recorded;
 }
 
-async function recordedProgram(rpc: Rpc<SolanaRpcApiMainnet>, environment: Environment): Promise<Address> {
-  const genesisHash = await answered("the genesis hash", rpc.getGenesisHash().send());
-  return recordedDeployment(environment, genesisHash).programId;
-}
-
-/** The forwarder `environment` records on the cluster behind `rpc`, as the EVM bindings return the ERC20 forwarder. */
-export async function splTokenForwarder(rpc: Rpc<SolanaRpcApiMainnet>, environment: Environment): Promise<SplTokenForwarder> {
-  return SplTokenForwarder.at(rpc, await recordedProgram(rpc, environment));
-}
-
-/** The forwarder `environment` records on the cluster behind `rpc`, read as the emergency-migrating build. */
-export async function emergencyMigratingSplTokenForwarder(
+/**
+ * Returns an SPL token forwarder instance of the environment for the given
+ * RPC. An emergency-migrating build at the recorded address is
+ * `new EmergencyMigratingSplTokenForwarderInstance(instance.address, rpc)`.
+ */
+export async function splTokenForwarder(
   rpc: Rpc<SolanaRpcApiMainnet>,
   environment: Environment,
-): Promise<EmergencyMigratingSplTokenForwarder> {
-  return EmergencyMigratingSplTokenForwarder.at(rpc, await recordedProgram(rpc, environment));
-}
-
-/** The role of an account with the IDL's `signer` and `writable` flags. */
-function role(signer: boolean, writable: boolean): AccountRole {
-  if (signer) return writable ? AccountRole.WRITABLE_SIGNER : AccountRole.READONLY_SIGNER;
-  return writable ? AccountRole.WRITABLE : AccountRole.READONLY;
+): Promise<SplTokenForwarderInstance> {
+  const genesisHash = await answered("the genesis hash", rpc.getGenesisHash().send());
+  return new SplTokenForwarderInstance(recordedAddress(environment, genesisHash), rpc);
 }
 
 /** The forwarder at an address, read over an RPC at its commitment, as the build whose IDL is `idl`. */
 abstract class ForwarderInstance {
   protected constructor(
-    protected readonly rpc: Rpc<SolanaRpcApiMainnet>,
     /** The address the forwarder is deployed at. */
-    readonly programId: Address,
+    readonly address: Address,
+    protected readonly rpc: Rpc<SolanaRpcApiMainnet>,
     private readonly idl: Idl,
     private readonly coder: BorshCoder,
   ) {}
@@ -160,10 +100,10 @@ abstract class ForwarderInstance {
 
   private pdas() {
     this.derived ??= Promise.all([
-      deriveForwarderConfigPda(this.programId),
-      deriveEventAuthorityPda(this.programId),
-      deriveProgramDataAddress(this.programId),
-      deriveUpgradeAuthorityPda(this.programId),
+      deriveForwarderConfigPda(this.address),
+      deriveEventAuthorityPda(this.address),
+      deriveProgramDataAddress(this.address),
+      deriveUpgradeAuthorityPda(this.address),
     ]).then(([[config], eventAuthority, programData, upgradeAuthority]) => ({
       config,
       eventAuthority,
@@ -178,18 +118,18 @@ abstract class ForwarderInstance {
     const { config: address } = await this.pdas();
     const what = `the forwarder's config ${address}`;
     const account = await answered(what, fetchEncodedAccount(this.rpc, address));
-    if (!account.exists) throw new InstanceError({ kind: "AccountMissing", address });
+    if (!account.exists) throw new BindingsError({ kind: "AccountMissing", address });
     try {
       return this.coder.accounts.decode("Config", account.data);
     } catch (error) {
-      throw new InstanceError({ kind: "Decode", what, error: String(error) }, { cause: error });
+      throw new BindingsError({ kind: "Decode", what, error: String(error) }, { cause: error });
     }
   }
 
   /** The data of the account at `address` when it exists and the forwarder owns it: an account the forwarder created. */
   protected async ownedData(address: Address, what: string): Promise<Uint8Array | null> {
     const account = await answered(`${what} ${address}`, fetchEncodedAccount(this.rpc, address));
-    return account.exists && account.programAddress === this.programId ? account.data : null;
+    return account.exists && account.programAddress === this.address ? account.data : null;
   }
 
   /** `getLogicRef()`. */
@@ -237,9 +177,9 @@ abstract class ForwarderInstance {
         .send(),
     );
     if (value.err !== null) {
-      throw new InstanceError({ kind: "Simulation", error: value.err, logs: value.logs ?? [] });
+      throw new BindingsError({ kind: "Simulation", error: value.err, logs: value.logs ?? [] });
     }
-    return returnedString(this.programId, value.returnData);
+    return returnedString(this.address, value.returnData);
   }
 
   /**
@@ -253,20 +193,9 @@ abstract class ForwarderInstance {
     args: object,
     remaining: AccountMeta[] = [],
   ): Instruction {
-    const ix = this.idl.instructions.find((i) => i.name === name);
-    if (ix === undefined) throw new Error(`the IDL of ${this.idl.metadata.name} declares no instruction ${name}`);
-    const names = ix.accounts.map((a) => a.name);
-    const unknown = Object.keys(accounts).filter((n) => !names.includes(n));
-    if (unknown.length > 0) throw new Error(`${name} takes no account ${unknown.join(", ")}`);
-    const metas = ix.accounts.map((a): AccountMeta => {
-      if ("accounts" in a) throw new Error(`${name}: the account group ${a.name} is not supported`);
-      const account = accounts[a.name];
-      if (account === undefined) throw new Error(`${name} takes an account ${a.name} not given`);
-      return { address: account, role: role(a.signer ?? false, a.writable ?? false) };
-    });
     return {
-      programAddress: this.programId,
-      accounts: [...metas, ...remaining],
+      programAddress: this.address,
+      accounts: [...idlAccountMetas(this.idl, name, accounts), ...remaining],
       data: this.coder.instruction.encode(name, args),
     };
   }
@@ -274,7 +203,7 @@ abstract class ForwarderInstance {
   /** The forwarder's config, and the accounts Anchor's `#[event_cpi]` adds to an instruction that emits events. */
   protected async configAndEvents(): Promise<Record<string, Address>> {
     const { config, eventAuthority } = await this.pdas();
-    return { config, event_authority: eventAuthority, program: this.programId };
+    return { config, event_authority: eventAuthority, program: this.address };
   }
 
   /** `initialize`, by `authority`, the program's upgrade authority. */
@@ -305,7 +234,7 @@ abstract class ForwarderInstance {
       "init_nonce_bitmap",
       {
         payer,
-        nonce_bitmap: (await deriveNonceBitmapPda(this.programId, user, wordIndex))[0],
+        nonce_bitmap: (await deriveNonceBitmapPda(this.address, user, wordIndex))[0],
         system_program: SYSTEM_PROGRAM,
       },
       { user, word_index: wordIndex },
@@ -344,7 +273,7 @@ abstract class ForwarderInstance {
         {
           authority: owner,
           program_data: programData,
-          upgraded_program: this.programId,
+          upgraded_program: this.address,
           buffer,
           spill,
           upgrade_authority: upgradeAuthority,
@@ -365,7 +294,7 @@ abstract class ForwarderInstance {
 
   /** `close_escrow` of `mint`'s escrow into `recipientAta`, by the owner, while the adapter whose state is `paState` is paused. */
   async closeEscrowIx(owner: Address, paState: Address, mint: Address, recipientAta: Address): Promise<Instruction> {
-    const [escrowAuthority] = await deriveForwarderEscrowAuthority(this.programId);
+    const [escrowAuthority] = await deriveForwarderEscrowAuthority(this.address);
     return this.instruction(
       "close_escrow",
       {
@@ -399,14 +328,10 @@ abstract class ForwarderInstance {
 }
 
 /** The production build at an address. */
-export class SplTokenForwarder extends ForwarderInstance {
-  private constructor(rpc: Rpc<SolanaRpcApiMainnet>, programId: Address) {
-    super(rpc, programId, idl, coder);
-  }
-
-  /** The forwarder at `programId`, as alloy's `new(address, provider)`. */
-  static at(rpc: Rpc<SolanaRpcApiMainnet>, programId: Address): SplTokenForwarder {
-    return new SplTokenForwarder(rpc, programId);
+export class SplTokenForwarderInstance extends ForwarderInstance {
+  /** The forwarder at `address`, as alloy's `ERC20ForwarderInstance::new(address, provider)`. */
+  constructor(address: Address, rpc: Rpc<SolanaRpcApiMainnet>) {
+    super(address, rpc, idl, coder);
   }
 
   /** `reinitialize` to the resource logic `logicRef`, by the owner. */
@@ -420,14 +345,10 @@ export class SplTokenForwarder extends ForwarderInstance {
 }
 
 /** The emergency-migrating build at an address. */
-export class EmergencyMigratingSplTokenForwarder extends ForwarderInstance {
-  private constructor(rpc: Rpc<SolanaRpcApiMainnet>, programId: Address) {
-    super(rpc, programId, emergencyMigratingIdl, emergencyMigratingCoder);
-  }
-
-  /** The forwarder at `programId`, as alloy's `new(address, provider)`. */
-  static at(rpc: Rpc<SolanaRpcApiMainnet>, programId: Address): EmergencyMigratingSplTokenForwarder {
-    return new EmergencyMigratingSplTokenForwarder(rpc, programId);
+export class EmergencyMigratingSplTokenForwarderInstance extends ForwarderInstance {
+  /** The forwarder at `address`, as alloy's `new(address, provider)`. */
+  constructor(address: Address, rpc: Rpc<SolanaRpcApiMainnet>) {
+    super(address, rpc, emergencyMigratingIdl, emergencyMigratingCoder);
   }
 
   /**
@@ -436,7 +357,7 @@ export class EmergencyMigratingSplTokenForwarder extends ForwarderInstance {
    * answers.
    */
   async isLogicRefVulnerable(logicRef: Uint8Array): Promise<boolean> {
-    const [address] = await deriveVulnerableLogicRefsPda(this.programId);
+    const [address] = await deriveVulnerableLogicRefsPda(this.address);
     const what = "the vulnerable logic refs";
     const data = await this.ownedData(address, what);
     if (data === null) return false;
@@ -444,7 +365,7 @@ export class EmergencyMigratingSplTokenForwarder extends ForwarderInstance {
     try {
       listed = decodeVulnerableLogicRefs(data);
     } catch (error) {
-      throw new InstanceError({ kind: "Decode", what: `${what} ${address}`, error: String(error) }, { cause: error });
+      throw new BindingsError({ kind: "Decode", what: `${what} ${address}`, error: String(error) }, { cause: error });
     }
     return listed.some((r) => r.length === logicRef.length && r.every((b, i) => b === logicRef[i]));
   }
@@ -455,14 +376,14 @@ export class EmergencyMigratingSplTokenForwarder extends ForwarderInstance {
    * empty storage answers.
    */
   async isNullifierMigrated(nullifier: Uint8Array): Promise<boolean> {
-    const [address] = await deriveMigrationRecordPda(this.programId, nullifier);
+    const [address] = await deriveMigrationRecordPda(this.address, nullifier);
     const what = "the migration record";
     const data = await this.ownedData(address, what);
     if (data === null) return false;
     try {
       return emergencyMigratingCoder.accounts.decode("MigrationRecord", data).migrated;
     } catch (error) {
-      throw new InstanceError({ kind: "Decode", what: `${what} ${address}`, error: String(error) }, { cause: error });
+      throw new BindingsError({ kind: "Decode", what: `${what} ${address}`, error: String(error) }, { cause: error });
     }
   }
 
@@ -485,7 +406,7 @@ export class EmergencyMigratingSplTokenForwarder extends ForwarderInstance {
       "reinitialize",
       {
         authority: owner,
-        vulnerable_logic_refs: (await deriveVulnerableLogicRefsPda(this.programId))[0],
+        vulnerable_logic_refs: (await deriveVulnerableLogicRefsPda(this.address))[0],
         pa_state: (await derivePaStatePda(protocolAdapter))[0],
         system_program: SYSTEM_PROGRAM,
         ...(await this.configAndEvents()),
@@ -500,7 +421,7 @@ export class EmergencyMigratingSplTokenForwarder extends ForwarderInstance {
       "init_migration_record",
       {
         payer,
-        migration_record: (await deriveMigrationRecordPda(this.programId, nullifier))[0],
+        migration_record: (await deriveMigrationRecordPda(this.address, nullifier))[0],
         system_program: SYSTEM_PROGRAM,
       },
       { nullifier: Array.from(nullifier) },
@@ -514,7 +435,7 @@ export function returnedString(
   returnData: Readonly<{ data: readonly [string, "base64"]; programId: Address }> | null,
 ): string {
   const what = `the return data of ${program}`;
-  const fail = (error: string) => new InstanceError({ kind: "Decode", what, error });
+  const fail = (error: string) => new BindingsError({ kind: "Decode", what, error });
   if (returnData === null) throw fail("the simulation returned nothing");
   if (returnData.programId !== program) throw fail(`${returnData.programId} returned it`);
   const bytes = Uint8Array.from(getBase64Encoder().encode(returnData.data[0]));

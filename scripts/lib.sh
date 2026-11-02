@@ -10,10 +10,12 @@ PROGRAM_NAME="spl_token_forwarder"
 PROGRAM_SO="target/deploy/${PROGRAM_NAME}.so"
 PROGRAM_IDL="target/idl/${PROGRAM_NAME}.json"
 PROGRAM_TYPES="target/types/${PROGRAM_NAME}.ts"
-# The development build's Cargo features, and the instructions they add,
-# which the production IDL must lack (build_release and release_idl check it).
+# The development build's Cargo features, the instructions they add, which
+# the production IDL must lack (build_release and release_idl check it), and
+# its IDL.
 DEV_FEATURES="dev-config-version"
 DEV_ONLY_IX="dev_set_config_version"
+DEV_IDL="target/idl/${PROGRAM_NAME}_dev.json"
 # The emergency-migrating build's Cargo feature and IDL
 # (docs/EMERGENCY_MIGRATION.md).
 EMERGENCY_MIGRATING_FEATURES="emergency-migrating"
@@ -135,6 +137,13 @@ release_idl() {
   assert_release_idl_lacks_dev_only
 }
 
+# The development build's IDL, without compiling the program.
+dev_idl() {
+  echo "    Building the development build's IDL..."
+  mkdir -p "$(dirname "$DEV_IDL")"
+  anchor idl build -p "$PROGRAM_NAME" -o "$DEV_IDL" -- --features "$DEV_FEATURES"
+}
+
 # The emergency-migrating build's IDL, without compiling the program.
 emergency_migrating_idl() {
   echo "    Building the emergency-migrating build's IDL..."
@@ -147,9 +156,7 @@ emergency_migrating_idl() {
 # fails when a dev-only instruction reaches the production build, and when the
 # development build gains or loses anything DEV_ONLY_IX does not account for.
 assert_release_idl_lacks_dev_only() {
-  local dev_idl
-  dev_idl="$(mktemp --suffix .json)"
-  anchor idl build -p "$PROGRAM_NAME" -o "$dev_idl" -- --features "$DEV_FEATURES"
+  dev_idl
   if ! node -e '
     const fs = require("fs");
     const [devPath, releasePath, declaredList] = process.argv.slice(1);
@@ -176,11 +183,9 @@ assert_release_idl_lacks_dev_only() {
       for (const p of problems) console.error(`   ${p}`);
       process.exit(1);
     }
-  ' "$dev_idl" "$PROGRAM_IDL" "$DEV_ONLY_IX"; then
-    rm -f "$dev_idl"
+  ' "$DEV_IDL" "$PROGRAM_IDL" "$DEV_ONLY_IX"; then
     exit 1
   fi
-  rm -f "$dev_idl"
 }
 
 # The deterministic build of the forwarder at the loaded addresses, into

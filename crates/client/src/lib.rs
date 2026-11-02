@@ -6,10 +6,11 @@
 //! formats (the wrap authorization message, the wrap, unwrap and migrate
 //! inputs), and the emergency-migrating build's `VulnerableLogicRefs`
 //! account. The emergency-migrating build's instructions are in
-//! [`emergency_migrating`]. The deployment record is [`deployments`], and
-//! the program at an address, with its reads and builders, is
-//! [`instance`]. The adapter's own bindings are anoma-pa-solana-client's;
-//! its `decode_cpi_event` reads the generated events.
+//! [`emergency_migrating`]. The deployment record is [`addresses`], and the
+//! program at an address, with its reads and builders, is [`contract`], as
+//! anomapay-erc20-forwarder's bindings name them, with its errors
+//! ([`error`]). The adapter's own bindings are anoma-pa-solana-client's; its
+//! `decode_cpi_event` reads the generated events.
 
 pub mod accounts;
 pub mod constants;
@@ -18,13 +19,15 @@ pub mod input;
 pub mod wrap_message;
 
 #[cfg(feature = "solana")]
-pub mod deployments;
+pub mod addresses;
+#[cfg(feature = "rpc")]
+pub mod contract;
 #[cfg(feature = "solana")]
 pub mod emergency_migrating;
+#[cfg(feature = "rpc")]
+pub mod error;
 #[cfg(feature = "solana")]
 pub mod forwarder;
-#[cfg(feature = "rpc")]
-pub mod instance;
 #[cfg(feature = "solana")]
 pub mod pda;
 #[cfg(feature = "solana")]
@@ -39,7 +42,7 @@ pub use input::{
     encode_wrap_forwarder_input, ForwarderInput, InputError, MigrateEntry, MigrateInput,
     UnwrapInput, WrapInput,
 };
-pub use wrap_message::{sha256, WrapMessage, WRAP_MESSAGE_LEN};
+pub use wrap_message::{WrapMessage, WRAP_MESSAGE_LEN};
 
 #[cfg(feature = "solana")]
 pub use forwarder::{
