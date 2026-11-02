@@ -34,7 +34,7 @@ import { clusterOfGenesisHash, splTokenForwarderAddress, type Environment } from
 import { coder, emergencyMigratingCoder } from "./coder.js";
 import { UPGRADE_COMPUTE_UNIT_LIMIT } from "./constants.js";
 import { BindingsError } from "./error.js";
-import { accountRole, emergencyMigratingIdl, idl, idlConstant } from "./idl.js";
+import { emergencyMigratingIdl, idl, idlAccountMetas, idlConstant } from "./idl.js";
 import {
   BPF_LOADER_UPGRADEABLE,
   deriveEventAuthorityPda,
@@ -193,20 +193,9 @@ abstract class ForwarderInstance {
     args: object,
     remaining: AccountMeta[] = [],
   ): Instruction {
-    const ix = this.idl.instructions.find((i) => i.name === name);
-    if (ix === undefined) throw new Error(`the IDL of ${this.idl.metadata.name} declares no instruction ${name}`);
-    const names = ix.accounts.map((a) => a.name);
-    const unknown = Object.keys(accounts).filter((n) => !names.includes(n));
-    if (unknown.length > 0) throw new Error(`${name} takes no account ${unknown.join(", ")}`);
-    const metas = ix.accounts.map((a): AccountMeta => {
-      if ("accounts" in a) throw new Error(`${name}: the account group ${a.name} is not supported`);
-      const account = accounts[a.name];
-      if (account === undefined) throw new Error(`${name} takes an account ${a.name} not given`);
-      return { address: account, role: accountRole(a.signer ?? false, a.writable ?? false) };
-    });
     return {
       programAddress: this.address,
-      accounts: [...metas, ...remaining],
+      accounts: [...idlAccountMetas(this.idl, name, accounts), ...remaining],
       data: this.coder.instruction.encode(name, args),
     };
   }

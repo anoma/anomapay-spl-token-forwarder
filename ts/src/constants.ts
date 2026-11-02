@@ -1,19 +1,12 @@
 // Constants of the forwarder's interface with the adapter.
 
-import { idl } from "./idl.js";
-
-/** The accounts the IDL declares for the forwarder's `forward_call`, which the adapter calls. */
-export const FORWARD_CALL_ACCOUNTS = (() => {
-  const forwardCall = idl.instructions.find((ix) => ix.name === "forward_call");
-  if (forwardCall === undefined) throw new Error(`the IDL of ${idl.metadata.name} declares no forward_call`);
-  return forwardCall.accounts;
-})();
+import { idl, idlInstruction } from "./idl.js";
 
 /**
  * Number of accounts every forwarder CPI segment starts with: the forwarder,
  * the program the adapter calls, then the accounts of its `forward_call`.
  */
-export const FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS = 1 + FORWARD_CALL_ACCOUNTS.length;
+export const FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS = 1 + idlInstruction(idl, "forward_call").accounts.length;
 
 /** Number of accounts in a wrap forwarder CPI segment (`buildWrapForwarderAccounts`). */
 export const FORWARDER_WRAP_NUM_ACCOUNTS = FORWARDER_SEGMENT_HEAD_NUM_ACCOUNTS + 5;

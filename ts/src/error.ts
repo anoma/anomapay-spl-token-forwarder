@@ -4,7 +4,10 @@
 import type { Address, TransactionError } from "@solana/kit";
 
 import type { ClusterType } from "./addresses.js";
-import { toJson } from "./json.js";
+
+/** JSON text of the values kit's RPC returns, each bigint (which `JSON.stringify` refuses) as its decimal digits. */
+const toJson = (value: unknown): string =>
+  JSON.stringify(value, (_, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
 
 /** Why an instance could not be made or could not answer. */
 export type BindingsErrorDetail =

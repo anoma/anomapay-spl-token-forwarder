@@ -8,8 +8,7 @@
 import { TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { AccountRole, type AccountMeta, type Address } from "@solana/kit";
 
-import { FORWARD_CALL_ACCOUNTS } from "./constants.js";
-import { accountRole, idl, idlConstant } from "./idl.js";
+import { idl, idlAccountMetas, idlConstant } from "./idl.js";
 import {
   deriveAdapterNullifierPda,
   deriveAdapterRootMarkerPda,
@@ -44,19 +43,13 @@ const writable = (address: Address): AccountMeta => ({ address, role: AccountRol
  * `forward_call`, in the IDL's order and with its flags.
  */
 export async function forwarderSegmentHead(forwarderProgram: Address): Promise<AccountMeta[]> {
-  const named: Record<string, Address> = {
-    config: (await deriveForwarderConfigPda(forwarderProgram))[0],
-    ix_sysvar: SYSVAR_INSTRUCTIONS_ADDRESS,
-    event_authority: await deriveEventAuthorityPda(forwarderProgram),
-    program: forwarderProgram,
-  };
   return [
     readonly(forwarderProgram),
-    ...FORWARD_CALL_ACCOUNTS.map((account): AccountMeta => {
-      if ("accounts" in account) throw new Error(`forward_call: the account group ${account.name} is not supported`);
-      const given = named[account.name];
-      if (given === undefined) throw new Error(`forward_call takes an account ${account.name} the head does not name`);
-      return { address: given, role: accountRole(account.signer ?? false, account.writable ?? false) };
+    ...idlAccountMetas(idl, "forward_call", {
+      config: (await deriveForwarderConfigPda(forwarderProgram))[0],
+      ix_sysvar: SYSVAR_INSTRUCTIONS_ADDRESS,
+      event_authority: await deriveEventAuthorityPda(forwarderProgram),
+      program: forwarderProgram,
     }),
   ];
 }
