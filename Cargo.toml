@@ -8,17 +8,15 @@ resolver = "2"
 solana = "4.3.0"
 
 [workspace.dependencies]
-# The adapter's pin: an Anchor commit with solana-foundation/anchor#4737, which
-# lets a program with a field-less accounts struct compile with `cpi`. No
-# published Anchor has the fix (1.2.1 does not).
-anchor-lang = { git = "https://github.com/otter-sec/anchor", rev = "2c9747a2d31bd5e94745cee6c083577f3e6675c0" }
+# The adapter's Anchor release.
+anchor-lang = "1.2.2"
 # The adapter this forwarder is built against: its program crate (the state
 # layout, the upgrade helpers, the event discriminators), and its client (the
 # adapter's PDAs, the forwarder registry the submitter plugs into, the
 # deployment record's environments and parser) at the release the integration
 # tests' harness pins, so this client and the harness share one copy of it.
-protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "contracts/v2.0.0-rc.11", default-features = false, features = ["no-entrypoint"] }
-anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", tag = "bindings/v0.12.0", default-features = false }
+protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "contracts/v2.0.0-rc.12", default-features = false, features = ["no-entrypoint"] }
+anoma-pa-solana-client = { version = "0.12.1", default-features = false }
 
 [profile.release]
 overflow-checks = true

@@ -1185,11 +1185,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "anchor-attribute-access-control"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aea3e96f09d4ae82e98dc1762fd3582031b5194ec8647baa37b147d1da979932"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "anchor-attribute-account"
 version = "1.2.1"
 source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
 dependencies = [
- "anchor-syn",
+ "anchor-syn 1.2.1",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "anchor-attribute-account"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7dfd0665140f23055bc5ab09f817a7149068a75bd9c3fb3d7f1ad33f7fcf3592"
+dependencies = [
+ "anchor-syn 1.2.2",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -1205,11 +1228,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "anchor-attribute-constant"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f26e1eabed8c7d6f2e25a97f282535fb272474a963917b7cac20f2aa6912c624"
+dependencies = [
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "anchor-attribute-error"
 version = "1.2.1"
 source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
 dependencies = [
- "anchor-syn",
+ "anchor-syn 1.2.1",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "anchor-attribute-error"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66996cb2e3b2de3dcc1df5b3965217b1def5549a838e4a528eeebc9380441a12"
+dependencies = [
+ "anchor-syn 1.2.2",
  "quote",
  "syn 2.0.119",
 ]
@@ -1219,7 +1263,19 @@ name = "anchor-attribute-event"
 version = "1.2.1"
 source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
 dependencies = [
- "anchor-syn",
+ "anchor-syn 1.2.1",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "anchor-attribute-event"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2576e6e8ad6e1f8c83d02aa24afd71abce8840181e6e4b8e4ad6f7910e32439"
+dependencies = [
+ "anchor-syn 1.2.2",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -1231,7 +1287,22 @@ version = "1.2.1"
 source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
 dependencies = [
  "anchor-lang-idl 0.1.4 (git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0)",
- "anchor-syn",
+ "anchor-syn 1.2.1",
+ "anyhow",
+ "heck 0.5.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "anchor-attribute-program"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0e5ae84159cf8e903d0e3b8cb614e5ffc9b64e038d34b39833542e0519a0428"
+dependencies = [
+ "anchor-lang-idl 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "anchor-syn 1.2.2",
  "anyhow",
  "heck 0.5.0",
  "proc-macro2",
@@ -1244,7 +1315,18 @@ name = "anchor-derive-accounts"
 version = "1.2.1"
 source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
 dependencies = [
- "anchor-syn",
+ "anchor-syn 1.2.1",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "anchor-derive-accounts"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "388fc349aaae0fae5dd00dc7d04996868792be6fd27f7815d49ec77a604e71bd"
+dependencies = [
+ "anchor-syn 1.2.2",
  "quote",
  "syn 2.0.119",
 ]
@@ -1253,6 +1335,18 @@ dependencies = [
 name = "anchor-derive-serde"
 version = "1.2.1"
 source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
+dependencies = [
+ "proc-macro-crate 3.5.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "anchor-derive-serde"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b79ce46f608fb0702a639b417579df704f1049b7be25cb0f9c6b6f1838b81a4"
 dependencies = [
  "proc-macro-crate 3.5.0",
  "proc-macro2",
@@ -1271,20 +1365,77 @@ dependencies = [
 ]
 
 [[package]]
+name = "anchor-derive-space"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f742e121a6d5eda38640d7c16e0506250c5e0c8a971cdcf30be657c38f21482b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "anchor-lang"
 version = "1.2.1"
 source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
 dependencies = [
- "anchor-attribute-access-control",
- "anchor-attribute-account",
- "anchor-attribute-constant",
- "anchor-attribute-error",
- "anchor-attribute-event",
- "anchor-attribute-program",
- "anchor-derive-accounts",
- "anchor-derive-serde",
- "anchor-derive-space",
- "anchor-lang-error",
+ "anchor-attribute-access-control 1.2.1",
+ "anchor-attribute-account 1.2.1",
+ "anchor-attribute-constant 1.2.1",
+ "anchor-attribute-error 1.2.1",
+ "anchor-attribute-event 1.2.1",
+ "anchor-attribute-program 1.2.1",
+ "anchor-derive-accounts 1.2.1",
+ "anchor-derive-serde 1.2.1",
+ "anchor-derive-space 1.2.1",
+ "anchor-lang-error 1.2.1",
+ "base64 0.21.7",
+ "bincode",
+ "borsh 1.8.1",
+ "bytemuck",
+ "const-crypto",
+ "serde",
+ "solana-account-info 3.1.1",
+ "solana-clock 3.1.1",
+ "solana-cpi 3.1.0",
+ "solana-define-syscall 3.0.0",
+ "solana-feature-gate-interface 3.1.0",
+ "solana-instruction 3.4.1",
+ "solana-instructions-sysvar 3.0.1",
+ "solana-invoke",
+ "solana-loader-v3-interface 6.1.1",
+ "solana-msg 3.1.0",
+ "solana-program-entrypoint 3.1.1",
+ "solana-program-error 3.0.1",
+ "solana-program-memory 3.1.0",
+ "solana-program-option 3.1.0",
+ "solana-program-pack 3.1.0",
+ "solana-pubkey 3.0.0",
+ "solana-sdk-ids 3.1.0",
+ "solana-stake-interface 2.0.2",
+ "solana-system-interface 3.2.0",
+ "solana-sysvar 3.1.1",
+ "solana-sysvar-id 3.1.0",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "anchor-lang"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce734f46dca7bc34c93f206871293d0bebaa89184d92231e1cd7a3c532993585"
+dependencies = [
+ "anchor-attribute-access-control 1.2.2",
+ "anchor-attribute-account 1.2.2",
+ "anchor-attribute-constant 1.2.2",
+ "anchor-attribute-error 1.2.2",
+ "anchor-attribute-event 1.2.2",
+ "anchor-attribute-program 1.2.2",
+ "anchor-derive-accounts 1.2.2",
+ "anchor-derive-serde 1.2.2",
+ "anchor-derive-space 1.2.2",
+ "anchor-lang-error 1.2.2",
  "base64 0.21.7",
  "bincode",
  "borsh 1.8.1",
@@ -1320,7 +1471,20 @@ name = "anchor-lang-error"
 version = "1.2.1"
 source = "git+https://github.com/otter-sec/anchor?rev=2c9747a2d31bd5e94745cee6c083577f3e6675c0#2c9747a2d31bd5e94745cee6c083577f3e6675c0"
 dependencies = [
- "anchor-attribute-error",
+ "anchor-attribute-error 1.2.1",
+ "borsh 1.8.1",
+ "solana-msg 3.1.0",
+ "solana-program-error 3.0.1",
+ "solana-pubkey 3.0.0",
+]
+
+[[package]]
+name = "anchor-lang-error"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "912c2bce8889b8e46cf0b8a031736e1f8fc526ea8cf68bede947783bc7d0ba3f"
+dependencies = [
+ "anchor-attribute-error 1.2.2",
  "borsh 1.8.1",
  "solana-msg 3.1.0",
  "solana-program-error 3.0.1",
@@ -1389,6 +1553,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "anchor-syn"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0df453f8c1b286cacb31735e79a80a5ca6d2b2ed113cc970f875d5d202e2dc60"
+dependencies = [
+ "bs58",
+ "heck 0.5.0",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "sha2 0.11.0",
+ "syn 2.0.119",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1411,10 +1591,11 @@ dependencies = [
 
 [[package]]
 name = "anoma-pa-solana-client"
-version = "0.12.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?tag=bindings%2Fv0.12.0#04b3ba00084cca858f8b73a4c503435c0d01f90d"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "271c88c8abf60670860c9b810dcf59d1a7fec7c87a038f27e36423b9f40a3ddf"
 dependencies = [
- "anchor-lang",
+ "anchor-lang 1.2.2",
  "anoma-rm-risc0",
  "base64 0.22.1",
  "bincode",
@@ -1438,11 +1619,11 @@ dependencies = [
 
 [[package]]
 name = "anoma-pa-solana-integration-test"
-version = "0.8.0"
-source = "git+https://github.com/anoma/solana-protocol-adapter?tag=bindings%2Fv0.8.0#1b397945f46ca042f65d2a100e39d4243c5ced03"
+version = "0.9.0"
+source = "git+https://github.com/anoma/solana-protocol-adapter?tag=bindings%2Fv0.9.0#518332c459885757238bd1b63279c45b3649fd4d"
 dependencies = [
- "anchor-lang",
- "anoma-pa-solana-client 0.12.0",
+ "anchor-lang 1.2.2",
+ "anoma-pa-solana-client 0.12.1",
  "anoma-pa-testkit",
  "anoma-risc0-kind-trees",
  "anoma-rm-risc0",
@@ -1574,7 +1755,7 @@ name = "anomapay-spl-token-forwarder-client"
 version = "0.7.0"
 source = "git+https://github.com/anoma/anomapay-spl-token-forwarder?tag=bindings%2Fv0.7.0#3b41ae1d4d5ce0904c689abc410ca5f483918f91"
 dependencies = [
- "anchor-lang",
+ "anchor-lang 1.2.1",
  "anoma-pa-solana-client 0.9.0",
  "base64 0.22.1",
  "serde_json",
@@ -1583,10 +1764,10 @@ dependencies = [
 
 [[package]]
 name = "anomapay-spl-token-forwarder-client"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
- "anchor-lang",
- "anoma-pa-solana-client 0.12.0",
+ "anchor-lang 1.2.2",
+ "anoma-pa-solana-client 0.12.1",
  "base64 0.22.1",
  "serde_json",
  "sha2 0.10.9",
@@ -1611,13 +1792,13 @@ dependencies = [
 name = "anomapay-spl-token-forwarder-integration-test"
 version = "0.1.0"
 dependencies = [
- "anchor-lang",
- "anoma-pa-solana-client 0.12.0",
+ "anchor-lang 1.2.2",
+ "anoma-pa-solana-client 0.12.1",
  "anoma-pa-solana-integration-test",
  "anoma-pa-testkit",
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",
- "anomapay-spl-token-forwarder-client 0.11.0",
+ "anomapay-spl-token-forwarder-client 0.11.1",
  "anyhow",
  "base64 0.22.1",
  "bincode",
