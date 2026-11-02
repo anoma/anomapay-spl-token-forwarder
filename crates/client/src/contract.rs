@@ -21,7 +21,7 @@ use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
 
 use crate::accounts::decode_vulnerable_logic_refs;
-use crate::addresses::{clusters, spl_token_forwarder_address, Environment};
+use crate::addresses::{spl_token_forwarder_address, Environment};
 use crate::emergency_migrating::{
     self, derive_migration_record_pda, derive_vulnerable_logic_refs_pda,
 };
@@ -31,6 +31,7 @@ use crate::generated::emergency_migrating_spl_token_forwarder::accounts::Migrati
 use crate::generated::emergency_migrating_spl_token_forwarder::constants::LEGACY_FORWARDER;
 use crate::generated::spl_token_forwarder::accounts::Config;
 use crate::pda::derive_forwarder_config_pda;
+use anoma_pa_solana_client::addresses::clusters;
 
 /// Returns an SPL token forwarder instance of the environment for the given
 /// RPC client. An emergency-migrating build at the recorded address is

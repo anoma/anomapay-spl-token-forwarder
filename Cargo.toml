@@ -15,9 +15,10 @@ anchor-lang = { git = "https://github.com/otter-sec/anchor", rev = "2c9747a2d31b
 # The adapter this forwarder is built against: its program crate (the state
 # layout, the upgrade helpers, the event discriminators), and its client (the
 # adapter's PDAs, the forwarder registry the submitter plugs into, the
-# environments of the deployment record).
+# deployment record's environments and parser) at the release the integration
+# tests' harness pins, so this client and the harness share one copy of it.
 protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "contracts/v2.0.0-rc.11", default-features = false, features = ["no-entrypoint"] }
-anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", tag = "bindings/v0.11.0", default-features = false }
+anoma-pa-solana-client = { git = "https://github.com/anoma/anoma-pa-solana-client", tag = "bindings/v0.12.0", default-features = false }
 
 [profile.release]
 overflow-checks = true

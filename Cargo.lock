@@ -390,8 +390,8 @@ dependencies = [
 
 [[package]]
 name = "anoma-pa-solana-client"
-version = "0.11.0"
-source = "git+https://github.com/anoma/anoma-pa-solana-client?tag=bindings%2Fv0.11.0#56033927ad15e1dc8261534da8e986b848106a0f"
+version = "0.12.0"
+source = "git+https://github.com/anoma/anoma-pa-solana-client?tag=bindings%2Fv0.12.0#04b3ba00084cca858f8b73a4c503435c0d01f90d"
 dependencies = [
  "anchor-lang",
  "anoma-rm-risc0",
@@ -475,7 +475,6 @@ dependencies = [
  "anchor-lang",
  "anoma-pa-solana-client",
  "base64 0.22.1",
- "serde",
  "serde_json",
  "sha2 0.10.9",
  "solana-cluster-type",

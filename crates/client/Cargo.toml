@@ -27,10 +27,8 @@ solana-sdk-ids = { version = "3", optional = true }
 spl-associated-token-account-interface = { version = "2", optional = true }
 spl-token-interface = { version = "3", optional = true }
 
-# The deployment record (`solana` feature): `deployments.json`, and each
-# cluster's genesis hash, its chain id's source.
-serde = { version = "1.0", features = ["derive"], optional = true }
-serde_json = { version = "1.0", optional = true }
+# The deployment record (`solana` feature): `deployments.json`, read with the
+# adapter client's parser, by `solana-cluster-type` cluster.
 solana-cluster-type = { version = "3", optional = true }
 
 # The submitter's plug-in and the instances (`rpc` feature): the adapter
@@ -68,8 +66,6 @@ default = ["solana"]
 # record.
 solana = [
   "anoma-pa-solana-client/solana",
-  "dep:serde",
-  "dep:serde_json",
   "dep:solana-cluster-type",
   "dep:solana-compute-budget-interface",
   "dep:solana-ed25519-program",
