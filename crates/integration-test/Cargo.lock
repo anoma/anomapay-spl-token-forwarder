@@ -4419,8 +4419,8 @@ checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
 
 [[package]]
 name = "emergency_migrating_transfer_library"
-version = "2.0.0-rc.12"
-source = "git+https://github.com/anoma/anomapay-solana-resource?tag=v2.0.0-rc.12#900a45741de60a98034bbb0a79dcd8425b0be7a8"
+version = "2.0.0-rc.13"
+source = "git+https://github.com/anoma/anomapay-solana-resource?tag=v2.0.0-rc.13#1dd0f4c90e35d1a5efa4160d10ba3d40c712d81d"
 dependencies = [
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",
@@ -4435,7 +4435,7 @@ dependencies = [
 [[package]]
 name = "emergency_migrating_transfer_witness"
 version = "2.0.0-rc.12"
-source = "git+https://github.com/anoma/anomapay-solana-resource?tag=v2.0.0-rc.12#900a45741de60a98034bbb0a79dcd8425b0be7a8"
+source = "git+https://github.com/anoma/anomapay-solana-resource?tag=v2.0.0-rc.13#1dd0f4c90e35d1a5efa4160d10ba3d40c712d81d"
 dependencies = [
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",
@@ -14822,8 +14822,8 @@ dependencies = [
 
 [[package]]
 name = "transfer_library"
-version = "2.0.0-rc.12"
-source = "git+https://github.com/anoma/anomapay-solana-resource?tag=v2.0.0-rc.12#900a45741de60a98034bbb0a79dcd8425b0be7a8"
+version = "2.0.0-rc.13"
+source = "git+https://github.com/anoma/anomapay-solana-resource?tag=v2.0.0-rc.13#1dd0f4c90e35d1a5efa4160d10ba3d40c712d81d"
 dependencies = [
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",
@@ -14837,7 +14837,7 @@ dependencies = [
 [[package]]
 name = "transfer_witness"
 version = "2.0.0-rc.12"
-source = "git+https://github.com/anoma/anomapay-solana-resource?tag=v2.0.0-rc.12#900a45741de60a98034bbb0a79dcd8425b0be7a8"
+source = "git+https://github.com/anoma/anomapay-solana-resource?tag=v2.0.0-rc.13#1dd0f4c90e35d1a5efa4160d10ba3d40c712d81d"
 dependencies = [
  "anoma-rm-risc0",
  "anoma-rm-risc0-gadgets",

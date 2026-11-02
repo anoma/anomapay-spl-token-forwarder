@@ -141,7 +141,7 @@ where
     let [spend, burn] = unwrap.logic_witnesses(
         layout.resource(unwrapped_at),
         root,
-        fixtures::unwrap_auth::<TransferLogic>(owner, root),
+        fixtures::spend_auth::<TransferLogic>(owner, root),
     );
     let (auth, _) = fixtures::wrap_auth(&wrap, &forwarder.user, terms, root)?;
     let seed = format!("call-order/unwrap-first={unwrap_first}");

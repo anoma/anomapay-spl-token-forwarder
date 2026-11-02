@@ -826,6 +826,82 @@ impl Forwarder {
             .await
     }
 
+    /// The user wraps 100 tokens into a resource shielded owner A holds, A
+    /// transfers it to shielded owner B in a settlement that calls no
+    /// forwarder, then B unwraps it to the user's token account, all settled
+    /// on `env`: the user's tokens move into escrow, stay there through the
+    /// transfer, then return to the user.
+    pub async fn wraps_transfers_then_unwraps<P>(
+        &self,
+        env: &mut Environment<P>,
+    ) -> anyhow::Result<()>
+    where
+        P: Prover,
+    {
+        // 100 tokens at the mint's 6 decimals.
+        let amount = 100_000_000;
+        let seed = "wrap-transfer-unwrap";
+        let sender = ShieldedOwner::seeded(&format!("{seed}/sender"));
+        let recipient = ShieldedOwner::seeded(&format!("{seed}/recipient"));
+        let user_before = balance(env, &self.user_account()).await?;
+        let escrow_before = balance(env, &self.escrow_account()).await?;
+
+        let wrapped = self
+            .wrap(env, &sender, amount, 1, &format!("{seed}/wrap"))
+            .await?;
+        self.ensure_balances(env, user_before - amount, escrow_before + amount, "wrap")
+            .await?;
+
+        let path = env
+            .protocol_adapter
+            .commitment_tree
+            .path_to(wrapped.commitment())?;
+        let transfer = fixtures::transfer(
+            self.program,
+            self.mint,
+            wrapped,
+            path,
+            &sender,
+            &recipient,
+            &format!("{seed}/transfer"),
+        )?;
+        let tx = prove_actions(env, &[transfer.witnesses]).await?;
+        execute_tx(env, tx).await?;
+        self.ensure_balances(
+            env,
+            user_before - amount,
+            escrow_before + amount,
+            "transfer",
+        )
+        .await?;
+
+        let tx = self
+            .prove_unwrap::<TransferLogic, P>(env, transfer.created, &recipient, self.user.pubkey())
+            .await?;
+        execute_tx(env, tx).await?;
+        self.ensure_balances(env, user_before, escrow_before, "unwrap")
+            .await
+    }
+
+    /// Fails unless the user's and the escrow's token accounts hold `user`
+    /// and `escrow` after `step`.
+    async fn ensure_balances<P>(
+        &self,
+        env: &Environment<P>,
+        user: u64,
+        escrow: u64,
+        step: &str,
+    ) -> anyhow::Result<()> {
+        let user_now = balance(env, &self.user_account()).await?;
+        let escrow_now = balance(env, &self.escrow_account()).await?;
+        anyhow::ensure!(
+            (user_now, escrow_now) == (user, escrow),
+            "after the {step}, the user holds {user_now} and the escrow {escrow_now}, not {user} \
+             and {escrow}"
+        );
+        Ok(())
+    }
+
     /// A migration of `wrapped`, a resource under this forwarder's label that
     /// `owner` holds in the adapter's commitment tree, into a resource of the
     /// emergency-migrating logic `owner` holds, proven on `env`. `seed` makes
