@@ -9,7 +9,7 @@ The adapter calls the forwarder through the external calls a settled transaction
 | Path | Contents |
 |---|---|
 | `programs/spl-token-forwarder/` | The Anchor program and its Rust unit tests |
-| `crates/client/` | `anomapay-spl-token-forwarder-client`: the bindings generated from both builds' IDLs (its id, accounts, events, constants, instruction accounts and arguments), builders for the instructions it takes, the CPI segments a settlement passes it, its wire formats (the wrap authorization message, the wrap, unwrap and migrate inputs), the deployment record (`deployments.json`), the program at an address with its reads (`instance`), and the IDLs |
+| `crates/client/` | `anomapay-spl-token-forwarder-client`: the bindings generated from both builds' IDLs (its id, accounts, events, constants, instruction accounts and arguments), builders for the instructions it takes, the CPI segments a settlement passes it, its wire formats (the wrap authorization message, the wrap, unwrap and migrate inputs), the deployment record (`deployments.json`, module `addresses`), the program at an address with its reads (`contract`), and the IDLs |
 | `ts/` | `@anomaorg/anomapay-spl-token-forwarder`: the client crate's counterpart in TypeScript (the IDLs' coders, the deployment record, the instances with their reads and instruction builders, the CPI segments, the wrap authorization message, the event decoder), which carries copies of the IDLs and the record it builds from `crates/client/` |
 | `crates/program-tests/` | Tests of the client crate's encoders, decoders and PDA derivations against both builds of the program; not published |
 | `crates/integration-test/` | The forwarder's integration tests on the adapter's harness, and the test programs they load |

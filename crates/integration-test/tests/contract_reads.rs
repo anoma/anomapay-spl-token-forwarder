@@ -1,12 +1,13 @@
 //! The client's forwarder instance (`anomapay_spl_token_forwarder_client::
-//! instance`), the EVM bindings of the ERC20 forwarder on Solana, against a
+//! contract`), the EVM bindings of the ERC20 forwarder on Solana, against a
 //! deployed forwarder: each read answers what the test set up, and a
 //! forwarder never initialized has no config to answer from. The
 //! emergency-migrating build's reads are checked in `emergency_migrating.rs`,
 //! after its incident.
 
+use anomapay_spl_token_forwarder_client::contract::SplTokenForwarderInstance;
 use anomapay_spl_token_forwarder_client::derive_forwarder_config_pda;
-use anomapay_spl_token_forwarder_client::instance::{InstanceError, SplTokenForwarder};
+use anomapay_spl_token_forwarder_client::error::{BindingsError, BindingsResult};
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
 use anomapay_spl_token_forwarder_integration_test::setup::{self, Build};
 use solana_keypair::Keypair;
@@ -33,9 +34,9 @@ async fn every_read_answers_what_the_forwarder_was_set_up_with() -> anyhow::Resu
     let (env, local) = setup::local().await?;
     let rpc = &env.protocol_adapter.rpc;
     let program = local.forwarder.program;
-    let instance = SplTokenForwarder::at(rpc, program);
+    let instance = SplTokenForwarderInstance::new(program, rpc);
     anyhow::ensure!(
-        instance.program_id() == program,
+        instance.address() == program,
         "the instance is not at {program}"
     );
 
@@ -86,11 +87,11 @@ async fn every_read_answers_what_the_forwarder_was_set_up_with() -> anyhow::Resu
 fn missing<T: std::fmt::Debug>(
     config: Pubkey,
     read: &str,
-    result: Result<T, InstanceError>,
+    result: BindingsResult<T>,
 ) -> anyhow::Result<()> {
     println!("{read}: {result:?}");
     anyhow::ensure!(
-        matches!(&result, Err(InstanceError::AccountMissing { address }) if *address == config),
+        matches!(&result, Err(BindingsError::AccountMissing { address }) if *address == config),
         "{read} on a forwarder never initialized is {result:?}, not AccountMissing of its \
          config {config}"
     );
@@ -103,7 +104,7 @@ fn missing<T: std::fmt::Debug>(
 #[tokio::test(flavor = "multi_thread")]
 async fn a_forwarder_never_initialized_has_no_config_to_read() -> anyhow::Result<()> {
     let (env, program) = setup::deployed(Build::Production).await?;
-    let instance = SplTokenForwarder::at(&env.protocol_adapter.rpc, program);
+    let instance = SplTokenForwarderInstance::new(program, &env.protocol_adapter.rpc);
     let config = derive_forwarder_config_pda(&program).0;
 
     missing(config, "get_logic_ref", instance.get_logic_ref().await)?;

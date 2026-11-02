@@ -32,7 +32,7 @@ use anomapay_spl_token_forwarder_client::generated::emergency_migrating_spl_toke
     Initialized, LogicRefReplaced, Migrated, VulnerableLogicRefListed,
 };
 use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::constants::CONFIG_VERSION;
-use anomapay_spl_token_forwarder_client::instance::EmergencyMigratingSplTokenForwarder;
+use anomapay_spl_token_forwarder_client::contract::EmergencyMigratingSplTokenForwarderInstance;
 use anomapay_spl_token_forwarder_client::{
     MigrateEntry, MigrateInput, decode_vulnerable_logic_refs, encode_migrate_forwarder_input,
     forwarder_migrate_num_accounts,
@@ -116,7 +116,7 @@ async fn is_migrated<P>(
     nullifier: [u8; 32],
 ) -> anyhow::Result<bool> {
     Ok(
-        EmergencyMigratingSplTokenForwarder::at(&env.protocol_adapter.rpc, *program)
+        EmergencyMigratingSplTokenForwarderInstance::new(*program, &env.protocol_adapter.rpc)
             .is_nullifier_migrated(&nullifier)
             .await?,
     )
@@ -653,8 +653,8 @@ fn emergency_migrating_idl_version() -> anyhow::Result<String> {
         .ok_or_else(|| anyhow::anyhow!("the IDL records no version: {}", idl["metadata"]))
 }
 
-// The client's emergency-migrating instance (`instance::
-// EmergencyMigratingSplTokenForwarder`) on the forwarder of an incident.
+// The client's emergency-migrating instance (`contract::
+// EmergencyMigratingSplTokenForwarderInstance`) on the forwarder of an incident.
 // Before `reinitialize` it lists no logic ref and holds no migration record,
 // and its marker reads answer false, as the EVM draft's empty storage does.
 // After `reinitialize` lists the transfer logic ref and one migration records
@@ -665,7 +665,7 @@ async fn every_read_of_the_emergency_migrating_instance_answers_the_incident() -
     let mut incident = before_the_incident(FORWARDER_EMERGENCY_MIGRATING_SO).await?;
     let rpc = incident.env.protocol_adapter.rpc.clone();
     let program = incident.local.forwarder.program;
-    let instance = EmergencyMigratingSplTokenForwarder::at(&rpc, program);
+    let instance = EmergencyMigratingSplTokenForwarderInstance::new(program, &rpc);
     let vulnerable = bytes(logic_ref());
     let unlisted = bytes(random_logic_ref());
     let entry = incident.entry()?;

@@ -1,15 +1,15 @@
 //! The forwarder deployed at an address, as the EVM bindings return the
-//! ERC20 forwarder: its reads under their EVM names, from its config and
-//! the emergency-migrating build's accounts, and its instructions, built for
-//! its address. One type serves each build ([`SplTokenForwarder`],
-//! [`EmergencyMigratingSplTokenForwarder`]); the reads and instructions both
-//! builds declare are written once, and each build adds its own.
+//! ERC20 forwarder (`contract::erc20_forwarder`): its reads under their EVM
+//! names, from its config and the emergency-migrating build's accounts, and
+//! its instructions, built for its address. One type serves each build
+//! ([`SplTokenForwarderInstance`],
+//! [`EmergencyMigratingSplTokenForwarderInstance`]); the reads and
+//! instructions both builds declare are written once, and each build adds its
+//! own.
 
-use std::fmt;
 use std::marker::PhantomData;
 
 use anchor_lang::{AccountDeserialize, AnchorDeserialize};
-use anoma_pa_solana_client::deployments::{chain_id_of_genesis_hash, Environment};
 use base64::Engine;
 use solana_instruction::Instruction;
 use solana_message::{Hash, Message, VersionedMessage};
@@ -19,120 +19,43 @@ use solana_rpc_client_api::config::RpcSimulateTransactionConfig;
 use solana_rpc_client_api::response::{UiReturnDataEncoding, UiTransactionReturnData};
 use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
-use solana_transaction_error::TransactionError;
 
 use crate::accounts::decode_vulnerable_logic_refs;
-use crate::deployments::{Deployment, Record, RECORD};
+use crate::addresses::{clusters, spl_token_forwarder_address, Environment};
 use crate::emergency_migrating::{
     self, derive_migration_record_pda, derive_vulnerable_logic_refs_pda,
 };
+use crate::error::{rpc_transport_error, BindingsError, BindingsResult};
 use crate::forwarder;
 use crate::generated::emergency_migrating_spl_token_forwarder::accounts::MigrationRecord;
 use crate::generated::emergency_migrating_spl_token_forwarder::constants::LEGACY_FORWARDER;
 use crate::generated::spl_token_forwarder::accounts::Config;
 use crate::pda::derive_forwarder_config_pda;
 
-/// Why an instance could not be made or could not answer.
-#[derive(Debug)]
-pub enum InstanceError {
-    /// The environment records no deployed forwarder on the cluster.
-    NoDeployment { chain_id: String },
-    /// An account the answer is read from does not exist.
-    AccountMissing { address: Pubkey },
-    /// An RPC request failed: retrying may succeed.
-    Rpc { what: String, error: String },
-    /// What the chain holds does not decode.
-    Decode { what: String, error: String },
-    /// A simulated instruction failed.
-    Simulation {
-        error: TransactionError,
-        logs: Vec<String>,
-    },
-}
-
-impl fmt::Display for InstanceError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NoDeployment { chain_id } => {
-                write!(f, "no deployed forwarder is recorded on {chain_id}")
-            }
-            Self::AccountMissing { address } => write!(f, "the account {address} does not exist"),
-            Self::Rpc { what, error } => write!(f, "failed to fetch {what}: {error}"),
-            Self::Decode { what, error } => write!(f, "{what} does not decode: {error}"),
-            Self::Simulation { error, logs } => {
-                write!(f, "the simulation failed: {error}; logs: {logs:?}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for InstanceError {}
-
-fn rpc_error(
-    what: &str,
-) -> impl FnOnce(solana_rpc_client_api::client_error::Error) -> InstanceError + '_ {
-    move |error| InstanceError::Rpc {
-        what: what.to_owned(),
-        error: error.to_string(),
-    }
-}
-
-/// The forwarder `environment` records on the cluster whose genesis hash is
-/// `genesis_hash`. Both builds run at the one address: the
-/// emergency-migrating build replaces the production build in place.
-pub fn recorded_deployment(
-    environment: Environment,
-    genesis_hash: &Hash,
-) -> Result<Deployment, InstanceError> {
-    deployment_in(&RECORD, environment, genesis_hash)
-}
-
-fn deployment_in(
-    record: &Record,
-    environment: Environment,
-    genesis_hash: &Hash,
-) -> Result<Deployment, InstanceError> {
-    let chain_id = chain_id_of_genesis_hash(genesis_hash);
-    record
-        .deployment(environment, &chain_id)
-        .ok_or(InstanceError::NoDeployment { chain_id })
-}
-
-/// The program `environment` records on the cluster behind `rpc`.
-async fn recorded_program(
-    rpc: &RpcClient,
-    environment: Environment,
-) -> Result<Pubkey, InstanceError> {
-    let genesis_hash = rpc
-        .get_genesis_hash()
-        .await
-        .map_err(rpc_error("the genesis hash"))?;
-    Ok(recorded_deployment(environment, &genesis_hash)?.program_id)
-}
-
-/// The forwarder `environment` records on the cluster behind `rpc`, as the
-/// EVM bindings return the ERC20 forwarder of an environment.
+/// Returns an SPL token forwarder instance of the environment for the given
+/// RPC client. An emergency-migrating build at the recorded address is
+/// `EmergencyMigratingSplTokenForwarderInstance::new` of the instance's
+/// `address()`.
 pub async fn spl_token_forwarder(
     rpc: &RpcClient,
     environment: Environment,
-) -> Result<SplTokenForwarder<'_>, InstanceError> {
-    Ok(SplTokenForwarder::at(
-        rpc,
-        recorded_program(rpc, environment).await?,
-    ))
+) -> BindingsResult<SplTokenForwarderInstance<'_>> {
+    let genesis_hash = rpc
+        .get_genesis_hash()
+        .await
+        .map_err(rpc_transport_error("the genesis hash"))?;
+    let address = recorded_address(environment, &genesis_hash)?;
+    Ok(SplTokenForwarderInstance::new(address, rpc))
 }
 
-/// The forwarder `environment` records on the cluster behind `rpc`, read as
-/// the emergency-migrating build, as the EVM bindings'
-/// `emergency_migrating_erc20_forwarder` binds the draft.
-pub async fn emergency_migrating_spl_token_forwarder(
-    rpc: &RpcClient,
-    environment: Environment,
-) -> Result<EmergencyMigratingSplTokenForwarder<'_>, InstanceError> {
-    Ok(EmergencyMigratingSplTokenForwarder::at(
-        rpc,
-        recorded_program(rpc, environment).await?,
-    ))
+/// The forwarder `environment` records on the cluster whose genesis hash is
+/// `genesis_hash`.
+fn recorded_address(environment: Environment, genesis_hash: &Hash) -> BindingsResult<Pubkey> {
+    let cluster = clusters()
+        .find(|cluster| cluster.get_genesis_hash().as_ref() == Some(genesis_hash))
+        .ok_or(BindingsError::ChainIdUnknown)?;
+    spl_token_forwarder_address(environment, &cluster)
+        .ok_or(BindingsError::UnsupportedChain(cluster))
 }
 
 /// The production build (`generated::spl_token_forwarder`).
@@ -146,48 +69,49 @@ pub enum EmergencyMigrating {}
 /// build `B` it runs.
 ///
 /// Its reads are exercised against a deployed forwarder by this repository's
-/// integration tests (`crates/integration-test/tests/instance_reads.rs` and
+/// integration tests (`crates/integration-test/tests/contract_reads.rs` and
 /// `emergency_migrating.rs`).
 pub struct Instance<'a, B> {
+    address: Pubkey,
     rpc: &'a RpcClient,
-    program_id: Pubkey,
     build: PhantomData<B>,
 }
 
 /// The production build at an address.
-pub type SplTokenForwarder<'a> = Instance<'a, Production>;
+pub type SplTokenForwarderInstance<'a> = Instance<'a, Production>;
 
 /// The emergency-migrating build at an address.
-pub type EmergencyMigratingSplTokenForwarder<'a> = Instance<'a, EmergencyMigrating>;
+pub type EmergencyMigratingSplTokenForwarderInstance<'a> = Instance<'a, EmergencyMigrating>;
 
 /// The reads and instructions both builds declare alike.
 impl<'a, B> Instance<'a, B> {
-    /// The forwarder at `program_id`, as alloy's `new(address, provider)`.
-    pub fn at(rpc: &'a RpcClient, program_id: Pubkey) -> Self {
+    /// The forwarder at `address`, as alloy's
+    /// `ERC20ForwarderInstance::new(address, provider)`.
+    pub fn new(address: Pubkey, rpc: &'a RpcClient) -> Self {
         Self {
+            address,
             rpc,
-            program_id,
             build: PhantomData,
         }
     }
 
     /// The address the forwarder is deployed at.
-    pub fn program_id(&self) -> Pubkey {
-        self.program_id
+    pub fn address(&self) -> Pubkey {
+        self.address
     }
 
     /// The forwarder's config, which both builds lay out alike.
-    async fn config(&self) -> Result<Config, InstanceError> {
-        let address = derive_forwarder_config_pda(&self.program_id).0;
+    async fn config(&self) -> BindingsResult<Config> {
+        let address = derive_forwarder_config_pda(&self.address).0;
         let what = format!("the forwarder's config {address}");
         let account = self
             .rpc
             .get_account_with_commitment(&address, self.rpc.commitment())
             .await
-            .map_err(rpc_error(&what))?
+            .map_err(rpc_transport_error(&what))?
             .value
-            .ok_or(InstanceError::AccountMissing { address })?;
-        Config::try_deserialize(&mut account.data.as_slice()).map_err(|e| InstanceError::Decode {
+            .ok_or(BindingsError::AccountMissing { address })?;
+        Config::try_deserialize(&mut account.data.as_slice()).map_err(|e| BindingsError::Decode {
             what,
             error: e.to_string(),
         })
@@ -195,41 +119,37 @@ impl<'a, B> Instance<'a, B> {
 
     /// The data of the account at `address` when it exists and the forwarder
     /// owns it: an account the forwarder created.
-    async fn owned_data(
-        &self,
-        address: Pubkey,
-        what: &str,
-    ) -> Result<Option<Vec<u8>>, InstanceError> {
+    async fn owned_data(&self, address: Pubkey, what: &str) -> BindingsResult<Option<Vec<u8>>> {
         let account = self
             .rpc
             .get_account_with_commitment(&address, self.rpc.commitment())
             .await
-            .map_err(rpc_error(&format!("{what} {address}")))?
+            .map_err(rpc_transport_error(&format!("{what} {address}")))?
             .value;
         Ok(account
-            .filter(|account| account.owner == self.program_id)
+            .filter(|account| account.owner == self.address)
             .map(|account| account.data))
     }
 
     /// `getLogicRef()`.
-    pub async fn get_logic_ref(&self) -> Result<[u8; 32], InstanceError> {
+    pub async fn get_logic_ref(&self) -> BindingsResult<[u8; 32]> {
         Ok(self.config().await?.logic_ref)
     }
 
     /// `getProtocolAdapter()`.
-    pub async fn get_protocol_adapter(&self) -> Result<Pubkey, InstanceError> {
+    pub async fn get_protocol_adapter(&self) -> BindingsResult<Pubkey> {
         Ok(self.config().await?.protocol_adapter)
     }
 
     /// `owner()`: the zero key once the ownership is renounced.
-    pub async fn owner(&self) -> Result<Pubkey, InstanceError> {
+    pub async fn owner(&self) -> BindingsResult<Pubkey> {
         Ok(self.config().await?.owner)
     }
 
     /// `VERSION()`: the forwarder's `version` simulated, with `fee_payer`,
     /// any funded system account, paying the simulation's fee (nothing is
     /// signed or sent).
-    pub async fn version(&self, fee_payer: &Pubkey) -> Result<String, InstanceError> {
+    pub async fn version(&self, fee_payer: &Pubkey) -> BindingsResult<String> {
         let message = Message::new(&[self.version_ix()], Some(fee_payer));
         let unsigned = VersionedTransaction {
             signatures: vec![
@@ -250,15 +170,15 @@ impl<'a, B> Instance<'a, B> {
                 },
             )
             .await
-            .map_err(rpc_error("the simulation of version"))?
+            .map_err(rpc_transport_error("the simulation of version"))?
             .value;
         if let Some(error) = simulated.err {
-            return Err(InstanceError::Simulation {
+            return Err(BindingsError::Simulation {
                 error: error.into(),
                 logs: simulated.logs.unwrap_or_default(),
             });
         }
-        returned::<String>(&self.program_id, simulated.return_data)
+        returned::<String>(&self.address, simulated.return_data)
     }
 
     /// `initialize`, by `authority`, the program's upgrade authority.
@@ -270,7 +190,7 @@ impl<'a, B> Instance<'a, B> {
         initial_owner: &Pubkey,
     ) -> Instruction {
         forwarder::initialize_ix(
-            &self.program_id,
+            &self.address,
             authority,
             protocol_adapter,
             logic_ref,
@@ -286,28 +206,28 @@ impl<'a, B> Instance<'a, B> {
         user: &Pubkey,
         word_index: u64,
     ) -> Instruction {
-        forwarder::init_nonce_bitmap_ix(&self.program_id, payer, user, word_index)
+        forwarder::init_nonce_bitmap_ix(&self.address, payer, user, word_index)
     }
 
     /// `transfer_ownership` to `new_owner`, by the owner.
     pub fn transfer_ownership_ix(&self, owner: &Pubkey, new_owner: &Pubkey) -> Instruction {
-        forwarder::transfer_ownership_ix(&self.program_id, owner, new_owner)
+        forwarder::transfer_ownership_ix(&self.address, owner, new_owner)
     }
 
     /// `renounce_ownership`, by the owner.
     pub fn renounce_ownership_ix(&self, owner: &Pubkey) -> Instruction {
-        forwarder::renounce_ownership_ix(&self.program_id, owner)
+        forwarder::renounce_ownership_ix(&self.address, owner)
     }
 
     /// `upgrade` to `buffer`'s code, by the owner, after the compute budget
     /// it needs.
     pub fn upgrade_ixs(&self, owner: &Pubkey, buffer: &Pubkey, spill: &Pubkey) -> [Instruction; 2] {
-        forwarder::upgrade_ixs(&self.program_id, owner, buffer, spill)
+        forwarder::upgrade_ixs(&self.address, owner, buffer, spill)
     }
 
     /// `version`.
     pub fn version_ix(&self) -> Instruction {
-        forwarder::version_ix(&self.program_id)
+        forwarder::version_ix(&self.address)
     }
 
     /// `close_escrow` of `mint`'s escrow into `recipient_ata`, by the owner,
@@ -319,7 +239,7 @@ impl<'a, B> Instance<'a, B> {
         mint: &Pubkey,
         recipient_ata: &Pubkey,
     ) -> Instruction {
-        forwarder::close_escrow_ix(&self.program_id, owner, pa_state, mint, recipient_ata)
+        forwarder::close_escrow_ix(&self.address, owner, pa_state, mint, recipient_ata)
     }
 
     /// `close_nonce_bitmaps_batch` of `bitmaps`, by the owner, while the
@@ -330,37 +250,34 @@ impl<'a, B> Instance<'a, B> {
         pa_state: &Pubkey,
         bitmaps: &[Pubkey],
     ) -> Instruction {
-        forwarder::close_nonce_bitmaps_batch_ix(&self.program_id, owner, pa_state, bitmaps)
+        forwarder::close_nonce_bitmaps_batch_ix(&self.address, owner, pa_state, bitmaps)
     }
 
     /// `close_config`, by the owner, while the adapter whose state is
     /// `pa_state` is paused.
     pub fn close_config_ix(&self, owner: &Pubkey, pa_state: &Pubkey) -> Instruction {
-        forwarder::close_config_ix(&self.program_id, owner, pa_state)
+        forwarder::close_config_ix(&self.address, owner, pa_state)
     }
 }
 
-impl SplTokenForwarder<'_> {
+impl SplTokenForwarderInstance<'_> {
     /// `reinitialize` to the resource logic `logic_ref`, by the owner.
     pub fn reinitialize_ix(&self, owner: &Pubkey, logic_ref: [u8; 32]) -> Instruction {
-        forwarder::reinitialize_ix(&self.program_id, owner, logic_ref)
+        forwarder::reinitialize_ix(&self.address, owner, logic_ref)
     }
 }
 
-impl EmergencyMigratingSplTokenForwarder<'_> {
+impl EmergencyMigratingSplTokenForwarderInstance<'_> {
     /// `isLogicRefVulnerable(logicRef)`: the forwarder lists `logic_ref`.
     /// False before `reinitialize` has listed any, as the EVM draft's empty
     /// storage answers.
-    pub async fn is_logic_ref_vulnerable(
-        &self,
-        logic_ref: &[u8; 32],
-    ) -> Result<bool, InstanceError> {
-        let address = derive_vulnerable_logic_refs_pda(&self.program_id).0;
+    pub async fn is_logic_ref_vulnerable(&self, logic_ref: &[u8; 32]) -> BindingsResult<bool> {
+        let address = derive_vulnerable_logic_refs_pda(&self.address).0;
         let what = "the vulnerable logic refs";
         let Some(data) = self.owned_data(address, what).await? else {
             return Ok(false);
         };
-        let listed = decode_vulnerable_logic_refs(&data).map_err(|e| InstanceError::Decode {
+        let listed = decode_vulnerable_logic_refs(&data).map_err(|e| BindingsError::Decode {
             what: format!("{what} {address}"),
             error: e.to_string(),
         })?;
@@ -370,14 +287,14 @@ impl EmergencyMigratingSplTokenForwarder<'_> {
     /// `isNullifierMigrated(nullifier)`: the resource with `nullifier` has a
     /// migration record that says so. False without a record, as the EVM
     /// draft's empty storage answers.
-    pub async fn is_nullifier_migrated(&self, nullifier: &[u8; 32]) -> Result<bool, InstanceError> {
-        let address = derive_migration_record_pda(&self.program_id, nullifier).0;
+    pub async fn is_nullifier_migrated(&self, nullifier: &[u8; 32]) -> BindingsResult<bool> {
+        let address = derive_migration_record_pda(&self.address, nullifier).0;
         let what = "the migration record";
         let Some(data) = self.owned_data(address, what).await? else {
             return Ok(false);
         };
         let record = MigrationRecord::try_deserialize(&mut data.as_slice()).map_err(|e| {
-            InstanceError::Decode {
+            BindingsError::Decode {
                 what: format!("{what} {address}"),
                 error: e.to_string(),
             }
@@ -402,7 +319,7 @@ impl EmergencyMigratingSplTokenForwarder<'_> {
         vulnerable_logic_refs: &[[u8; 32]],
     ) -> Instruction {
         emergency_migrating::reinitialize_ix(
-            &self.program_id,
+            &self.address,
             owner,
             protocol_adapter,
             new_logic_ref,
@@ -413,7 +330,7 @@ impl EmergencyMigratingSplTokenForwarder<'_> {
     /// `init_migration_record` of the resource with `nullifier`, `payer`
     /// funding the rent.
     pub fn init_migration_record_ix(&self, payer: &Pubkey, nullifier: &[u8; 32]) -> Instruction {
-        emergency_migrating::init_migration_record_ix(&self.program_id, payer, nullifier)
+        emergency_migrating::init_migration_record_ix(&self.address, payer, nullifier)
     }
 }
 
@@ -422,9 +339,9 @@ impl EmergencyMigratingSplTokenForwarder<'_> {
 fn returned<T: AnchorDeserialize>(
     program: &Pubkey,
     return_data: Option<UiTransactionReturnData>,
-) -> Result<T, InstanceError> {
+) -> BindingsResult<T> {
     let what = format!("the return data of {program}");
-    let decode = |error: String| InstanceError::Decode {
+    let decode = |error: String| BindingsError::Decode {
         what: what.clone(),
         error,
     };
@@ -452,80 +369,43 @@ mod tests {
 
     #[test]
     fn the_recorded_staging_devnet_forwarder_is_the_idls_program() {
-        let found = recorded_deployment(Environment::Staging, &genesis_hash(ClusterType::Devnet))
-            .unwrap_or_else(|e| panic!("{e}"));
+        let found = recorded_address(Environment::Staging, &genesis_hash(ClusterType::Devnet));
         println!("{found:?}");
-        assert_eq!(found.chain_id, "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1");
-        assert_eq!(found.program_id, crate::generated::spl_token_forwarder::ID);
+        assert!(
+            matches!(found, Ok(address) if address == crate::generated::spl_token_forwarder::ID),
+            "{found:?}"
+        );
     }
 
     #[test]
     fn production_records_nothing_on_mainnet_beta() {
-        let found = recorded_deployment(
+        let found = recorded_address(
             Environment::Production,
             &genesis_hash(ClusterType::MainnetBeta),
         );
         println!("{found:?}");
         assert!(
             matches!(
-                &found,
-                Err(InstanceError::NoDeployment { chain_id })
-                    if chain_id == "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+                found,
+                Err(BindingsError::UnsupportedChain(ClusterType::MainnetBeta))
             ),
             "{found:?}"
         );
     }
 
-    /// A cluster no environment records, such as a local validator, is no
-    /// deployment, under the chain id its genesis hash gives.
+    /// A genesis hash of no known cluster, such as a local validator's, is
+    /// `ChainIdUnknown` in every environment.
     #[test]
-    fn an_unrecorded_genesis_hash_is_no_deployment_on_its_chain() {
+    fn a_genesis_hash_of_no_known_cluster_is_chain_id_unknown() {
         let unknown = Hash::new_from_array([0; 32]);
         for environment in [Environment::Staging, Environment::Production] {
-            let found = recorded_deployment(environment, &unknown);
+            let found = recorded_address(environment, &unknown);
             println!("{environment:?}: {found:?}");
             assert!(
-                matches!(
-                    &found,
-                    Err(InstanceError::NoDeployment { chain_id })
-                        if chain_id == "solana:11111111111111111111111111111111"
-                ),
+                matches!(found, Err(BindingsError::ChainIdUnknown)),
                 "{found:?}"
             );
         }
-    }
-
-    #[test]
-    fn a_deployed_entry_is_the_clusters_deployment() {
-        let record = Record::parse(
-            r#"{"staging": [{"chainId": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
-                             "programId": "34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4",
-                             "deploymentSlot": 4242}],
-                "production": []}"#,
-        );
-        let found = deployment_in(
-            &record,
-            Environment::Staging,
-            &genesis_hash(ClusterType::Devnet),
-        );
-        println!("{found:?}");
-        assert_eq!(
-            found.unwrap(),
-            Deployment {
-                chain_id: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1".to_owned(),
-                program_id: crate::generated::spl_token_forwarder::ID,
-                deployment_slot: 4242,
-            }
-        );
-        let other = deployment_in(
-            &record,
-            Environment::Production,
-            &genesis_hash(ClusterType::Devnet),
-        );
-        assert!(
-            matches!(other, Err(InstanceError::NoDeployment { .. })),
-            "{other:?}"
-        );
     }
 
     fn return_data(program: &Pubkey, bytes: &[u8]) -> Option<UiTransactionReturnData> {
@@ -567,10 +447,61 @@ mod tests {
             let result = returned::<String>(&program, data);
             println!("{what}: {result:?}");
             assert!(
-                matches!(result, Err(InstanceError::Decode { .. })),
+                matches!(result, Err(BindingsError::Decode { .. })),
                 "{what}: {result:?}"
             );
         }
+    }
+
+    /// Requires `result`, a read over an RPC nothing answers, to fail with
+    /// `RpcTransportError` naming what the read fetches its answer from.
+    fn assert_transport_error<T: std::fmt::Debug>(
+        read: &str,
+        what: &str,
+        result: BindingsResult<T>,
+    ) {
+        println!("{read}: {result:?}");
+        assert!(
+            matches!(&result, Err(BindingsError::RpcTransportError { what: fetched, .. }) if fetched.starts_with(what)),
+            "{read} is {result:?}, not RpcTransportError fetching {what}"
+        );
+    }
+
+    /// Nothing listens on port 1: each read fails, naming the account or
+    /// simulation it reads, so each read asks for what it answers from.
+    #[tokio::test]
+    async fn every_read_fetches_what_it_answers_from() {
+        let rpc = RpcClient::new("http://127.0.0.1:1".to_owned());
+        let production = SplTokenForwarderInstance::new(key(9), &rpc);
+        let emergency = EmergencyMigratingSplTokenForwarderInstance::new(key(9), &rpc);
+        let config = "the forwarder's config";
+        let version = "the simulation of version";
+        assert_transport_error("get_logic_ref", config, production.get_logic_ref().await);
+        assert_transport_error(
+            "get_protocol_adapter",
+            config,
+            production.get_protocol_adapter().await,
+        );
+        assert_transport_error("owner", config, production.owner().await);
+        assert_transport_error("version", version, production.version(&key(1)).await);
+        assert_transport_error("get_logic_ref", config, emergency.get_logic_ref().await);
+        assert_transport_error(
+            "get_protocol_adapter",
+            config,
+            emergency.get_protocol_adapter().await,
+        );
+        assert_transport_error("owner", config, emergency.owner().await);
+        assert_transport_error("version", version, emergency.version(&key(1)).await);
+        assert_transport_error(
+            "is_logic_ref_vulnerable",
+            "the vulnerable logic refs",
+            emergency.is_logic_ref_vulnerable(&[1; 32]).await,
+        );
+        assert_transport_error(
+            "is_nullifier_migrated",
+            "the migration record",
+            emergency.is_nullifier_migrated(&[1; 32]).await,
+        );
     }
 
     /// `idl`'s instructions by name, but `forward_call`: only the adapter
@@ -593,8 +524,8 @@ mod tests {
     fn the_production_builders_build_at_the_instances_address() {
         let rpc = RpcClient::new("http://127.0.0.1:1".to_owned());
         let p = key(9);
-        let instance = SplTokenForwarder::at(&rpc, p);
-        assert_eq!(instance.program_id(), p);
+        let instance = SplTokenForwarderInstance::new(p, &rpc);
+        assert_eq!(instance.address(), p);
         let built = [
             (
                 "initialize",
@@ -669,7 +600,7 @@ mod tests {
     fn the_emergency_migrating_builders_match_its_idl() {
         let rpc = RpcClient::new("http://127.0.0.1:1".to_owned());
         let p = crate::generated::emergency_migrating_spl_token_forwarder::ID;
-        let instance = EmergencyMigratingSplTokenForwarder::at(&rpc, p);
+        let instance = EmergencyMigratingSplTokenForwarderInstance::new(p, &rpc);
         let (a, b, c, d) = (key(1), key(2), key(3), key(4));
         let refs = [[5; 32], [6; 32]];
         let built: [(&str, Instruction, Vec<u8>); 11] = [
@@ -772,7 +703,7 @@ mod tests {
             .unwrap()
             .to_owned();
         let rpc = RpcClient::new("http://127.0.0.1:1".to_owned());
-        let instance = EmergencyMigratingSplTokenForwarder::at(&rpc, key(9));
+        let instance = EmergencyMigratingSplTokenForwarderInstance::new(key(9), &rpc);
         println!("LEGACY_FORWARDER: {declared}");
         assert_eq!(instance.legacy_forwarder().to_string(), declared);
     }
