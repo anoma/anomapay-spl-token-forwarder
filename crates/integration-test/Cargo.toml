@@ -14,8 +14,10 @@ publish = false
 
 [features]
 default = ["local"]
-# The operator scripts' tests (tests/operator_scripts.rs), which need the
-# scripts' dependencies and the production build's types: ops.sh script-test.
+# The tests that run TypeScript: the operator scripts' (tests/operator_scripts.rs)
+# and the TypeScript bindings' emergency-migrating reads (emergency_migrating.rs's
+# the_typescript_ tests), which need the scripts' dependencies and the
+# production build's types: ops.sh script-test.
 scripts = []
 local = ["anoma-pa-solana-integration-test/local"]
 e2e = ["anoma-pa-solana-integration-test/e2e"]

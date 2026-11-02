@@ -39,8 +39,10 @@ Development:
                  check the client's copies of the production and
                  emergency-migrating IDLs, and the integration tests' copy of
                  the development IDL, are the program's
-  script-test    Run the operator scripts against the harness's local runtime
-                 (crates/integration-test/tests/operator_scripts.rs), after
+  script-test    Run the operator scripts, and the TypeScript bindings' reads
+                 of the emergency-migrating build, against the harness's local
+                 runtime (crates/integration-test/tests/operator_scripts.rs,
+                 and emergency_migrating.rs's the_typescript_ tests), after
                  installing their dependencies and generating the types they
                  import
   ts-test        Check the Rust and TypeScript bindings carry one version,
@@ -628,6 +630,9 @@ case "$COMMAND" in
     ensure_node_modules
     release_idl
     (cd crates/integration-test && cargo test --features scripts --test operator_scripts)
+    # The TypeScript bindings' emergency-migrating reads after an incident,
+    # by the reader the integration tests run as they run the scripts.
+    (cd crates/integration-test && cargo test --features scripts --test emergency_migrating the_typescript_)
     ;;
   typecheck)
     require_cmd yarn

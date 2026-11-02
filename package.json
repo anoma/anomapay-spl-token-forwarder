@@ -2,8 +2,8 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "lint:fix": "prettier \"{client,scripts}/**/*.ts\" -w",
-    "lint": "prettier \"{client,scripts}/**/*.ts\" --check",
+    "lint:fix": "prettier \"{client,scripts,crates/integration-test/ts}/**/*.ts\" -w",
+    "lint": "prettier \"{client,scripts,crates/integration-test/ts}/**/*.ts\" --check",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
