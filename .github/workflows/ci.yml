@@ -74,6 +74,26 @@ jobs:
       - name: Run tests
         run: ./scripts/ops.sh unit-test
 
+  rust-package:
+    name: Rust package (crates.io dry run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      # Packages the client crate as crates.io would take it and builds it
+      # from the packaged files alone: a git dependency, or a file the build
+      # reads that the package lacks, fails here rather than at release.
+      - name: cargo publish --dry-run -p anomapay-spl-token-forwarder-client
+        run: cargo publish --dry-run -p anomapay-spl-token-forwarder-client
+
   anchor-build:
     name: Anchor Build
     runs-on: ubuntu-latest
