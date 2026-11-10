@@ -23,8 +23,7 @@ local = ["anoma-pa-solana-integration-test/local"]
 e2e = ["anoma-pa-solana-integration-test/e2e"]
 
 [dependencies]
-# The adapter's harness: pa-testkit's environments for the Solana adapter, at
-# its release whose estimate tests replace simulate_execute's.
+# The adapter's harness: pa-testkit's environments for the Solana adapter.
 anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "bindings/v0.10.0", default-features = false }
 # The Anchor the harness and the programs build with: the traits of the
 # generated bindings (account decoding, discriminators).
