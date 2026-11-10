@@ -24,9 +24,8 @@ e2e = ["anoma-pa-solana-integration-test/e2e"]
 
 [dependencies]
 # The adapter's harness: pa-testkit's environments for the Solana adapter, at
-# the merge of anoma/solana-protocol-adapter#168, which proves against the kind
-# tree devnet's adapter holds.
-anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", rev = "da4a600e02e0952cd7b9cf628a02f33c5dc5744b", default-features = false }
+# its release whose estimate tests replace simulate_execute's.
+anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "bindings/v0.10.0", default-features = false }
 # The Anchor the harness and the programs build with: the traits of the
 # generated bindings (account decoding, discriminators).
 anchor-lang = "1.2.2"
@@ -65,7 +64,7 @@ solana-signer = "3"
 solana-system-interface = { version = "3.2", features = ["bincode"] }
 spl-associated-token-account-interface = "2"
 spl-token-interface = "3"
-surfpool-sdk = "=1.6.0"
+surfpool-sdk = "=1.7.0"
 
 [dev-dependencies]
 base64 = "0.22"
