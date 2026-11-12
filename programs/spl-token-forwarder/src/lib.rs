@@ -295,8 +295,9 @@ pub mod spl_token_forwarder {
         Ok(())
     }
 
-    /// Forward a wrap or unwrap call from the Protocol Adapter, returning
-    /// the empty output, as the EVM ERC20 forwarder's `_forwardCall` does.
+    /// Forward a wrap or unwrap call from the Protocol Adapter, or in the
+    /// emergency-migrating build a migrate call, returning the empty output,
+    /// as the EVM ERC20 forwarder's `_forwardCall` and the EVM draft's do.
     ///
     /// Like the EVM V2 `ForwarderBaseUpgradeable.forwardCall()`, this does not check the
     /// adapter's paused state: the adapter does not call forwarders while paused.
