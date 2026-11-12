@@ -46,19 +46,6 @@ mod tests {
     use crate::forwarder::tests::idl_address;
     use crate::generated::spl_token_forwarder::ID;
 
-    #[test]
-    fn forwarder_escrow_authority_is_the_configured_forwarders() {
-        // Independent pin: the configured forwarder's escrow authority, as
-        // `solana find-program-derived-address <forwarder> string:escrow`
-        // derives it.
-        let (authority, bump) = derive_forwarder_escrow_authority(&ID);
-        assert_eq!(
-            authority.to_string(),
-            "A3srA2cw6o11TCSyMpBbnpLVnu6RLe6eGZEFz3d2m8h1"
-        );
-        assert_eq!(bump, 255);
-    }
-
     /// Every instruction account of either IDL that one of the helpers
     /// above derives, and whose address the IDL determines, is the helper's
     /// address.

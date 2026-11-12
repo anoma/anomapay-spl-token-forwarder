@@ -18,6 +18,7 @@ use anomapay_spl_token_forwarder_integration_test::refusal::{NOT_THE_OWNER, bala
 use anomapay_spl_token_forwarder_integration_test::setup::{
     self, OwnedForwarder, balance, create_mint, fund, mint_to, token_account,
 };
+use anyhow::Context;
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
 use solana_rpc_client_types::config::RpcProgramAccountsConfig;
@@ -25,6 +26,7 @@ use solana_rpc_client_types::filter::{Memcmp, RpcFilterType};
 use solana_signer::Signer;
 use spl_associated_token_account_interface::address::get_associated_token_address;
 use surfpool_sdk::Pubkey;
+use surfpool_sdk::cheatcodes::builders::SetAccount;
 
 /// What a test escrows of a fresh mint: 500 tokens at 6 decimals.
 const ESCROWED: u64 = 500_000_000;
@@ -397,6 +399,68 @@ async fn close_escrow_closes_an_empty_escrow() -> anyhow::Result<()> {
         "the empty escrow account is closed"
     );
     Ok(())
+}
+
+// The paused check reads the adapter's state; an account that is not that
+// state, in the layout the adapter this build pairs with writes, is refused
+// whatever it holds.
+
+#[tokio::test(flavor = "multi_thread")]
+async fn close_config_refuses_another_account_as_the_adapters_state() -> anyhow::Result<()> {
+    let (env, local) = paused().await?;
+    let program = local.forwarder.program;
+    let (config, _) = derive_forwarder_config_pda(&program);
+    refuses(
+        &env,
+        close_config_ix(&program, &local.owner.pubkey(), &config),
+        &[&local.owner],
+        "Error Code: InvalidPaState.",
+    )
+    .await
+}
+
+/// `close_config`, with the paused adapter's state rewritten by `rewrite`,
+/// is refused as not the adapter's state.
+async fn close_config_refuses_the_adapters_state_rewritten(
+    rewrite: impl FnOnce(&mut Vec<u8>),
+) -> anyhow::Result<()> {
+    let (env, local) = paused().await?;
+    let address = pa_state(&env);
+    let account = env.protocol_adapter.rpc.get_account(&address).await?;
+    let mut data = account.data;
+    rewrite(&mut data);
+    env.surfnet()?
+        .cheatcodes()
+        .execute(
+            SetAccount::new(address)
+                .lamports(account.lamports)
+                .data(data)
+                .owner(account.owner)
+                .executable(account.executable),
+        )
+        .context("failed to rewrite the adapter's state")?;
+    refuses(
+        &env,
+        close_config_ix(&local.forwarder.program, &local.owner.pubkey(), &address),
+        &[&local.owner],
+        "Error Code: InvalidPaState.",
+    )
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn close_config_refuses_a_truncated_adapter_state() -> anyhow::Result<()> {
+    close_config_refuses_the_adapters_state_rewritten(|data| {
+        data.pop();
+    })
+    .await
+}
+
+// The schema version is the byte after the account's 8-byte discriminator.
+#[tokio::test(flavor = "multi_thread")]
+async fn close_config_refuses_an_adapter_state_of_another_schema_version() -> anyhow::Result<()> {
+    close_config_refuses_the_adapters_state_rewritten(|data| data[8] = data[8].wrapping_add(1))
+        .await
 }
 
 #[tokio::test(flavor = "multi_thread")]

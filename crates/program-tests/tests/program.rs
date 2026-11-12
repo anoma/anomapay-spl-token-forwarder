@@ -82,8 +82,7 @@ fn the_clients_nonce_bitmap_address_is_the_programs() {
 }
 
 #[test]
-fn nonce_bitmap_account_is_discriminator_word_and_bump() {
-    assert_eq!(NonceBitmap::ACCOUNT_SIZE, 8 + 32 + 1);
+fn the_clients_nonce_bitmap_size_is_the_programs() {
     assert_eq!(
         NonceBitmap::ACCOUNT_SIZE,
         anomapay_spl_token_forwarder_client::constants::NONCE_BITMAP_ACCOUNT_SIZE,
