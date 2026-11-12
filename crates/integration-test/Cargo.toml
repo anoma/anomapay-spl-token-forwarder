@@ -24,13 +24,13 @@ e2e = ["anoma-pa-solana-integration-test/e2e"]
 
 [dependencies]
 # The adapter's harness: pa-testkit's environments for the Solana adapter.
-anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "bindings/v0.10.0", default-features = false }
+anoma-pa-solana-integration-test = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "bindings/v0.10.1", default-features = false }
 # The Anchor the harness and the programs build with: the traits of the
 # generated bindings (account decoding, discriminators).
 anchor-lang = "1.2.2"
 # The client and pa-testkit the harness pins.
 anoma-pa-solana-client = "0.12.1"
-anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "c2a44b6a466b21176aa2e3ee82684e1882588b81", default-features = false, features = [
+anoma-pa-testkit = { git = "https://github.com/anoma/pa-testkit", rev = "3d20016a956d8b75433d0ef2804768d7c07868d6", default-features = false, features = [
   "fixtures",
 ] }
 anomapay-spl-token-forwarder-client = { path = "../client", features = ["rpc"] }
