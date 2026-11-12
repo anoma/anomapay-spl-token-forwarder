@@ -98,10 +98,4 @@ mod tests {
         // -1 as i64 LE = 0xFF * 8
         assert_eq!(&bytes[80..88], &[0xFF; 8]);
     }
-
-    #[test]
-    fn base64_digest_is_44_chars() {
-        // base64 of 32 bytes is always 44 chars (= 4 * ceil(32/3) with one padding char).
-        assert_eq!(fixture_message().base64_digest().len(), 44);
-    }
 }

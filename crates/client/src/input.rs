@@ -198,19 +198,13 @@ mod tests {
     }
 
     #[test]
-    fn op_wrap_is_the_idl_constant_and_the_encoded_op_byte() {
-        assert_eq!(OP_WRAP, 0, "the IDL's OP_WRAP is the wire value 0");
-        assert_eq!(encode_wrap_forwarder_input(&wrap_input())[0], OP_WRAP);
-    }
-
-    #[test]
     fn wrap_input_layout_is_186_bytes() {
         let bytes = encode_wrap_forwarder_input(&wrap_input());
         // Pin the wire layout field by field: the forwarder's `WrapInput`
         // parses exactly these bytes after the op byte, and the resource
         // circuit commits them, so a silent field change must fail here.
         assert_eq!(bytes.len(), 186);
-        assert_eq!(bytes[0], OP_WRAP);
+        assert_eq!(bytes[0], 0, "the wrap's op byte");
         assert_eq!(&bytes[1..33], &[1u8; 32], "token_mint");
         assert_eq!(
             u64::from_le_bytes(bytes[33..41].try_into().unwrap()),

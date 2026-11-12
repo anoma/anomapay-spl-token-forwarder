@@ -350,6 +350,90 @@ async fn refuses_a_wrap_whose_authorization_is_not_at_the_instruction_index_its_
     .await
 }
 
+// Two wraps of adjacent nonces in one word, across a byte of its bitmap,
+// mark exactly those two nonces used.
+#[tokio::test(flavor = "multi_thread")]
+async fn wraps_mark_exactly_their_nonces_used() -> anyhow::Result<()> {
+    let (mut env, local, owner) = local().await?;
+    let forwarder = &local.forwarder;
+    forwarder
+        .wrap(&mut env, &owner, AMOUNT, 7, "wrap/7")
+        .await?;
+    fund(
+        &env,
+        &forwarder.program,
+        &forwarder.mint,
+        &forwarder.user,
+        AMOUNT,
+    )
+    .await?;
+    forwarder
+        .wrap(&mut env, &owner, AMOUNT, 8, "wrap/8")
+        .await?;
+
+    let (address, _) = derive_nonce_bitmap_pda(
+        &forwarder.program,
+        &forwarder.user.pubkey(),
+        nonce_word_index(7),
+    );
+    let bitmap = nonce_bitmap(&env, &address).await?;
+    for (nonce, used) in [(6, false), (7, true), (8, true), (9, false)] {
+        anyhow::ensure!(
+            nonce_is_used(&bitmap, nonce) == used,
+            "nonce {nonce} is {}used",
+            if used { "not " } else { "" }
+        );
+    }
+    Ok(())
+}
+
+// An ed25519 instruction verifying no signature (`[0, 0]`, which the
+// precompile accepts) authorizes nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn refuses_a_wrap_whose_ed25519_instruction_verifies_no_signature() -> anyhow::Result<()> {
+    refuses_first_wrap(
+        |_, _| {
+            let empty = solana_instruction::Instruction {
+                program_id: solana_sdk_ids::ed25519_program::ID,
+                accounts: vec![],
+                data: vec![0, 0],
+            };
+            move |accounts: &mut CallAccounts| accounts.preceding[0] = empty.clone()
+        },
+        "Error Code: InvalidEd25519Instruction.",
+    )
+    .await
+}
+
+// The precompile verifies data an ed25519 instruction locates in another
+// instruction (here: itself, at index 0, named by index rather than by
+// u16::MAX); the forwarder reads the public key and message only from the
+// instruction's own data, so it refuses any other instruction index. Each of
+// the signature's, the public key's and the message's index in turn.
+#[tokio::test(flavor = "multi_thread")]
+async fn refuses_a_wrap_whose_ed25519_instruction_locates_its_data_by_instruction_index()
+-> anyhow::Result<()> {
+    // The u16 instruction-index fields of the first signature's offsets.
+    for index_field in [4usize, 8, 14] {
+        refuses_first_wrap(
+            |forwarder, wrap| {
+                let signature = forwarder.user.sign_message(&wrap.signed_message);
+                let mut ed25519 = solana_ed25519_program::new_ed25519_instruction_with_signature(
+                    &wrap.signed_message,
+                    &<[u8; 64]>::from(signature),
+                    &forwarder.user.pubkey().to_bytes(),
+                );
+                ed25519.data[index_field..index_field + 2].copy_from_slice(&0u16.to_le_bytes());
+                move |accounts: &mut CallAccounts| accounts.preceding[0] = ed25519.clone()
+            },
+            "Error Code: InvalidEd25519Instruction.",
+        )
+        .await
+        .with_context(|| format!("instruction index field at byte {index_field}"))?;
+    }
+    Ok(())
+}
+
 /// The environment after the user's first wrap settled, and a second wrap
 /// under the same nonce, with the user holding and approving its amount, so
 /// any account substitution that let it through would move tokens.

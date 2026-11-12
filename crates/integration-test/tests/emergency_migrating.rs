@@ -25,7 +25,8 @@ use anoma_rm_risc0::Digest;
 use anoma_rm_risc0::resource::Resource;
 use anoma_rm_risc0::utils::bytes_to_words;
 use anomapay_spl_token_forwarder_client::emergency_migrating::{
-    derive_vulnerable_logic_refs_pda, reinitialize_ix,
+    derive_migration_record_pda, derive_vulnerable_logic_refs_pda, init_migration_record_ix,
+    reinitialize_ix,
 };
 use anomapay_spl_token_forwarder_client::generated::emergency_migrating_spl_token_forwarder::constants::CONFIG_VERSION as EMERGENCY_MIGRATING_CONFIG_VERSION;
 use anomapay_spl_token_forwarder_client::generated::emergency_migrating_spl_token_forwarder::events::{
@@ -1117,6 +1118,41 @@ async fn a_migration_refuses_another_account_as_the_adapters_nullifier_marker() 
             accounts.segments[0][marker].pubkey = Keypair::new().pubkey();
         });
     expect_integration_panic(Needle::Static("Error Code: NullifierPdaMismatch."))(
+        execute_tx(&mut incident.env, tx).await,
+    )
+}
+
+// A migration record is its nullifier's: the record of another nullifier, in
+// the entry's record slot, is refused.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_migration_refuses_the_record_of_another_nullifier() -> anyhow::Result<()> {
+    let mut incident = after_an_incident().await?;
+    let entry = incident.entry()?;
+    let tx = incident.prove_migration(vec![entry], 1).await?;
+    let program = incident.local.forwarder.program;
+    let other = [0x5a; 32];
+    incident
+        .local
+        .forwarder
+        .rewrite(&mut incident.env, move |accounts| {
+            // The submitter creates the entry's record; create the other
+            // nullifier's instead, and pass it where the entry's goes.
+            let init = accounts
+                .preceding
+                .iter_mut()
+                .find(|ix| ix.program_id == program)
+                .expect("the submitter creates the entry's migration record");
+            let payer = init
+                .accounts
+                .iter()
+                .find(|account| account.is_signer)
+                .expect("init_migration_record has a payer")
+                .pubkey;
+            *init = init_migration_record_ix(&program, &payer, &other);
+            let record = usize::from(forwarder_migrate_num_accounts(0).unwrap()) + 2;
+            accounts.segments[0][record].pubkey = derive_migration_record_pda(&program, &other).0;
+        });
+    expect_integration_panic(Needle::Static("Error Code: InvalidMigrationRecordPda."))(
         execute_tx(&mut incident.env, tx).await,
     )
 }

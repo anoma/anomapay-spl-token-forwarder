@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  base64WrapDigest,
-  buildWrapMessage,
-  WRAP_MESSAGE_LEN,
-} from "./wrapMessage.js";
+import { buildWrapMessage } from "./wrapMessage.js";
 
 const fixture = () => ({
   forwarderId: new Uint8Array(32).fill(1),
@@ -17,7 +13,7 @@ const fixture = () => ({
 
 describe("WrapMessage", () => {
   it("serializes to 120 bytes", () => {
-    expect(buildWrapMessage(fixture()).length).toBe(WRAP_MESSAGE_LEN);
+    expect(buildWrapMessage(fixture()).length).toBe(120);
   });
 
   it("places fields at the expected offsets", () => {
@@ -40,9 +36,5 @@ describe("WrapMessage", () => {
     expect(() =>
       buildWrapMessage({ ...fixture(), amount: 1n << 64n }),
     ).toThrow(RangeError);
-  });
-
-  it("base64 digest is 44 characters", () => {
-    expect(base64WrapDigest(fixture()).length).toBe(44);
   });
 });

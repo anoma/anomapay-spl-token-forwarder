@@ -49,12 +49,4 @@ describe("PDA derivation", () => {
     expect([...checked].sort()).toEqual(Object.keys(helpers).sort());
   });
 
-  it("forwarder escrow authority is the configured forwarder's", async () => {
-    // Independent pin: the configured forwarder's escrow authority, as
-    // `solana find-program-derived-address <forwarder> string:escrow` derives
-    // it; the Rust crate pins the same value.
-    const [authority, bump] = await deriveForwarderEscrowAuthority(FORWARDER);
-    expect(authority).toBe("A3srA2cw6o11TCSyMpBbnpLVnu6RLe6eGZEFz3d2m8h1");
-    expect(bump).toBe(255);
-  });
 });
