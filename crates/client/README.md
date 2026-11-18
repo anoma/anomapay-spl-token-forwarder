@@ -34,7 +34,7 @@ On macOS, leave out `-s -- --daemon`. From a checkout of this repository, the co
 The crate is published to crates.io at each `bindings/v*` tag's version:
 
 ```toml
-anomapay-spl-token-forwarder-client = "0.12.0"
+anomapay-spl-token-forwarder-client = "0.12.1"
 ```
 
 ### Build
