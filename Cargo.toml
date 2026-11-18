@@ -15,8 +15,8 @@ anchor-lang = "1.2.2"
 # adapter's PDAs, the forwarder registry the submitter plugs into, the
 # deployment record's environments and parser) at the release the integration
 # tests' harness pins, so this client and the harness share one copy of it.
-protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "contracts/v2.0.0-rc.12", default-features = false, features = ["no-entrypoint"] }
-anoma-pa-solana-client = { version = "0.12.1", default-features = false }
+protocol-adapter = { git = "https://github.com/anoma/solana-protocol-adapter", tag = "contracts/v2.0.0-rc.14", default-features = false, features = ["no-entrypoint"] }
+anoma-pa-solana-client = { version = "0.13.0", default-features = false }
 
 [profile.release]
 overflow-checks = true

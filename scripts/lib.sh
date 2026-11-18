@@ -38,9 +38,9 @@ require_cmd() {
   fi
 }
 
-# Export the forwarder's, the adapter's and the legacy forwarder's address for
-# <cluster>: the program and the adapter crate it builds against read them at
-# compile time
+# Export the forwarder's, the adapter's and the legacy forwarder's address,
+# and the adapter build's verifier router and selector, for <cluster>: the
+# program and the adapter crate it builds against read them at compile time
 # (env/README.md).
 load_program_ids() {
   local cluster="$1" file="${PROJECT_DIR}/env/$1.env" var
@@ -51,7 +51,7 @@ load_program_ids() {
   set -a
   source "$file"
   set +a
-  for var in FORWARDER_PROGRAM_ID PROTOCOL_ADAPTER_PROGRAM_ID LEGACY_FORWARDER_PROGRAM_ID; do
+  for var in FORWARDER_PROGRAM_ID PROTOCOL_ADAPTER_PROGRAM_ID RISC_ZERO_VERIFIER_ROUTER RISC_ZERO_VERIFIER_SELECTOR LEGACY_FORWARDER_PROGRAM_ID; do
     if [[ -z "${!var:-}" ]]; then
       echo "❌ ${file} names no ${var}." >&2
       exit 1
@@ -205,5 +205,7 @@ deterministic_build() {
   checked_sbf_build solana-verify build --library-name "$PROGRAM_NAME" --arch "$SBPF_ARCH" -- \
     --config "env.FORWARDER_PROGRAM_ID=\"${FORWARDER_PROGRAM_ID}\"" \
     --config "env.PROTOCOL_ADAPTER_PROGRAM_ID=\"${PROTOCOL_ADAPTER_PROGRAM_ID}\"" \
+    --config "env.RISC_ZERO_VERIFIER_ROUTER=\"${RISC_ZERO_VERIFIER_ROUTER}\"" \
+    --config "env.RISC_ZERO_VERIFIER_SELECTOR=\"${RISC_ZERO_VERIFIER_SELECTOR}\"" \
     --config "env.LEGACY_FORWARDER_PROGRAM_ID=\"${LEGACY_FORWARDER_PROGRAM_ID}\"" "$@"
 }

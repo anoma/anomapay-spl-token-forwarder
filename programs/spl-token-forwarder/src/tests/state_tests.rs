@@ -280,12 +280,7 @@ fn serialized_pa_state(paused: bool, denied_logic_refs: Vec<[u8; 32]>) -> Vec<u8
         paused,
         denied_consumed_logic_refs: denied_logic_refs.clone(),
         denied_created_logic_refs: denied_logic_refs,
-        ..PAStateAccount::running(
-            254,
-            Pubkey::new_unique(),
-            Pubkey::new_unique(),
-            [0x73, 0xc4, 0x57, 0xba],
-        )
+        ..PAStateAccount::running(254, Pubkey::new_unique())
     };
     let mut data = Vec::new();
     state.try_serialize(&mut data).unwrap();
