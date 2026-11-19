@@ -25,6 +25,8 @@ Development:
                  The integration tests on the adapter's harness, locally; with
                  --e2e, their e2e cases with real proofs, locally or, with
                  E2E_RUNTIME=devnet, on a fork of devnet (DEVNET_RPC_URL;
+                 E2E_OWNER, the devnet forwarder owner's keypair, for the
+                 owner's operations;
                  E2E_PROVER, QUEUE_BASE_URL, QUEUE_AUTH_TOKEN; read by the
                  harness)
   test-program [--check]
