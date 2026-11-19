@@ -8,7 +8,7 @@
  */
 import { createSolanaRpc } from "@solana/kit";
 
-import { requireEnv, requirePubkey } from "../../../scripts/cli-utils";
+import { requireEnv, requirePubkey, runScript } from "../../../scripts/cli-utils";
 import { EmergencyMigratingSplTokenForwarderInstance } from "../../../ts/src/contract";
 
 /** The 32-byte hex values of the comma-separated list in `name`. */
@@ -37,7 +37,4 @@ async function main() {
   console.log(JSON.stringify({ isLogicRefVulnerable, isNullifierMigrated }));
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exit(1);
-});
+runScript("Reading the emergency-migrating forwarder failed", main);

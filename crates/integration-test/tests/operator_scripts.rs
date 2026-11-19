@@ -6,7 +6,7 @@ use anoma_pa_solana_client::derive_upgrade_authority_pda;
 use anomapay_spl_token_forwarder_client::derive_forwarder_escrow_authority;
 use anomapay_spl_token_forwarder_client::generated::spl_token_forwarder::constants::CONFIG_VERSION;
 use anomapay_spl_token_forwarder_integration_test::logic::logic_ref;
-use anomapay_spl_token_forwarder_integration_test::scripts::{hex, run_script};
+use anomapay_spl_token_forwarder_integration_test::scripts::{hex, run_reader, run_script};
 use anomapay_spl_token_forwarder_integration_test::setup::{
     self, Build, FORWARDER_SO, balance, config, executable_hash, expected_config, give_sol,
     new_mint, same, upgrade_authority,
@@ -216,6 +216,40 @@ async fn upgrade_takes_the_path_the_upgrade_authority_leaves_and_installs_the_ow
     anyhow::ensure!(
         ran.success && ran.stdout.contains(&format!("upgraded to {expected}")),
         "{ran}"
+    );
+    Ok(())
+}
+
+/// Every script exits once its work is done, though a handle stays open (as
+/// web3.js's websocket stays open when the endpoint keeps closing it): 0 with
+/// its output once main resolves, non-zero with the error once it rejects.
+#[tokio::test(flavor = "multi_thread")]
+async fn scripts_exit_once_main_settles_though_a_handle_stays_open() -> anyhow::Result<()> {
+    let (env, _) = setup::deployed(Build::Production).await?;
+    let wallet = env.protocol_adapter.payer()?;
+
+    let resolved = run_reader(
+        &env,
+        wallet,
+        "run-script-exit.ts",
+        &[("OUTCOME", "resolve".to_string())],
+    )?;
+    anyhow::ensure!(
+        resolved.success && resolved.stdout == "done\n",
+        "{resolved}"
+    );
+
+    let rejected = run_reader(
+        &env,
+        wallet,
+        "run-script-exit.ts",
+        &[("OUTCOME", "reject".to_string())],
+    )?;
+    anyhow::ensure!(
+        !rejected.success
+            && rejected.stderr.contains("❌ the script failed:")
+            && rejected.stderr.contains("boom"),
+        "{rejected}"
     );
     Ok(())
 }
