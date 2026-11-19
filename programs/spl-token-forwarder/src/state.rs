@@ -36,7 +36,7 @@ impl Config {
 
 /// The production build's config version. A build that rotates the logic
 /// ref raises it by one, so its `reinitialize` runs once.
-const PRODUCTION_CONFIG_VERSION: u64 = 7;
+const PRODUCTION_CONFIG_VERSION: u64 = 8;
 
 /// The config version this build initializes to and reinitializes to, as
 /// the `n` of an OpenZeppelin `reinitializer(n)`. A build that rotates the
