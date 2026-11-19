@@ -29,7 +29,7 @@ import { deriveUpgradeAuthorityPda } from "../ts/src/pda";
 import { compileLegacyTransaction } from "../ts/src/transaction";
 import { bufferExecutableHash, deployedExecutableHash, upgradeAuthority } from "../client/upgrade";
 import { forwarderEventsOfSignature } from "../client/events";
-import { fail, parsePubkey, requireEnv } from "./cli-utils";
+import { fail, parsePubkey, requireEnv, runScript } from "./cli-utils";
 
 async function main() {
   const [command, bufferArg] = process.argv.slice(2);
@@ -82,7 +82,4 @@ async function main() {
   console.log(`✅ The forwarder is upgraded to ${expected.toString("hex")}. Signature: ${signature}`);
 }
 
-main().catch((err) => {
-  console.error(`❌ upgrade-program failed:`, err);
-  process.exit(1);
-});
+runScript("upgrade-program failed", main);

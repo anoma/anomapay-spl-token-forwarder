@@ -38,7 +38,7 @@ import { confirmedProvider } from "../client/provider";
 import type { SplTokenForwarder as SplTokenForwarderIdl } from "../target/types/spl_token_forwarder";
 import { SplTokenForwarderInstance } from "../ts/src/contract";
 import { deriveForwarderConfigPda, deriveForwarderEscrowAuthority, deriveTokenAccount } from "../ts/src/pda";
-import { fail, requireEnv, requireHexBytes, requirePubkey } from "./cli-utils";
+import { fail, requireEnv, requireHexBytes, requirePubkey, runScript } from "./cli-utils";
 
 const provider = confirmedProvider(requireEnv("ANCHOR_PROVIDER_URL", "the RPC endpoint"), process.env.ANCHOR_WS_URL);
 anchor.setProvider(provider);
@@ -149,4 +149,4 @@ if (!run) {
 }
 
 console.log(`Forwarder: ${forwarder.address}  Wallet: ${wallet.address}`);
-run().catch((err) => fail(`forwarder ${command} failed: ${err.message ?? err}`));
+runScript(`forwarder ${command} failed`, run);
