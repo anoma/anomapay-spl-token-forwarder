@@ -2,7 +2,7 @@
 
 Live state is always what `./scripts/dev.sh status --cluster devnet` reports; this file records what was deployed, by whom, and when. Update it after every deploy, upgrade, initialization or teardown. The adapter's record, and the settlement lookup table's, are the adapter repository's [docs/DEVNET_DEPLOYMENT.md](https://github.com/anoma/solana-protocol-adapter/blob/anthony/arm-v2-port/solana-pa-prototype/docs/DEVNET_DEPLOYMENT.md). The operations recorded below until 2026-10-04 ran from the adapter repository, where the forwarder lived, as `dev.sh <command> stf` and `dev.sh forwarder <command>`.
 
-**Record last verified:** 2026-10-31
+**Record last verified:** 2026-11-19
 
 ## Deployment of 2026-10-31
 
@@ -11,6 +11,8 @@ A deployment from scratch under new program IDs, for the clients generated from 
 | Program | ID | State |
 |---|---|---|
 | SPL Token Forwarder | `34kd782wMwzkdwGFS5jfGGdTAz8zbaxVczQHs3E8oKF4` | deployed 2026-10-31, slot 517245444, from `9e81431` (spl-token-forwarder 2.0.0-rc.11; the deterministic build, executable hash `15ff41aa639cb02fc2596829998f3c0ca8103e31ed097aee82a69dc2a5fcc98d`, which the deployed program matches; `STF_LOGIC_REF=… STF_OWNER=… dev.sh deploy --prebuilt`, `5MyieDjCvgmtjRyLkjujH8pHo4T5vhtTC8SGe81DAPvJhCb8kHHpPGWMq5sgz4Sv4KsErBkhGsh2BWULcK2SCnuC`), which wrote the production IDL to the canonical Program Metadata account `6PkLX6BmNmX35XeMYEW8Lxy9s5FMwHBA3MRvXkDL3cTu` and initialized the config. ProgramData `8RDK7t1dBPn6FgNdJBE4QQirfLvu4mckMatpDXCdeRZb`. Config `BzdBdem7wmsAoPWTASfYKT99mp3oXeYSUKW2AhfYcmar` (version 7) pins the adapter `2gH5DnTwDLLFk3oYxnbrceSFdTMtvaxQz29x5W8Etmpx`, recorded in the adapter repository's record, and the logic ref `c17a7ca5a0ec39b80d6efd7c1c8b810c3d9fb722ab32fbbc36f9eb683bce0b5b` (anoma/anomapay-solana-resource `v2.0.0-rc.12`); escrow authority `A3srA2cw6o11TCSyMpBbnpLVnu6RLe6eGZEFz3d2m8h1`, event authority `2LWJSMdT7QLhmcd1edp9tiQPq5cDhrEU7t3hEBGSToNd` |
+
+- **risc0 3.1.0 rotation 2026-11-19 (anoma/dos-pm#185):** with the adapter paused and upgraded to `contracts/v2.0.0-rc.14` (the adapter repository's record), upgraded in place through its own `upgrade`, signed by the owner, to `bindings/v0.12.1` `9968e07` (spl-token-forwarder 2.0.0-rc.13, `PRODUCTION_CONFIG_VERSION` 8; the deterministic build, executable hash `6c82bc2556271040179c2b60198576e1c6d361ff16256e6994a6cc5c3bc9621b`, which the deployed program and the committed test program match; `dev.sh upgrade --prebuilt`, slot 523992574, `4Cx3XxM1gDGhneUXpppYs6YngjQx5UGsXErpBRqPdzZwTEEUHJmQx8GMUEjcanGPuJpCHc3PnpM8cXQJWWLxW7Gv`); then `reinitialize` rotated the logic ref from `c17a7ca5…` to `25c7ba2d4a9327bb1d8eec678ed2547a963165826cce97c4ad19898aa0e8e6fe` (anoma/anomapay-solana-resource `v2.0.0-rc.14`), config version 8 (`STF_LOGIC_REF=… dev.sh forwarder reinitialize`, slot 523992650, `2129eYUKLg3VcUYr6Pt1SgSLMqNMBxZfWH8zCtNqDEbLYRh8nbMLhoYM5UhVqbfvkSqFX3MxBUJ35ixe23YJrHH9`), before the adapter took the matching kind tree root and was unpaused. `dev.sh integration-test --e2e`'s settlement cases (two wraps in one transaction, wraps then unwraps, a transfer between shielded owners, the forwarder call order), proven locally, then passed on a fork of devnet's state.
 
 ## Deployment of 2026-10-01 (unused since 2026-10-27)
 
