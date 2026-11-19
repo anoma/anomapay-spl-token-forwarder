@@ -250,37 +250,21 @@ pub async fn e2e() -> anyhow::Result<(
     let forwarder = match runtime {
         E2eRuntime::Local => owned(&mut env, Build::Production).await?.forwarder,
         E2eRuntime::Devnet { .. } | E2eRuntime::Cluster { .. } => {
-            let program = env_address(DEVNET, "FORWARDER_PROGRAM_ID")?;
-            let config = config(&env, &program).await?;
-            let pa = env.protocol_adapter.program;
-            anyhow::ensure!(
-                config.protocol_adapter == pa,
-                "the devnet forwarder serves the adapter {}, not {pa}",
-                config.protocol_adapter
-            );
-            anyhow::ensure!(
-                config.logic_ref == <[u8; 32]>::from(crate::logic::logic_ref()),
-                "the devnet forwarder serves the logic ref {}, the tests build {}",
-                anoma_rm_risc0::Digest::from_bytes(config.logic_ref),
-                crate::logic::logic_ref()
-            );
-            // The settlement of a wrap whose word has no bitmap carries the
-            // forwarder's `init_nonce_bitmap`, which a live cluster refuses
-            // unless allowed.
-            env.protocol_adapter
-                .allow_on_live_cluster(program, InitNonceBitmap::DISCRIMINATOR)?;
+            let program = devnet_forwarder(&mut env).await?.0;
             serve(&mut env, program).await?
         }
     };
     Ok((env, forwarder))
 }
 
-/// The e2e environment (`E2E_RUNTIME`) with the production forwarder
-/// deployed at its local address and initialized by a test owner, on its own
-/// runtime or a fork of devnet: a test of the owner's operations (an
-/// upgrade, `reinitialize`) needs the owner's key, which devnet's
-/// forwarder's owner keeps. The cluster runtime, where nothing is deployed
-/// but by the operator, is refused.
+/// The e2e environment (`E2E_RUNTIME`) with a production forwarder whose
+/// owner the tests hold, for a test of the owner's operations (an upgrade,
+/// `reinitialize`): on its own runtime, the forwarder deployed and
+/// initialized by a test owner; on a fork of devnet, the forwarder devnet
+/// runs, checked as `e2e` checks it, with its owner's keypair at
+/// `E2E_OWNER`, so the operations rehearse on devnet's own state. The
+/// cluster runtime is refused: an owner's operations on devnet are the
+/// operator's, not a test's.
 #[cfg(feature = "e2e")]
 pub async fn e2e_owned() -> anyhow::Result<(
     anoma_pa_solana_integration_test::envs::e2e::Environment,
@@ -289,13 +273,60 @@ pub async fn e2e_owned() -> anyhow::Result<(
     use anoma_pa_solana_integration_test::envs::e2e::E2eRuntime;
 
     let (mut env, runtime) = e2e_environment().await?;
-    anyhow::ensure!(
-        !matches!(runtime, E2eRuntime::Cluster { .. }),
-        "E2E_RUNTIME is cluster: an owner's operations deploy a forwarder of their own, which \
-         only a runtime of the tests' own or a fork of devnet takes"
-    );
-    let owned = owned(&mut env, Build::Production).await?;
+    let owned = match runtime {
+        E2eRuntime::Local => owned(&mut env, Build::Production).await?,
+        E2eRuntime::Devnet { .. } => {
+            let (program, config) = devnet_forwarder(&mut env).await?;
+            let path = std::env::var("E2E_OWNER").context(
+                "E2E_OWNER is not set: on a fork of devnet, the owner's operations run on \
+                 devnet's forwarder, signed by its owner; set it to that owner's keypair file",
+            )?;
+            let owner = solana_keypair::read_keypair_file(&path)
+                .map_err(|e| anyhow::anyhow!("E2E_OWNER: cannot read the keypair {path}: {e}"))?;
+            anyhow::ensure!(
+                owner.pubkey() == config.owner,
+                "E2E_OWNER ({path}) is the keypair of {}, but devnet's forwarder is owned by {}",
+                owner.pubkey(),
+                config.owner
+            );
+            let forwarder = serve(&mut env, program).await?;
+            OwnedForwarder { forwarder, owner }
+        }
+        E2eRuntime::Cluster { .. } => anyhow::bail!(
+            "E2E_RUNTIME is cluster: an owner's operations on devnet are the operator's, not a \
+             test's; run them on a runtime of the tests' own or a fork of devnet"
+        ),
+    };
     Ok((env, owned))
+}
+
+/// The forwarder devnet runs, on `env`'s fork of devnet or devnet itself, and
+/// its config, checked to serve the devnet adapter and the transfer
+/// resource's logic ref.
+#[cfg(feature = "e2e")]
+async fn devnet_forwarder(
+    env: &mut anoma_pa_solana_integration_test::envs::e2e::Environment,
+) -> anyhow::Result<(Pubkey, Config)> {
+    let program = env_address(DEVNET, "FORWARDER_PROGRAM_ID")?;
+    let config = config(env, &program).await?;
+    let pa = env.protocol_adapter.program;
+    anyhow::ensure!(
+        config.protocol_adapter == pa,
+        "the devnet forwarder serves the adapter {}, not {pa}",
+        config.protocol_adapter
+    );
+    anyhow::ensure!(
+        config.logic_ref == <[u8; 32]>::from(crate::logic::logic_ref()),
+        "the devnet forwarder serves the logic ref {}, the tests build {}",
+        anoma_rm_risc0::Digest::from_bytes(config.logic_ref),
+        crate::logic::logic_ref()
+    );
+    // The settlement of a wrap whose word has no bitmap carries the
+    // forwarder's `init_nonce_bitmap`, which a live cluster refuses unless
+    // allowed.
+    env.protocol_adapter
+        .allow_on_live_cluster(program, InitNonceBitmap::DISCRIMINATOR)?;
+    Ok((program, config))
 }
 
 /// Has the forwarder `program` serve a new mint on `env`: the mint, its
